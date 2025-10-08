@@ -1212,10 +1212,7 @@ def _load_stt_model_thread():
 
 def read_file_text():
     file_path = filedialog.askopenfilename(
-        filetypes=[
-            ("PDF files", "*.pdf"),
-            ("Text files", "*.txt")
-        ]
+        filetypes=[("PDF and Text Files", "*.pdf *.txt")]
     )
     if file_path:
         threaded_file_reading(file_path)  # Add this line to process the file immediately
