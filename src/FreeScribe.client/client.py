@@ -39,6 +39,7 @@ from UI.Widgets.MicrophoneSelector import MicrophoneState
 from Model import  ModelManager
 from utils.ip_utils import is_private_ip
 from utils.file_utils import get_file_path, get_resource_path
+from utils.read_files import file_reader
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
@@ -151,6 +152,16 @@ def threaded_send_audio_to_server():
     thread.start()
     return thread
 
+
+def threaded_file_reading(file_path):
+    def worker():
+        result = file_reader(file_path)
+        user_input.scrolled_text.delete("1.0", tk.END)
+        user_input.scrolled_text.insert(tk.END, result)
+        
+    thread = threading.Thread(target=worker())
+    thread.start()
+    return thread
 
 def toggle_pause():
     global is_paused
@@ -1064,7 +1075,7 @@ def set_full_view():
     root.unbind('<Leave>')
     root.attributes('-alpha', 1.0)
     root.attributes('-topmost', False)
-    root.minsize(900, 400)
+    root.minsize(1200, 600)
     current_view = "full"
 
     # create docker_status bar if enabled
@@ -1199,6 +1210,17 @@ def _load_stt_model_thread():
         print("Closing STT loading window.")
 
 
+def read_file_text():
+    file_path = filedialog.askopenfilename(
+        filetypes=[
+            ("PDF files", "*.pdf"),
+            ("Text files", "*.txt")
+        ]
+    )
+    if file_path:
+        threaded_file_reading(file_path)  # Add this line to process the file immediately
+
+
 # Configure grid weights for scalability
 root.grid_columnconfigure(0, weight=1, minsize= 10)
 root.grid_columnconfigure(1, weight=1)
@@ -1211,7 +1233,8 @@ root.grid_columnconfigure(7, weight=1)
 root.grid_columnconfigure(8, weight=1)
 root.grid_columnconfigure(9, weight=1)
 root.grid_columnconfigure(10, weight=1)
-root.grid_columnconfigure(11, weight=1, minsize=10)
+root.grid_columnconfigure(11, weight=1)
+root.grid_columnconfigure(12, weight=1, minsize=10)
 root.grid_rowconfigure(0, weight=1)
 root.grid_rowconfigure(1, weight=0)
 root.grid_rowconfigure(2, weight=1)
@@ -1222,7 +1245,7 @@ root.grid_rowconfigure(4, weight=0)
 window.load_main_window()
 
 user_input = CustomTextBox(root, height=12)
-user_input.grid(row=0, column=1, columnspan=8, padx=5, pady=15, sticky='nsew')
+user_input.grid(row=0, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 
 # Insert placeholder text
@@ -1254,12 +1277,15 @@ upload_button.grid(row=1, column=6, pady=5, sticky='nsew')
 switch_view_button = tk.Button(root, text="Minimize View", command=toggle_view, height=2, width=11)
 switch_view_button.grid(row=1, column=7, pady=5, sticky='nsew')
 
+upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
+upload_file_button.grid(row=1, column=8, pady=5, sticky='nsew')
+
 blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
-blinking_circle_canvas.grid(row=1, column=8, pady=5)
+blinking_circle_canvas.grid(row=1, column=9, pady=5)
 circle = blinking_circle_canvas.create_oval(5, 5, 15, 15, fill='white')
 
 response_display = CustomTextBox(root, height=13, state="disabled")
-response_display.grid(row=2, column=1, columnspan=8, padx=5, pady=15, sticky='nsew')
+response_display.grid(row=2, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 # Insert placeholder text
 response_display.scrolled_text.configure(state='normal')
@@ -1271,7 +1297,7 @@ if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
 
 timestamp_listbox = tk.Listbox(root, height=30)
-timestamp_listbox.grid(row=0, column=9, columnspan=2, rowspan=3, padx=5, pady=15, sticky='nsew')
+timestamp_listbox.grid(row=0, column=10, columnspan=2, rowspan=3, padx=5, pady=15, sticky='nsew')
 timestamp_listbox.bind('<<ListboxSelect>>', show_response)
 timestamp_listbox.insert(tk.END, "Temporary Note History")
 timestamp_listbox.config(fg='grey')
