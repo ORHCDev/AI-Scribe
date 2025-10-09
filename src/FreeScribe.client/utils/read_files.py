@@ -15,6 +15,7 @@ def pdf_image_to_text(pdf_path):
     Returns:
         str: Extracted text from the PDF images.
     """
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
     # Convert PDF to a list of images
     pages = convert_from_path(
         pdf_path, 
