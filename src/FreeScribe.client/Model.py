@@ -197,8 +197,8 @@ class ModelManager:
             if app_settings.editable_settings["Architecture"] == "CUDA (Nvidia GPU)":
                 gpu_layers = -1
 
-            model_to_use = "gemma-2-2b-it-Q8_0.gguf"
-                
+            #model_to_use = "gemma-2-2b-it-Q8_0.gguf"
+            model_to_use = "mistral-7b-instruct-v0.2.Q4_K_M.gguf"    
             model_path = f"./models/{model_to_use}"
             try:
                 ModelManager.local_model = Model(model_path,
