@@ -3,22 +3,32 @@ from pdf2image import convert_from_path
 from PIL import Image
 import pytesseract
 import numpy as np
+import os
 
 
-def pdf_image_to_text(pdf_path):
+def pdf_image_to_text(pdf_path, first_page=None, last_page=None, write_out_text=False, filename=None):
     """
-    Convert a PDF file containing images to text using pytesseract OCR.
+    Convert a PDF (or pdf bytes) file containing images to text using pytesseract OCR.
     
     Args:
-        pdf_path (str): Path to the input PDF file.
-
+    -----
+        pdf_path (str): Path to PDF file
+        first_page (int, optional): First page to process.
+        last_page (int, optional): Last page to process.
+        write_out_text (bool, optional): If True, saves the extracted text to a file.
+        filename (str, optional): Filename for writing out text.
+        
+        
     Returns:
+    --------
         str: Extracted text from the PDF images.
     """
-    # Convert PDF to a list of images
+
     pages = convert_from_path(
         pdf_path, 
-        dpi=400
+        dpi=375,
+        first_page=first_page,
+        last_page=last_page
     )
 
     # Extract text from each image using pytesseract
@@ -45,6 +55,21 @@ def pdf_image_to_text(pdf_path):
 
         # --- OCR ---
         text += pytesseract.image_to_string(pil_image, config="--psm 6")
+
+
+    # Create text file
+    if write_out_text:
+        if not filename:
+            dir = os.path.dirname(pdf_path)
+            pdf = os.path.basename(pdf_path)
+            try:
+                filename = os.path.join(dir, pdf.replace(".pdf", ".txt")) 
+            except:
+                filename = os.path.join(dir, pdf.lower().replace(".pdf", ".txt"))
+        
+        with open(filename, "w") as writer:
+            writer.write(text)
+
 
     return text
 
