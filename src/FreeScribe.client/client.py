@@ -44,6 +44,7 @@ import ctypes
 import sys
 from UI.DebugWindow import DualOutput
 import traceback
+from prompts import AI_PROMPTS
 
 dual = DualOutput()
 sys.stdout = dual
@@ -416,7 +417,7 @@ def disable_recording_ui_elements():
     window.disable_settings_menu()
     user_input.scrolled_text.configure(state='disabled')
     send_button.config(state='disabled')
-    toggle_button.config(state='disabled')
+    #toggle_button.config(state='disabled') 
     upload_button.config(state='disabled')
     response_display.scrolled_text.configure(state='disabled')
     timestamp_listbox.config(state='disabled')
@@ -425,7 +426,7 @@ def enable_recording_ui_elements():
     window.enable_settings_menu()
     user_input.scrolled_text.configure(state='normal')
     send_button.config(state='normal')
-    toggle_button.config(state='normal')
+    #toggle_button.config(state='normal')
     upload_button.config(state='normal')
     timestamp_listbox.config(state='normal')
     
@@ -508,10 +509,10 @@ def clear_all_text_fields():
     response_display.scrolled_text.config(fg='grey')
     response_display.scrolled_text.configure(state='disabled')
 
-def toggle_aiscribe():
+"""def toggle_aiscribe():
     global use_aiscribe
     use_aiscribe = not use_aiscribe
-    toggle_button.config(text="AI Scribe\nON" if use_aiscribe else "AI Scribe\nOFF")
+    toggle_button.config(text="AI Scribe\nON" if use_aiscribe else "AI Scribe\nOFF")"""
 
 def send_audio_to_server():
     """
@@ -733,6 +734,7 @@ def update_gui_with_response(response_text):
 
     display_text(response_text)
     pyperclip.copy(response_text)
+    user_input.scrolled_text.configure(state='normal')
     stop_flashing()
 
 def show_response(event):
@@ -866,8 +868,9 @@ def send_text_to_chatgpt(edited_text):
 
 def generate_note(formatted_message):
             try:
+                prompt = selected_prompt.get()
                 # If note generation is on
-                if use_aiscribe:
+                if prompt == "Scribe":
                     # If pre-processing is enabled
                     if app_settings.editable_settings["Use Pre-Processing"]:
                         #Generate Facts List
@@ -891,8 +894,13 @@ def generate_note(formatted_message):
                             update_gui_with_response(post_processed_note)
                         else:
                             update_gui_with_response(medical_note)
+                elif prompt == "Auto":
+                    # TODO:
+                    # Add something to auto detect document type and assign the correct prompt
+                    pass
+
                 else: # do not generate note just send text directly to AI 
-                    ai_response = send_text_to_chatgpt(formatted_message)
+                    ai_response = send_text_to_chatgpt(f"{AI_PROMPTS[prompt]}\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
                 return True
@@ -1053,14 +1061,17 @@ def set_full_view():
     user_input.grid()
     send_button.grid()
     clear_button.grid()
-    toggle_button.grid()
+    #toggle_button.grid()
+    dropdown_label.grid()
+    prompt_dropdown.grid()
+    upload_file_button.grid()
     upload_button.grid()
     response_display.grid()
     timestamp_listbox.grid()
     mic_button.grid(row=1, column=1, pady=5, padx=0,sticky='nsew')
     pause_button.grid(row=1, column=2, pady=5, padx=0,sticky='nsew')
     switch_view_button.grid(row=1, column=7, pady=5, padx=0,sticky='nsew')
-    blinking_circle_canvas.grid(row=1, column=8, padx=0,pady=5)
+    blinking_circle_canvas.grid(row=1, column=9, padx=0,pady=5)
 
     window.toggle_menu_bar(enable=True)
 
@@ -1117,7 +1128,10 @@ def set_minimal_view():
     user_input.grid_remove()
     send_button.grid_remove()
     clear_button.grid_remove()
-    toggle_button.grid_remove()
+    #toggle_button.grid_remove()
+    dropdown_label.grid_remove()
+    prompt_dropdown.grid_remove()
+    upload_file_button.grid_remove()
     upload_button.grid_remove()
     response_display.grid_remove()
     timestamp_listbox.grid_remove()
@@ -1234,9 +1248,10 @@ root.grid_columnconfigure(11, weight=1)
 root.grid_columnconfigure(12, weight=1, minsize=10)
 root.grid_rowconfigure(0, weight=1)
 root.grid_rowconfigure(1, weight=0)
-root.grid_rowconfigure(2, weight=1)
-root.grid_rowconfigure(3, weight=0)
+root.grid_rowconfigure(2, weight=0)
+root.grid_rowconfigure(3, weight=1)
 root.grid_rowconfigure(4, weight=0)
+root.grid_rowconfigure(5, weight=0)
 
 
 window.load_main_window()
@@ -1254,35 +1269,42 @@ user_input.scrolled_text.bind("<FocusIn>", lambda event: remove_placeholder(even
 user_input.scrolled_text.bind("<FocusOut>", lambda event: add_placeholder(event, user_input.scrolled_text, "Transcript of Conversation"))
 
 mic_button = tk.Button(root, text="Start\nRecording", command=lambda: (threaded_toggle_recording()), height=2, width=11)
-mic_button.grid(row=1, column=1, pady=5, sticky='nsew')
+mic_button.grid(row=1, column=1, rowspan=2, pady=5, sticky='nsew')
 
 send_button = tk.Button(root, text="Generate Note", command=send_and_flash, height=2, width=11)
-send_button.grid(row=1, column=3, pady=5, sticky='nsew')
+send_button.grid(row=1, column=3, pady=5, rowspan=2, sticky='nsew')
 
 pause_button = tk.Button(root, text="Pause", command=toggle_pause, height=2, width=11)
-pause_button.grid(row=1, column=2, pady=5, sticky='nsew')
+pause_button.grid(row=1, column=2, pady=5, rowspan=2, sticky='nsew')
 
 clear_button = tk.Button(root, text="Clear", command=clear_application_press, height=2, width=11)
-clear_button.grid(row=1, column=4, pady=5, sticky='nsew')
+clear_button.grid(row=1, column=4, pady=5, rowspan=2, sticky='nsew')
 
-toggle_button = tk.Button(root, text="AI Scribe\nON", command=toggle_aiscribe, height=2, width=11)
-toggle_button.grid(row=1, column=5, pady=5, sticky='nsew')
+#toggle_button = tk.Button(root, text="AI Scribe\nON", command=toggle_aiscribe, height=2, width=11)
+#toggle_button.grid(row=1, column=5, pady=5, sticky='nsew')
+
+dropdown_label = tk.Label(root, text="Select Prompt", font=("Arial", 8, "bold"))
+dropdown_label.grid(row=1, column=5, pady=5, sticky='nsew')
+
+selected_prompt = tk.StringVar(value="None")
+prompt_dropdown = tk.OptionMenu(root, selected_prompt, *AI_PROMPTS.keys())
+prompt_dropdown.grid(row=2, column=5, pady=5, sticky='nsew')
 
 upload_button = tk.Button(root, text="Upload\nRecording", command=upload_file, height=2, width=11)
-upload_button.grid(row=1, column=6, pady=5, sticky='nsew')
+upload_button.grid(row=1, column=6, pady=5, rowspan=2, sticky='nsew')
 
 switch_view_button = tk.Button(root, text="Minimize View", command=toggle_view, height=2, width=11)
-switch_view_button.grid(row=1, column=7, pady=5, sticky='nsew')
+switch_view_button.grid(row=1, column=7, pady=5, rowspan=2, sticky='nsew')
 
 upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
-upload_file_button.grid(row=1, column=8, pady=5, sticky='nsew')
+upload_file_button.grid(row=1, column=8, pady=5, rowspan=2, sticky='nsew')
 
 blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
-blinking_circle_canvas.grid(row=1, column=9, pady=5)
+blinking_circle_canvas.grid(row=1, column=9, rowspan=2, pady=5)
 circle = blinking_circle_canvas.create_oval(5, 5, 15, 15, fill='white')
 
 response_display = CustomTextBox(root, height=13, state="disabled")
-response_display.grid(row=2, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
+response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 # Insert placeholder text
 response_display.scrolled_text.configure(state='normal')
@@ -1294,7 +1316,7 @@ if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
 
 timestamp_listbox = tk.Listbox(root, height=30)
-timestamp_listbox.grid(row=0, column=10, columnspan=2, rowspan=3, padx=5, pady=15, sticky='nsew')
+timestamp_listbox.grid(row=0, column=10, columnspan=2, rowspan=4, padx=5, pady=15, sticky='nsew')
 timestamp_listbox.bind('<<ListboxSelect>>', show_response)
 timestamp_listbox.insert(tk.END, "Temporary Note History")
 timestamp_listbox.config(fg='grey')
