@@ -21,3 +21,4 @@ freescribe-client-nvidia.spec
 scripts/FreeScribeInstaller.exe
 test_upload_files
 display_mics.py
+src/FreeScribe.client/models
