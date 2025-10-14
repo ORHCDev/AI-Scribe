@@ -916,8 +916,22 @@ def show_edit_transcription_popup(formatted_message):
 
     scrubbed_message = scrubadub.clean(formatted_message)
 
-    pattern = r'\b\d{10}\b'     # Any 10 digit number, looks like OHIP
-    cleaned_message = re.sub(pattern,'{{OHIP}}',scrubbed_message)
+    # Additional regex scrubbing 
+    cleaned_message = scrubbed_message
+    re_ohip_plain = re.compile(r'\b\d{10}\b')  # 10 digit OHIP
+    re_ohip_dashed = re.compile(r'\b(\d{4})-(\d{3})-(\d{3})(?:[- ]?[A-Za-z]{2})?\b')  # OHIP with dashes
+    re_postal = re.compile(r'\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b', re.IGNORECASE)  # Canadian postal codes
+    re_address = re.compile(r'\b\d+ [A-Z][a-z]+ (Street|St|Avenue|Ave|Road|Rd|Drive|Dr)\b', re.IGNORECASE)  # Street addresses
+
+    scrub_patterns = [
+        (re_ohip_plain, '{{OHIP}}'),
+        (re_ohip_dashed, '{{OHIP}}'),
+        (re_postal, '{{POSTAL_CODE}}'),
+        (re_address, '{{ADDRESS}}'),
+    ]
+
+    for regex, replacement in scrub_patterns:
+        cleaned_message = regex.sub(replacement, cleaned_message)
 
     if (app_settings.editable_settings["Use Local LLM"] or is_private_ip(app_settings.editable_settings["Model Endpoint"])) and not app_settings.editable_settings["Show Scrub PHI"]:
         generate_note_thread(cleaned_message)
