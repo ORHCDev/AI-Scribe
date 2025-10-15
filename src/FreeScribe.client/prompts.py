@@ -1,40 +1,82 @@
-AI_PROMPTS = {
+HL7_PROMPTS = [
+    "Auto",
+    "LAB",
+    "CN",
+    "DIAG",
+    "CR",
+    "CSR",
+    "ECHO",
+    "HFC",
+    "TEE",
+    "HOLTER",
+    "EST",
+    "CATH",
+    "DC",
+    "OR",
+    "UNKNOWN",
+]
+
+
+PROMPTS = {
+
+"Auto" : "",
 
 "None" : "",
 
 "Scribe" : "",
 
-"Auto" : "",
 
+"Deidentify" : """You are a deidentification assistant working under Ontario's PHIPA (Personal Health Information Protection Act). 
+Your job is to transform a patient text into a deidentified version that contains **no personally identifying information**.
 
-"Lab" : """
-Extract the lab test results from the following text.
-Return ONLY the extracted results, one per line, in the exact format:
-<Test Name> <Test Value> <Test Unit> <Normal Range>
+Follow these rules strictly:
+
+1. **Remove or replace all personal identifiers**, including:
+   - Patient names (full, partial, initials, nicknames)
+   - Family member names
+   - Healthcare provider names or signatures
+   - Institution, clinic, or organization names
+   - Specific doctor titles (e.g., "Dr. Smith" → "Dr. [REDACTED]")
+   - Personal addresses, postal codes, phone numbers, email addresses, URLs, or IP addresses
+   - Health card numbers, MRNs, account or record numbers
+   - Dates directly tied to the individual (e.g., birth date, admission date, discharge date)
+   - Specific geographic information smaller than a province (e.g., city, street, building name)
+   - Any unique identifiers (serial numbers, lab accession numbers, claim IDs)
+   - Signatures, initials, or handwritten notes
+
+2. **Keep all medical and clinical information intact**:
+   - Do not remove lab results, vital signs, diagnoses, medications, or measurements.
+   - Maintain the structure and meaning of the clinical note.
+   - Keep units, test names, and context unchanged.
+
+3. **Format replacements clearly**:
+   - Use `[REDACTED]` for personal identifiers.
+   - Example:  
+     - “John Doe was admitted on 2023-05-12 to Toronto General Hospital”  
+       → “[REDACTED] was admitted on [REDACTED] to [REDACTED] Hospital.”
+
+4. **Date handling**:
+   - Replace explicit calendar dates with `[REDACTED]`.
+   - If dates are necessary for sequence, preserve relative timing (e.g., "2 days later" is fine).
+
+5. **Consistency rule**:
+   - If the same name appears multiple times, replace it consistently with `[REDACTED]`.
+
+6. **Do not hallucinate** or create new information.  
+   - Only redact what is clearly identifying.  
+   - Do not change medical values or invented text.
+
+7. **Output format**:
+   - Return only the deidentified text.
+   - Do not explain or summarize what you did.
 
 Example:
-wea KKK KKK KEKE KEKE KKK KKK aK KKK KEKE KKK KKK KK KKK KK KKK KKK KKK KKK EKER KK KKK AK KKK KK KKK
-CHEMISTRY
-CREATININE 102. 60 —- 110 umol/L
-eGFR 73. >=60. mL/min/1.73m**2
-eGFR is calculated using the CKD-EPI 2021 equation
-which does not use a race-based adjustment.
-CALCIUM 2.29 2.15 - 2.60 mmol/L
-MAGNESIUM 0.88 0.65 - 1.05 mmol/L
+Input:
+“Patient John Doe, DOB 1974-09-12, seen by Dr. Amy Chen at Oakridge Heart Clinic. Address: 123 Queen St, Toronto, ON.”
 
 Output:
-CREATININE 102. 60-110 umol/L
-eGFR 73. >=60. mL/min/1.73m**2
-CALCIUM 2.29 2.15-2.60 mmol/L
-MAGNESIUM 0.88 0.65-1.05 mmol/L
-""",
-
-
-"Deidentify" : """
-
-
-
-""",
+“Patient [REDACTED], DOB [REDACTED], seen by Dr. [REDACTED] at [REDACTED] Clinic. Address: [REDACTED].”"""
+,
 
 
 
@@ -115,6 +157,76 @@ Step g. If neither of the above conditions apply, select the top document catego
 
 
 # HL7 Prompts
+
+"LAB" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+You are given a list of possible observations and their LOINC codes.
+
+Your task: Generate **ONLY the OBX segments** for observations that actually appear in the patient file.
+
+Follow these exact rules:
+1. Search the patient text for each observation name or abbreviation.
+2. If and only if a numerical value is found next to that observation in the text, include an OBX segment.
+3. If no value is found, completely skip that observation — do NOT output anything for it.
+4. Each OBX line must follow this exact pattern:
+   OBX|<Index>|ST|<LOINC Code>|COCV|<Value>|<Unit>||
+5. The <Index> must start at 0 and increase sequentially only for included observations.
+6. Do not output empty or placeholder OBX lines. Do not include observations with missing values.
+7. The final output must contain only valid OBX segments — nothing else.
+
+List of observations:
+"Glomerular Filtration Rate Predicted": "33914-3^EGFR"
+"Urate": "14933-6^UA"
+"Natriuretic Peptide.B Prohormone N-Terminal": "X14901^BNP"
+"Creatinine": "14682-9^SCR"
+"Sodium": "2951-2^Napl"
+"Potassium": "2823-3^Kpl"
+"Alanine Aminotransferase [ALT]": "1742-6^ALT"
+"Glucose Fasting": "14771-0^FBS"
+"Hemoglobin A1c": "4548-4^A1C"
+"Triglyceride": "14927-8^TG"
+"Cholesterol": "14647-2^TCHL"
+"HDL Cholesterol": "14646-4^HDL"
+"LDL Cholesterol": "22748-8^LDL"
+"INR": "6301-6^INR"
+"Chloride": "2075-0^CL"
+"Thyroid Stimulating Hormone [TSH]": "3016-3^TSH"
+"Albumin": "1751-7^ALB"
+"Gamma Glutamyl Transferase": "2324-2^GGT"
+"Alkaline Phosphatase": "6768-6^ALP"
+"Bilirubin Total": "14631-6^BILI"
+"Digoxin": "14698-5^DIG"
+"Magnesium": "2601-3^MG"
+"Calcium": "2000-8^CA"
+"Ferritin": "2276-4^FER"
+"Hemoglobin; Blood": "718-7^HGB"
+"C Reactive Protein High Sensitivity": "1988-5^CRP"
+"Albumin/Creatinine Ratio; Urine": "9318-7^ACR"
+"Creatine Kinase": "2157-6^CK"
+"Lipoprotein a": "10835-7^LPA"
+"Leukocytes; Blood": "12227-5^WBC"
+"Erythrocyte Sedimentation Rate; Blood": "4537-7^ESR"
+"C Reactive Protein": "1988-5^CRP"
+
+EXAMPLE INPUT:
+CREATININE 102. 60 —- 110 umol/L
+eGFR 73. >=60. mL/min/1.73m**2
+eGFR is calculated using the CKD-EPI 2021 equation
+which does not use a race-based adjustment.
+CALCIUM 2.29 2.15 - 2.60 mmol/L
+MAGNESIUM 0.88 0.65 - 1.05 mmol/L
+ALBUMIN 42. 35 - 52 g/L
+
+EXAMPLE OUTPUT:
+OBX|0|ST|14682-9^SCR|COCV|102|umol/L||
+OBX|1|ST|33914-3^EGFR|COCV|73|mL/min/1.73m**2||
+OBX|2|ST|2000-8^CA|COCV|2.29|mmol/l||
+OBX|3|ST|2601-3^MG|COCV|0.88|mmol/L||
+OBX|4|ST|1751-7^ALB|COCV|42|g/L||
+
+""",
+
+
 "CN" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
 
 1. Add OBX segments for the observations:
@@ -282,7 +394,7 @@ Just return the HL7 file in the correct structure ONLY. Do not have ``` at the s
 You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE""",
 
 
-"HCF" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+"HFC" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
 
 1. Add OBX segments for observations:
     OBX|0: Heart Rate (HR). LOINC code: XQ64
@@ -503,7 +615,7 @@ OBX|1|ST|XQ65^CATH1|OR|more procedure notes|
     Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
     You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE""",
 
-"UNKOWN" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+"UNKNOWN" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
 
 1. Add OBX segments for the observations:
 OBX|0: Heart Rate (HR). LOINC code: XQ64
@@ -536,5 +648,3 @@ DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NU
 Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
 You are only responsible for generating the OBX lines. """,
 }
-
-

@@ -132,6 +132,7 @@ class SettingsWindow():
             "singleline",
             "frmttriminc",
             "frmtrmblln",
+            "ReportMasterPath",
         ]
 
         self.adv_whisper_settings = [
@@ -195,6 +196,7 @@ class SettingsWindow():
             "Pre-Processing": "Please break down the conversation into a list of facts. Take the conversation and transform it to a easy to read list:\n\n",
             "Post-Processing": "\n\nUsing the provided list of facts, review the SOAP note for accuracy. Verify that all details align with the information provided in the list of facts and ensure consistency throughout. Update or adjust the SOAP note as necessary to reflect the listed facts without offering opinions or subjective commentary. Ensure that the revised note excludes a \"Notes\" section and does not include a header for the SOAP note. Provide the revised note after making any necessary corrections.",
             "Show Scrub PHI": False,
+            "ReportMasterPath" : './oscarReportmasterXLS.xls',
         }
 
         self.docker_settings = [
