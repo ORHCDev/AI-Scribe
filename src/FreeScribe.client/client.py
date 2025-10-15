@@ -23,7 +23,7 @@ import base64
 import json
 import pyaudio
 import tkinter.messagebox as messagebox
-import datetime
+from datetime import datetime
 import whisper # python package is named openai-whisper
 import scrubadub
 import re
@@ -39,12 +39,13 @@ from UI.Widgets.MicrophoneSelector import MicrophoneState
 from Model import  ModelManager
 from utils.ip_utils import is_private_ip
 from utils.file_utils import get_file_path, get_resource_path
-from utils.read_files import file_reader
+from utils.read_files import file_reader, extract_patient_name, detect_type
+from utils.hl7 import *
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
 import traceback
-from prompts import AI_PROMPTS
+from prompts import PROMPTS, HL7_PROMPTS
 
 dual = DualOutput()
 sys.stdout = dual
@@ -154,11 +155,16 @@ def threaded_send_audio_to_server():
     return thread
 
 
-def threaded_file_reading(file_path):
+def threaded_file_reading():
     def worker():
-        result = file_reader(file_path)
+        global ocr_text
+
+        # Read file
+        ocr_text = file_reader(file_path)
+        
+        # Display read text
         user_input.scrolled_text.delete("1.0", tk.END)
-        user_input.scrolled_text.insert(tk.END, result)
+        user_input.scrolled_text.insert(tk.END, ocr_text)
         
     thread = threading.Thread(target=worker())
     thread.start()
@@ -724,7 +730,7 @@ def update_gui_with_response(response_text):
         timestamp_listbox.config(fg='black')
         IS_FIRST_LOG = False
 
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     response_history.insert(0, (timestamp, user_message, response_text))
 
     # Update the timestamp listbox
@@ -868,9 +874,9 @@ def send_text_to_chatgpt(edited_text):
 
 def generate_note(formatted_message):
             try:
-                prompt = selected_prompt.get()
+                prompt_type = selected_prompt.get()
                 # If note generation is on
-                if prompt == "Scribe":
+                if prompt_type == "Scribe":
                     # If pre-processing is enabled
                     if app_settings.editable_settings["Use Pre-Processing"]:
                         #Generate Facts List
@@ -894,13 +900,52 @@ def generate_note(formatted_message):
                             update_gui_with_response(post_processed_note)
                         else:
                             update_gui_with_response(medical_note)
-                elif prompt == "Auto":
-                    # TODO:
-                    # Add something to auto detect document type and assign the correct prompt
-                    pass
+                
+                
+                
+                elif prompt_type in HL7_PROMPTS:
+                    if not 'file_path' in globals():
+                        prompt = PROMPTS[prompt_type]
+                        ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
+                        update_gui_with_response(ai_response)
+                        return True
 
-                else: # do not generate note just send text directly to AI 
-                    ai_response = send_text_to_chatgpt(f"{AI_PROMPTS[prompt]}\n{formatted_message}")
+                    # Extract document type and patient name from file
+                    filename = os.path.basename(file_path)
+                    try:
+                        doc_type = detect_type(filename)
+                        first_name, last_name, _ = extract_patient_name(filename)
+                        print(f"Document type: {doc_type}")
+                        print(f"Patient Name: {first_name} {last_name}")
+                    except Exception as e:
+                        print(f"An unknown error occurred while trying to extract document type and patient name: {e}")
+
+                    # Generate HL7 Header
+                    if first_name and last_name:
+                        sex, hin, dob, name = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
+                        obs_date = extract_observation_date(ocr_text, doc_type)
+                        hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
+                    else:
+                        print("Unable to generate HL7 header, creating header template that needs to be filled in")
+                        hl7_header = generate_header("<PATIENT NAME>", "<HIN>", "<DOB>", "<SEX>", "<MESSAGE DATE>", "<OBSERVATION DATE>")
+
+
+                    if prompt_type == "Auto":
+                        prompt = PROMPTS[doc_type]
+                        prompt_type = doc_type
+                    else: 
+                        prompt = PROMPTS[prompt_type]
+
+                    if "{prompt_addon}" in prompt:
+                        loinc_codes = loinc_code_detector(filename)
+                        prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX[prompt_type], prompt_type))
+                    
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
+                    update_gui_with_response(hl7_header + ai_response)
+
+                else:
+                    prompt = PROMPTS[prompt_type]
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
                 return True
@@ -1239,12 +1284,12 @@ def _load_stt_model_thread():
 
 
 def read_file_text():
+    global file_path
     file_path = filedialog.askopenfilename(
         filetypes=[("PDF and Text Files", "*.pdf *.txt")]
     )
     if file_path:
-        threaded_file_reading(file_path)  # Add this line to process the file immediately
-
+        threaded_file_reading()  # Add this line to process the file immediately
 
 # Configure grid weights for scalability
 root.grid_columnconfigure(0, weight=1, minsize= 10)
@@ -1300,8 +1345,8 @@ clear_button.grid(row=1, column=4, pady=5, rowspan=2, sticky='nsew')
 dropdown_label = tk.Label(root, text="Select Prompt", font=("Arial", 8, "bold"))
 dropdown_label.grid(row=1, column=5, pady=5, sticky='nsew')
 
-selected_prompt = tk.StringVar(value="None")
-prompt_dropdown = tk.OptionMenu(root, selected_prompt, *AI_PROMPTS.keys())
+selected_prompt = tk.StringVar(value="Auto")
+prompt_dropdown = tk.OptionMenu(root, selected_prompt, *PROMPTS.keys())
 prompt_dropdown.grid(row=2, column=5, pady=5, sticky='nsew')
 
 upload_button = tk.Button(root, text="Upload\nRecording", command=upload_file, height=2, width=11)

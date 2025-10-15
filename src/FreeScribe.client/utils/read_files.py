@@ -4,6 +4,8 @@ from PIL import Image
 import pytesseract
 import numpy as np
 import os
+import re
+import unicodedata
 
 
 def pdf_image_to_text(pdf_path, first_page=None, last_page=None, write_out_text=False, filename=None):
@@ -76,8 +78,14 @@ def pdf_image_to_text(pdf_path, first_page=None, last_page=None, write_out_text=
 
 
 def file_reader(file_path):
+    """
+    Assumes passed file is either .txt or .pdf and will extract the text from the file.
+    
+    Will also try and extract additional information from the file name and text like 
+    the file type and patient name.
+    """
     print(f"Reading file {file_path}")
-
+    
     try:
         if file_path.lower().endswith(".txt"):
             with open(file_path, "r") as f:
@@ -86,10 +94,133 @@ def file_reader(file_path):
 
         elif file_path.lower().endswith(".pdf"):
             text = pdf_image_to_text(file_path)
-            return text   
+            return text
 
         else:
             print("File type is not supported")
             return ''
     except Exception as e:
         print(f"An unexpected error occurred when trying to extract file text: {e}")
+
+
+
+def extract_patient_name(file_name):
+    """
+    Extracts the patients name from the given file name.
+
+    Args:
+    -----
+        file_name (str): Name of a pdf or txt file
+    
+    Returns:
+    --------
+        Tuple containing patients name: (first_name, last_name, middle_name)
+    """
+    
+    # Normalize file_name to decode special characters
+    file_name = unicodedata.normalize('NFKD', file_name).encode('ascii', 'ignore').decode('utf-8')
+
+    pattern = r"^\d*([A-Za-z\s\-]+)(?:,|-\s?)([A-Za-z\s\-]+)"
+    match = re.match(pattern, file_name)
+
+    if match:
+        # Found name match
+        last_name = match.group(1).strip()
+        first_name= match.group(2).strip()
+        
+        # Remove anything after "-" or "," in the first name/nickname
+        first_name = re.split(r"[-,]", first_name)[0].strip()
+
+        seperator = re.split(r"\s+", first_name)
+        first_name = seperator[0]
+        middle = None
+        if len(seperator) > 1:
+            middle = " ".join(seperator[1:])
+        
+        return first_name, last_name, middle
+    
+    else:
+        print("Unable to extract patient name from file name")
+        return None, None, None
+    
+
+
+def detect_type(filename):
+    """
+    Identifies document type from filename keywords
+
+    Args:
+    -----
+        filename (str): Name/path of file to analyze
+
+    Returns:
+    --------
+        str: Document type code based on keyword matches
+    """
+
+    # Group keywords
+    cn_keywords = [
+        "CN", "clinical notes", "consult notes", "consult", "nephro", "renal",
+        "hematology", "rheumatology", "oncology", "respirology", "pulmonology"
+    ]
+    cr_keywords = ["CR", "cardiac rehab"]
+    hfc_keywords = ["HFC", "heart function clinic"]
+    cxr_keywords = ["CXR", "chest x-ray", "XRAY", "US", "CT", "MRI", "ultrasound", "x-ray chest", "x-ray", "x ray"]
+    tee_keywords = ["TEE"]
+    cath_keywords = ["CATH", "interventional cardiology", "angiogram", "catheterization", "interventional"]
+    echo_keywords = ["ECHO"]
+    holter_keywords = ["HOLTER", "heart rhythm"]
+    est_keywords = ["EST", "stress"]
+    dc_keywords = ["discharge", "DC summary", "discharge summary"]
+    or_keywords = ["OR note", "OR"]
+    diag_keywords = ["diag", "Diagnostic"]
+    lab_keywords = ["lab", "lab"]
+
+    # All keywords
+    all_keywords = (
+        cn_keywords + cr_keywords + hfc_keywords + cxr_keywords + tee_keywords +
+        cath_keywords + echo_keywords + holter_keywords + est_keywords +
+        dc_keywords + or_keywords + diag_keywords + lab_keywords
+    )
+
+
+    pattern = re.compile(r"\b(" + "|".join(re.escape(k) for k in all_keywords) + r")\b", re.IGNORECASE)
+    match = pattern.search(filename)
+
+    if match:
+        # Found document type
+        keyword = match.group(0).lower()
+
+        if keyword in [k.lower() for k in cxr_keywords]:
+            return "CXR"
+        elif keyword in cn_keywords:
+            return "CN"
+        elif keyword in cr_keywords:
+            return "CR"
+        elif keyword in hfc_keywords:
+            return "HFC"
+        elif keyword in est_keywords:
+            return "EST"
+        elif keyword in holter_keywords:
+            return "HOLTER"
+        elif keyword in dc_keywords:
+            return "DC"
+        elif keyword in cath_keywords:
+            return "CATH"
+        elif keyword in or_keywords:
+            return "OR"
+        elif keyword in tee_keywords:
+            return "TEE"
+        elif keyword in echo_keywords:
+            return "ECHO"
+        elif keyword in diag_keywords: 
+            return "DIAG"
+        elif keyword in lab_keywords: 
+            return "LAB"
+        
+        return match.group(0)
+    else:
+        # Unknown document type
+        return "UNKNOWN"
+        
+
