@@ -45,6 +45,7 @@ import ctypes
 import sys
 from UI.DebugWindow import DualOutput
 import traceback
+import shutil
 from prompts import PROMPTS, HL7_PROMPTS
 
 dual = DualOutput()
@@ -85,6 +86,8 @@ is_paused = False
 is_flashing = False
 use_aiscribe = True
 is_gpt_button_active = False
+auto_process_thread = None
+stop_auto_processing = False
 p = pyaudio.PyAudio()
 audio_queue = queue.Queue()
 CHUNK = 1024
@@ -905,7 +908,7 @@ def generate_note(formatted_message):
                 
                 elif prompt_type in HL7_PROMPTS:
                     if not 'file_path' in globals():
-                        prompt = PROMPTS[prompt_type]
+                        prompt = PROMPTS.get(prompt_type, "")
                         ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                         update_gui_with_response(ai_response)
                         return True
@@ -931,20 +934,20 @@ def generate_note(formatted_message):
 
 
                     if prompt_type == "Auto":
-                        prompt = PROMPTS[doc_type]
+                        prompt = PROMPTS.get(doc_type, "")
                         prompt_type = doc_type
                     else: 
-                        prompt = PROMPTS[prompt_type]
+                        prompt = PROMPTS.get(prompt_type, "")
 
                     if "{prompt_addon}" in prompt:
                         loinc_codes = loinc_code_detector(filename)
-                        prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX[prompt_type], prompt_type))
+                        prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(prompt_type, ""), prompt_type))
                     
                     ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                     update_gui_with_response(hl7_header + ai_response)
 
                 else:
-                    prompt = PROMPTS[prompt_type]
+                    prompt = PROMPTS.get(prompt_type, "")
                     ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
@@ -1079,7 +1082,7 @@ def send_and_flash():
 last_full_position = None
 last_minimal_position = None
 
-def toggle_view():
+def toggle_minimize_view():
     """
     Toggles the user interface between a full view and a minimal view.
 
@@ -1115,6 +1118,7 @@ def set_full_view():
     mic_button.config(width=11, height=2)
     pause_button.config(width=11, height=2)
     switch_view_button.config(width=11, height=2, text="Minimize View")
+    auto_process_button.config(text="Auto Process", height=2, width=11)
 
     # Show all UI components
     user_input.grid()
@@ -1127,10 +1131,13 @@ def set_full_view():
     upload_button.grid()
     response_display.grid()
     timestamp_listbox.grid()
-    mic_button.grid(row=1, column=1, pady=5, padx=0,sticky='nsew')
-    pause_button.grid(row=1, column=2, pady=5, padx=0,sticky='nsew')
-    switch_view_button.grid(row=1, column=7, pady=5, padx=0,sticky='nsew')
+    mic_button.grid(row=1, column=1, rowspan=2, pady=5, padx=0, sticky='nsew')
+    pause_button.grid(row=1, column=2, rowspan=2, pady=5, padx=0, sticky='nsew')
+    switch_view_button.grid(row=1, column=7, pady=5, padx=0, sticky='nsew')
+    auto_process_button.grid(row=2, column=7, pady=5, padx=0, sticky='nsew')
+    auto_process_tbox.grid_remove()
     blinking_circle_canvas.grid(row=1, column=9, padx=0,pady=5)
+
 
     window.toggle_menu_bar(enable=True)
 
@@ -1191,6 +1198,8 @@ def set_minimal_view():
     dropdown_label.grid_remove()
     prompt_dropdown.grid_remove()
     upload_file_button.grid_remove()
+    auto_process_button.grid_remove()
+    auto_process_tbox.grid_remove()
     upload_button.grid_remove()
     response_display.grid_remove()
     timestamp_listbox.grid_remove()
@@ -1244,6 +1253,229 @@ def set_minimal_view():
 
     # Enable to make the window a tool window (no taskbar icon)
     # root.attributes('-toolwindow', True)
+
+
+def move_file(curr_dir, move_dir, file):
+    file_path = os.path.join(curr_dir, file)
+    
+    # Try normal move first
+    try:
+        new_path = os.path.join(move_dir, file)
+        shutil.move(file_path, new_path)
+        return new_path
+
+    # If fails, sanitize filename and add timestamp
+    except OSError:
+        # Generate a safe timestamp
+        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Sanitize any bad characters in filename
+        safe_file = re.sub(r'[<>:"/\\|?*]', '_', file)
+
+        # Build final path with date prefix
+        new_filename = f"{date_str}_{safe_file}"
+        new_path = os.path.join(move_dir, new_filename)
+
+        # Move file
+        shutil.move(file_path, new_path)
+        return new_path
+
+
+def scrub_message(formatted_message):
+    scrubbed_message = scrubadub.clean(formatted_message)
+
+    # Additional regex scrubbing 
+    cleaned_message = scrubbed_message
+    re_ohip_plain = re.compile(r'\b\d{10}\b')  # 10 digit OHIP
+    re_ohip_dashed = re.compile(r'\b(\d{4})-(\d{3})-(\d{3})(?:[- ]?[A-Za-z]{2})?\b')  # OHIP with dashes
+    re_postal = re.compile(r'\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b', re.IGNORECASE)  # Canadian postal codes
+    re_address = re.compile(r'\b\d+ [A-Z][a-z]+ (Street|St|Avenue|Ave|Road|Rd|Drive|Dr)\b', re.IGNORECASE)  # Street addresses
+
+    scrub_patterns = [
+        (re_ohip_plain, '{{OHIP}}'),
+        (re_ohip_dashed, '{{OHIP}}'),
+        (re_postal, '{{POSTAL_CODE}}'),
+        (re_address, '{{ADDRESS}}'),
+    ]
+
+    for regex, replacement in scrub_patterns:
+        cleaned_message = regex.sub(replacement, cleaned_message)
+
+    return cleaned_message
+
+
+def toggle_auto_process():
+    """
+    Toggles the user interface between full view and auto view.
+
+    Full view contains all UI components, while auto view only contains
+    a textbox and the pause/toggle button. Auto view runs automated processing
+    on a background thread, logging progress to the textbox.
+    """
+    global stop_auto_processing
+
+    if current_view == "auto":
+        # Stop auto processing after current file completes
+        stop_auto_processing = True
+        # Wait for thread to finish gracefully
+        if auto_process_thread and auto_process_thread.is_alive():
+            auto_process_thread.join(timeout=10)
+        set_full_view()
+        return
+
+    # Otherwise, start auto mode
+    stop_auto_processing = False
+    set_auto_view()
+
+    # Start auto processing in background
+    start_auto_processing_thread()
+
+
+def set_auto_view():
+    """
+    Configures the application to display the auto-processing view.
+
+    Actions:
+    - Removes all non-essential UI elements.
+    - Displays the auto-processing log box and toggle button.
+    - Sets current_view to "auto".
+    """
+    global current_view, last_full_position
+
+    # Hide all other UI elements
+    for widget in [
+        user_input, send_button, clear_button, dropdown_label, prompt_dropdown,
+        upload_file_button, upload_button, response_display, timestamp_listbox,
+        blinking_circle_canvas, mic_button, pause_button, switch_view_button
+    ]:
+        widget.grid_remove()
+
+    # Configure and place the auto-process components
+    auto_process_button.config(text="Stop Auto", width=10, height=2)
+    auto_process_button.grid(row=0, column=0, pady=5, padx=5, sticky='nsew')
+
+    auto_process_tbox.grid(row=0, column=1, rowspan=10, columnspan=12, sticky='nsew', pady=5, padx=5)
+    auto_process_tbox.delete("1.0", "end")
+    auto_process_tbox.insert("end", "Starting automated processing...\n")
+
+    # Keep a smaller window
+    root.attributes('-topmost', False)
+    root.minsize(800, 500)
+    current_view = "auto"
+
+    # Save the current full geometry to restore later
+    last_full_position = root.geometry()
+
+
+def start_auto_processing_thread():
+    """
+    Launches the automated processing on a background thread.
+    """
+    global auto_process_thread
+    auto_process_thread = threading.Thread(target=run_auto_processing, daemon=True)
+    auto_process_thread.start()
+
+
+def run_auto_processing():
+    """
+    Processes files from set folder in editable settings
+    """
+    global stop_auto_processing
+
+    in_folder = app_settings.editable_settings["Input Folder"]
+    out_folder = app_settings.editable_settings["Output Folder"]
+    fin_folder = app_settings.editable_settings["Finished Folder"]
+    fail_folder = app_settings.editable_settings["Failed Folder"]
+
+    if not os.path.exists(in_folder):
+        append_log(f"\nGiven input folder ('{in_folder}') does not exist\n")
+        return
+    
+    os.makedirs(out_folder, exist_ok=True)
+    os.makedirs(fin_folder, exist_ok=True)
+    os.makedirs(fail_folder, exist_ok=True)
+    time.sleep(3)
+    # Processing Files
+    while not stop_auto_processing:
+
+        # Get files
+        files = os.listdir(in_folder)
+
+        # If no files, then wait 30 seconds before re-checking
+        if not files:
+            append_log("\nNo files, waiting...")
+            time.sleep(30)
+
+        # Process found files
+        for file in files:
+            if stop_auto_processing: break
+            try:
+                append_log(f"{50*'='}\nProcessing: {file}\n{50*'='}")
+
+                # Extract text from file
+                text = file_reader(os.path.join(in_folder, file))
+
+                # Extract values from file name
+                doc_type = detect_type(file)
+                first_name, last_name, _ = extract_patient_name(file)
+
+                append_log(f"Document Type: {doc_type}")
+
+                # Generate HL7 Header
+                if first_name and last_name:
+                    append_log(f"Extracted Patient: {last_name}, {first_name}")
+                    sex, hin, dob, name = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
+                    obs_date = extract_observation_date(text, doc_type)
+                    hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
+                else:
+                    append_log("Could not extract patient name, using HL7 header template - will need to be filled in")
+                    hl7_header = generate_header("<PATIENT NAME>", "<HIN>", "<DOB>", "<SEX>", "<MESSAGE DATE>", "<OBSERVATION DATE>")
+
+                # Get prompt
+                prompt = PROMPTS.get(doc_type, "")
+                if not prompt: prompt = PROMPTS.get("UNKNOWN", "")
+
+                # Check if additional OBX statements are needed
+                if "{prompt_addon}" in prompt:
+                    loinc_codes = loinc_code_detector(file)
+                    prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(doc_type, 0), doc_type))
+                
+                # Clean text
+                clean_text = scrub_message(text)
+                
+                # Send to AI and get response
+                ai_response = send_text_to_chatgpt(f"{prompt}\n{clean_text}")
+                append_log("Received AI response")
+
+                # Output response as hl7 file
+                output_name = file.replace(".pdf", ".hl7") if file.endswith(".pdf") else file.replace(".txt", ".hl7")
+                with open(os.path.join(out_folder, output_name), "w") as f:
+                    f.write(hl7_header + ai_response)
+                append_log(f"Outputted HL7 file to {out_folder}")
+
+                # Move PDF file to finished folder
+                move_file(in_folder, fin_folder, file)
+                append_log(f"Moved PDF file to {fin_folder}")
+
+            except Exception as e:
+                # Move PDF file to failed folder
+                append_log(f"An unexpected error occurred while processing: {e}")
+                append_log(f"Moving {file} to {fail_folder}")
+                move_file(in_folder, fail_folder, file)
+
+            append_log(f"{50*'-'}\n\n")
+            time.sleep(2)
+
+
+
+def append_log(text, new_line=True):
+    """
+    Thread-safe way to append text to the textbox from the background thread.
+    """
+    if new_line: text += "\n"
+    auto_process_tbox.after(0, lambda: auto_process_tbox.insert("end", text))
+    auto_process_tbox.after(0, lambda: auto_process_tbox.see("end"))
+
 
 def copy_text(widget):
     text = widget.get("1.0", tk.END)
@@ -1352,8 +1584,13 @@ prompt_dropdown.grid(row=2, column=5, pady=5, sticky='nsew')
 upload_button = tk.Button(root, text="Upload\nRecording", command=upload_file, height=2, width=11)
 upload_button.grid(row=1, column=6, pady=5, rowspan=2, sticky='nsew')
 
-switch_view_button = tk.Button(root, text="Minimize View", command=toggle_view, height=2, width=11)
-switch_view_button.grid(row=1, column=7, pady=5, rowspan=2, sticky='nsew')
+switch_view_button = tk.Button(root, text="Minimize View", command=toggle_minimize_view, height=2, width=11)
+switch_view_button.grid(row=1, column=7, pady=5, rowspan=1, sticky='nsew')
+
+auto_process_button = tk.Button(root, text="Auto Process", command=toggle_auto_process, height=2, width=11)
+auto_process_button.grid(row=2, column=7, pady=5, rowspan=1, sticky='nsew')
+
+auto_process_tbox = CustomTextBox(root, height=12)
 
 upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
 upload_file_button.grid(row=1, column=8, pady=5, rowspan=2, sticky='nsew')
@@ -1402,6 +1639,9 @@ if app_settings.editable_settings[SettingsKeys.LOCAL_WHISPER.value]:
     root.after(100, lambda: (load_stt_model()))
 
 root.bind("<<LoadSttModel>>", load_stt_model)
+
+# Uncomment to start app in auto process mode rather than client mode
+#toggle_auto_process()
 
 root.mainloop()
 

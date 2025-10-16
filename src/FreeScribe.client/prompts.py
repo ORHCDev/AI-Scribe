@@ -4,7 +4,7 @@ HL7_PROMPTS = [
     "CN",
     "DIAG",
     "CR",
-    "CSR",
+    "CXR",
     "ECHO",
     "HFC",
     "TEE",
@@ -339,7 +339,7 @@ You are only responsible for generating the OBX lines. """,
     You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE""",
 
 
-"CSR" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+"CXR" : """You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
 
 1. Add OBX segments for observations, your output should be one line:
     OBX|0: Chest X-ray (CXR). LOINC code: XQ58
