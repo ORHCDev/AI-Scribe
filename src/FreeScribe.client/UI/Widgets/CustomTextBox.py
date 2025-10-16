@@ -117,3 +117,9 @@ class CustomTextBox(tk.Frame):
         :rtype: str
         """
         return self.scrolled_text.get(start, end)
+    
+    def see(self, index):
+        """
+        Scroll the text widget so the specified index is visible.
+        """
+        self.scrolled_text.see(index)
