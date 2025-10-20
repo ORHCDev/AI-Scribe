@@ -39,8 +39,9 @@ from UI.Widgets.MicrophoneSelector import MicrophoneState
 from Model import  ModelManager
 from utils.ip_utils import is_private_ip
 from utils.file_utils import get_file_path, get_resource_path
-from utils.read_files import file_reader, extract_patient_name, detect_type
+from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes
 from utils.hl7 import *
+from utils.auto_processing import AutoProcessor
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
@@ -88,6 +89,7 @@ use_aiscribe = True
 is_gpt_button_active = False
 auto_process_thread = None
 stop_auto_processing = False
+auto_processor = None
 p = pyaudio.PyAudio()
 audio_queue = queue.Queue()
 CHUNK = 1024
@@ -712,6 +714,13 @@ def kill_thread(thread_id):
 def send_and_receive():
     global use_aiscribe, user_message
     user_message = user_input.scrolled_text.get("1.0", tk.END).strip()
+
+    # If user selected OSCAR_FEEDBACK, try to send only patient notes
+    try:
+        if selected_prompt.get() == "OSCAR_FEEDBACK" and user_message:
+            user_message = extract_patient_notes(user_message)
+    except Exception:
+        pass
     display_text(NOTE_CREATION)
     threaded_handle_message(user_message)
 
@@ -1255,53 +1264,6 @@ def set_minimal_view():
     # root.attributes('-toolwindow', True)
 
 
-def move_file(curr_dir, move_dir, file):
-    file_path = os.path.join(curr_dir, file)
-    
-    # Try normal move first
-    try:
-        new_path = os.path.join(move_dir, file)
-        shutil.move(file_path, new_path)
-        return new_path
-
-    # If fails, sanitize filename and add timestamp
-    except OSError:
-        # Generate a safe timestamp
-        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        # Sanitize any bad characters in filename
-        safe_file = re.sub(r'[<>:"/\\|?*]', '_', file)
-
-        # Build final path with date prefix
-        new_filename = f"{date_str}_{safe_file}"
-        new_path = os.path.join(move_dir, new_filename)
-
-        # Move file
-        shutil.move(file_path, new_path)
-        return new_path
-
-
-def scrub_message(formatted_message):
-    scrubbed_message = scrubadub.clean(formatted_message)
-
-    # Additional regex scrubbing 
-    cleaned_message = scrubbed_message
-    re_ohip_plain = re.compile(r'\b\d{10}\b')  # 10 digit OHIP
-    re_ohip_dashed = re.compile(r'\b(\d{4})-(\d{3})-(\d{3})(?:[- ]?[A-Za-z]{2})?\b')  # OHIP with dashes
-    re_postal = re.compile(r'\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b', re.IGNORECASE)  # Canadian postal codes
-    re_address = re.compile(r'\b\d+ [A-Z][a-z]+ (Street|St|Avenue|Ave|Road|Rd|Drive|Dr)\b', re.IGNORECASE)  # Street addresses
-
-    scrub_patterns = [
-        (re_ohip_plain, '{{OHIP}}'),
-        (re_ohip_dashed, '{{OHIP}}'),
-        (re_postal, '{{POSTAL_CODE}}'),
-        (re_address, '{{ADDRESS}}'),
-    ]
-
-    for regex, replacement in scrub_patterns:
-        cleaned_message = regex.sub(replacement, cleaned_message)
-
-    return cleaned_message
 
 
 def toggle_auto_process():
@@ -1312,11 +1274,13 @@ def toggle_auto_process():
     a textbox and the pause/toggle button. Auto view runs automated processing
     on a background thread, logging progress to the textbox.
     """
-    global stop_auto_processing
+    global stop_auto_processing, auto_processor
 
     if current_view == "auto":
         # Stop auto processing after current file completes
         stop_auto_processing = True
+        if auto_processor:
+            auto_processor.stop()
         # Wait for thread to finish gracefully
         if auto_process_thread and auto_process_thread.is_alive():
             auto_process_thread.join(timeout=10)
@@ -1371,100 +1335,15 @@ def start_auto_processing_thread():
     """
     Launches the automated processing on a background thread.
     """
-    global auto_process_thread
-    auto_process_thread = threading.Thread(target=run_auto_processing, daemon=True)
-    auto_process_thread.start()
-
-
-def run_auto_processing():
-    """
-    Processes files from set folder in editable settings
-    """
-    global stop_auto_processing
-
-    in_folder = app_settings.editable_settings["Input Folder"]
-    out_folder = app_settings.editable_settings["Output Folder"]
-    fin_folder = app_settings.editable_settings["Finished Folder"]
-    fail_folder = app_settings.editable_settings["Failed Folder"]
-
-    if not os.path.exists(in_folder):
-        append_log(f"\nGiven input folder ('{in_folder}') does not exist\n")
-        return
+    global auto_process_thread, auto_processor
     
-    os.makedirs(out_folder, exist_ok=True)
-    os.makedirs(fin_folder, exist_ok=True)
-    os.makedirs(fail_folder, exist_ok=True)
-    time.sleep(3)
-    # Processing Files
-    while not stop_auto_processing:
-
-        # Get files
-        files = os.listdir(in_folder)
-
-        # If no files, then wait 30 seconds before re-checking
-        if not files:
-            append_log("\nNo files, waiting...")
-            time.sleep(30)
-
-        # Process found files
-        for file in files:
-            if stop_auto_processing: break
-            try:
-                append_log(f"{50*'='}\nProcessing: {file}\n{50*'='}")
-
-                # Extract text from file
-                text = file_reader(os.path.join(in_folder, file))
-
-                # Extract values from file name
-                doc_type = detect_type(file)
-                first_name, last_name, _ = extract_patient_name(file)
-
-                append_log(f"Document Type: {doc_type}")
-
-                # Generate HL7 Header
-                if first_name and last_name:
-                    append_log(f"Extracted Patient: {last_name}, {first_name}")
-                    sex, hin, dob, name = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
-                    obs_date = extract_observation_date(text, doc_type)
-                    hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
-                else:
-                    append_log("Could not extract patient name, using HL7 header template - will need to be filled in")
-                    hl7_header = generate_header("<PATIENT NAME>", "<HIN>", "<DOB>", "<SEX>", "<MESSAGE DATE>", "<OBSERVATION DATE>")
-
-                # Get prompt
-                prompt = PROMPTS.get(doc_type, "")
-                if not prompt: prompt = PROMPTS.get("UNKNOWN", "")
-
-                # Check if additional OBX statements are needed
-                if "{prompt_addon}" in prompt:
-                    loinc_codes = loinc_code_detector(file)
-                    prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(doc_type, 0), doc_type))
-                
-                # Clean text
-                clean_text = scrub_message(text)
-                
-                # Send to AI and get response
-                ai_response = send_text_to_chatgpt(f"{prompt}\n{clean_text}")
-                append_log("Received AI response")
-
-                # Output response as hl7 file
-                output_name = file.replace(".pdf", ".hl7") if file.endswith(".pdf") else file.replace(".txt", ".hl7")
-                with open(os.path.join(out_folder, output_name), "w") as f:
-                    f.write(hl7_header + ai_response)
-                append_log(f"Outputted HL7 file to {out_folder}")
-
-                # Move PDF file to finished folder
-                move_file(in_folder, fin_folder, file)
-                append_log(f"Moved PDF file to {fin_folder}")
-
-            except Exception as e:
-                # Move PDF file to failed folder
-                append_log(f"An unexpected error occurred while processing: {e}")
-                append_log(f"Moving {file} to {fail_folder}")
-                move_file(in_folder, fail_folder, file)
-
-            append_log(f"{50*'-'}\n\n")
-            time.sleep(2)
+    auto_processor = AutoProcessor(app_settings, send_text_to_chatgpt, append_log)
+    
+    auto_process_thread = threading.Thread(
+        target=auto_processor.run, 
+        daemon=True
+    )
+    auto_process_thread.start()
 
 
 

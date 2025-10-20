@@ -647,4 +647,12 @@ Make SURE the information you provide is straight from the text.
 DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
 Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
 You are only responsible for generating the OBX lines. """,
+
+"OSCAR_FEEDBACK" : """You will be receiving a request from a doctor about an unknown patient that contains the following information formatted as follows:
+
+[...Any information relating to the patient + Query from the Doctor]
+
+Using the information provided, answer the doctor's inquiry.
+
+Return only the feedback note (no preamble).""",
 }
