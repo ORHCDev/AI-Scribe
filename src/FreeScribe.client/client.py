@@ -950,7 +950,7 @@ def generate_note(formatted_message):
 
                     if "{prompt_addon}" in prompt:
                         loinc_codes = loinc_code_detector(filename)
-                        prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(prompt_type, ""), prompt_type))
+                        prompt = prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(prompt_type, ""), prompt_type))
                     
                     ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                     update_gui_with_response(hl7_header + ai_response)
