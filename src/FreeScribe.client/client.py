@@ -47,7 +47,7 @@ from UI.DebugWindow import DualOutput
 import traceback
 import shutil
 from prompts import PROMPTS, HL7_PROMPTS
-
+from Stanford_Penn_Deidentifier.deidentify import stanford_deidentify
 dual = DualOutput()
 sys.stdout = dual
 sys.stderr = dual
@@ -160,14 +160,16 @@ def threaded_send_audio_to_server():
 
 def threaded_file_reading():
     def worker():
-        global ocr_text
+        global ocr_text, redacted_text
 
         # Read file
         ocr_text = file_reader(file_path)
-        
+        # Redact text
+        redacted_text = stanford_deidentify(ocr_text)
+
         # Display read text
         user_input.scrolled_text.delete("1.0", tk.END)
-        user_input.scrolled_text.insert(tk.END, ocr_text)
+        user_input.scrolled_text.insert(tk.END, redacted_text)
         
     thread = threading.Thread(target=worker())
     thread.start()
@@ -1440,8 +1442,9 @@ def run_auto_processing():
                     loinc_codes = loinc_code_detector(file)
                     prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(doc_type, 0), doc_type))
                 
-                # Clean text
-                clean_text = scrub_message(text)
+                # Remove/convert possible identifiers (names, dates, addresses, etc)
+                redacted_text = stanford_deidentify(text)
+                clean_text = scrub_message(redacted_text)
                 
                 # Send to AI and get response
                 ai_response = send_text_to_chatgpt(f"{prompt}\n{clean_text}")
@@ -1522,6 +1525,8 @@ def read_file_text():
     )
     if file_path:
         threaded_file_reading()  # Add this line to process the file immediately
+
+
 
 # Configure grid weights for scalability
 root.grid_columnconfigure(0, weight=1, minsize= 10)
