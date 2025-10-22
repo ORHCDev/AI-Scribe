@@ -98,7 +98,7 @@ class AutoProcessor:
             return new_path
     
     
-    def save_oscar_feedback(self, analysis, first_name, last_name, base_folder):
+    def save_oscar_feedback(self, analysis, first_name, last_name, demographic_num, base_folder):
         """
         Saves the OSCAR feedback response directly to the output folder.
         
@@ -106,15 +106,16 @@ class AutoProcessor:
             analysis: The GPT-generated analysis
             first_name: Patient's first name
             last_name: Patient's last name
+            demographic_num: Patient's demographic number
             base_folder: Base folder for saving feedback files
         """
         # Clean and validate names
         first_name = re.sub(r'[<>:"/\\|?*]', '', str(first_name or "Unknown").strip())
         last_name = re.sub(r'[<>:"/\\|?*]', '', str(last_name or "Unknown").strip())
+        demographic_num = re.sub(r'[<>:"/\\|?*]', '', str(demographic_num or "UNKNOWN").strip())
         
-        # Create a simple filename with patient name and timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{last_name}, {first_name}, feedback_{timestamp}.txt"
+        # Create filename with demographic number: lastname_firstname_demographic.txt
+        filename = f"{last_name}_{first_name}_{demographic_num}.txt"
         
         # Ensure filename is valid
         filename = re.sub(r'[<>:"/\\|?*]', '', filename)
@@ -323,6 +324,7 @@ class AutoProcessor:
                     ai_response, 
                     first_name or "Unknown", 
                     last_name or "Unknown",
+                    demographic_num or "UNKNOWN",
                     out_folder
                 )
                 
