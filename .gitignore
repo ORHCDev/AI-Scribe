@@ -23,3 +23,11 @@ test_upload_files
 display_mics.py
 src/FreeScribe.client/models
 src/FreeScribe.client/oscarReportmasterXLS.xls
+
+src/FreeScribe.client/deidentification_details_for_review_labeled_reports.npy
+src/FreeScribe.client/deidentification_details_for_review_phi_lengths.npy
+src/FreeScribe.client/deidentification_details_for_review_reports.npy
+src/FreeScribe.client/Stanford_Penn_Deidentifier/stanford_venv
+src/FreeScribe.client/Stanford_Penn_Deidentifier/stanford-deidentifier-base
+src/FreeScribe.client/Stanford_Penn_Deidentifier/reports_stanford_deidentified.npy
+src/FreeScribe.client/Stanford_Penn_Deidentifier/reports.npy
