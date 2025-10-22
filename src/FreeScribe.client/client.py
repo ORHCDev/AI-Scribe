@@ -969,33 +969,38 @@ def generate_note(formatted_message):
                 return False
 
 def show_edit_transcription_popup(formatted_message):
-    scrubber = scrubadub.Scrubber()
+    # Skip PHI scrubbing for OSCAR_FEEDBACK since extract_patient_notes already removes sensitive info
+    if selected_prompt.get() == "OSCAR_FEEDBACK":
+        # Use unscrubbed message for OSCAR_FEEDBACK
+        cleaned_message = formatted_message
+    else:
+        scrubber = scrubadub.Scrubber()
 
-    scrubbed_message = scrubadub.clean(formatted_message)
+        scrubbed_message = scrubadub.clean(formatted_message)
 
-    # Additional regex scrubbing 
-    cleaned_message = scrubbed_message
-    re_ohip_plain = re.compile(r'\b\d{10}\b')  # 10 digit OHIP
-    re_ohip_dashed = re.compile(r'\b(\d{4})-(\d{3})-(\d{3})(?:[- ]?[A-Za-z]{2})?\b')  # OHIP with dashes
-    re_postal = re.compile(r'\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b', re.IGNORECASE)  # Canadian postal codes
-    re_address = re.compile(r'\b\d+ [A-Z][a-z]+ (Street|St|Avenue|Ave|Road|Rd|Drive|Dr)\b', re.IGNORECASE)  # Street addresses
+        # Additional regex scrubbing 
+        cleaned_message = scrubbed_message
+        re_ohip_plain = re.compile(r'\b\d{10}\b')  # 10 digit OHIP
+        re_ohip_dashed = re.compile(r'\b(\d{4})-(\d{3})-(\d{3})(?:[- ]?[A-Za-z]{2})?\b')  # OHIP with dashes
+        re_postal = re.compile(r'\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b', re.IGNORECASE)  # Canadian postal codes
+        re_address = re.compile(r'\b\d+ [A-Z][a-z]+ (Street|St|Avenue|Ave|Road|Rd|Drive|Dr)\b', re.IGNORECASE)  # Street addresses
 
-    scrub_patterns = [
-        (re_ohip_plain, '{{OHIP}}'),
-        (re_ohip_dashed, '{{OHIP}}'),
-        (re_postal, '{{POSTAL_CODE}}'),
-        (re_address, '{{ADDRESS}}'),
-    ]
+        scrub_patterns = [
+            (re_ohip_plain, '{{OHIP}}'),
+            (re_ohip_dashed, '{{OHIP}}'),
+            (re_postal, '{{POSTAL_CODE}}'),
+            (re_address, '{{ADDRESS}}'),
+        ]
 
-    for regex, replacement in scrub_patterns:
-        cleaned_message = regex.sub(replacement, cleaned_message)
+        for regex, replacement in scrub_patterns:
+            cleaned_message = regex.sub(replacement, cleaned_message)
 
     if (app_settings.editable_settings["Use Local LLM"] or is_private_ip(app_settings.editable_settings["Model Endpoint"])) and not app_settings.editable_settings["Show Scrub PHI"]:
         generate_note_thread(cleaned_message)
         return
     
     popup = tk.Toplevel(root)
-    popup.title("Scrub PHI Prior to GPT")
+    popup.title("Send Patient Notes" if selected_prompt.get() == "OSCAR_FEEDBACK" else "Scrub PHI Prior to GPT")
     popup.iconbitmap(get_file_path('assets','logo.ico'))
     text_area = scrolledtext.ScrolledText(popup, height=20, width=80)
     text_area.pack(padx=10, pady=10)
@@ -1006,7 +1011,7 @@ def show_edit_transcription_popup(formatted_message):
         popup.destroy()
         generate_note_thread(edited_text)        
 
-    proceed_button = tk.Button(popup, text="Proceed", command=on_proceed)
+    proceed_button = tk.Button(popup, text="Send Patient Notes" if selected_prompt.get() == "OSCAR_FEEDBACK" else "Proceed", command=on_proceed)
     proceed_button.pack(side=tk.RIGHT, padx=10, pady=10)
 
     # Cancel button
