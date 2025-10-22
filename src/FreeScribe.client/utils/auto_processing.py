@@ -196,7 +196,7 @@ class AutoProcessor:
             # If no files in either folder, wait
             if not hl7_files and not oscar_files:
                 self.log("\nNo files in either folder, waiting...")
-                time.sleep(5)
+                time.sleep(15)
             else:
                 time.sleep(2)  # Brief pause between checks
     
