@@ -27,17 +27,19 @@ class AutoProcessor:
     - OSCAR_FEEDBACK: Generates AI feedback for doctor queries
     """
     
-    def __init__(self, settings, ai_callback, log_callback=None):
+    def __init__(self, settings, ai_callback, prompts, log_callback=None):
         """
         Initialize the auto processor.
         
         Args:
             settings: Settings object containing folder paths and configuration
             ai_callback: Function to call for AI text generation (e.g., send_text_to_chatgpt)
+            prompts: PromptsWindow class for managing AI prompts
             log_callback: Optional function to call for logging messages
         """
         self.settings = settings
         self.ai_callback = ai_callback
+        self.prompts = prompts
         self.log_callback = log_callback or print
         self.stop_processing = False
         
@@ -230,9 +232,9 @@ class AutoProcessor:
                         "<SEX>", "<MESSAGE DATE>", "<OBSERVATION DATE>"
                     )
                 
-                prompt = PROMPTS.get(doc_type, "")
+                prompt = self.prompts.get(doc_type)
                 if not prompt:
-                    prompt = PROMPTS.get("UNKNOWN", "")
+                    prompt = self.prompts.get("UNKNOWN")
                 
                 if "{prompt_addon}" in prompt:
                     loinc_codes = loinc_code_detector(file)
@@ -315,7 +317,7 @@ class AutoProcessor:
                 
                 self.log(f"Extracted patient notes ({len(patient_notes)} chars)")
                 
-                prompt = PROMPTS.get("OSCAR_FEEDBACK", "")
+                prompt = self.prompts.get("OSCAR_FEEDBACK")
                 clean_text = self.scrub_message(patient_notes)
                 ai_response = self.ai_callback(f"{prompt}\n{clean_text}")
                 self.log("Received AI response")

@@ -33,6 +33,7 @@ import queue
 import atexit
 from UI.MainWindowUI import MainWindowUI
 from UI.SettingsWindow import SettingsWindow, SettingsKeys
+from UI.PromptsWindow import PromptsWindow
 from UI.Widgets.CustomTextBox import CustomTextBox
 from UI.LoadingWindow import LoadingWindow
 from UI.Widgets.MicrophoneSelector import MicrophoneState
@@ -61,9 +62,10 @@ root.title("AI Medical Scribe")
 
 # settings logic
 app_settings = SettingsWindow()
+ai_prompts = PromptsWindow(prompt_dir=r".\UI\prompts")
 
 #  create our ui elements and settings config
-window = MainWindowUI(root, app_settings)
+window = MainWindowUI(root, app_settings, ai_prompts)
 
 app_settings.set_main_window(window)
 
@@ -917,7 +919,7 @@ def generate_note(formatted_message):
                 
                 elif prompt_type in HL7_PROMPTS:
                     if not 'file_path' in globals():
-                        prompt = PROMPTS.get(prompt_type, "")
+                        prompt = ai_prompts.get(prompt_type)
                         ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                         update_gui_with_response(ai_response)
                         return True
@@ -943,10 +945,10 @@ def generate_note(formatted_message):
 
 
                     if prompt_type == "Auto":
-                        prompt = PROMPTS.get(doc_type, "")
+                        prompt = ai_prompts.get(doc_type)
                         prompt_type = doc_type
                     else: 
-                        prompt = PROMPTS.get(prompt_type, "")
+                        prompt = ai_prompts.get(prompt_type)
 
                     if "{prompt_addon}" in prompt:
                         loinc_codes = loinc_code_detector(filename)
@@ -956,7 +958,7 @@ def generate_note(formatted_message):
                     update_gui_with_response(hl7_header + ai_response)
 
                 else:
-                    prompt = PROMPTS.get(prompt_type, "")
+                    prompt = ai_prompts.get(prompt_type)
                     ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
@@ -1337,7 +1339,7 @@ def start_auto_processing_thread():
     """
     global auto_process_thread, auto_processor
     
-    auto_processor = AutoProcessor(app_settings, send_text_to_chatgpt, append_log)
+    auto_processor = AutoProcessor(app_settings, send_text_to_chatgpt, ai_prompts, append_log)
     
     auto_process_thread = threading.Thread(
         target=auto_processor.run, 
@@ -1450,14 +1452,14 @@ pause_button.grid(row=1, column=2, pady=5, rowspan=2, sticky='nsew')
 clear_button = tk.Button(root, text="Clear", command=clear_application_press, height=2, width=11)
 clear_button.grid(row=1, column=4, pady=5, rowspan=2, sticky='nsew')
 
-#toggle_button = tk.Button(root, text="AI Scribe\nON", command=toggle_aiscribe, height=2, width=11)
-#toggle_button.grid(row=1, column=5, pady=5, sticky='nsew')
 
 dropdown_label = tk.Label(root, text="Select Prompt", font=("Arial", 8, "bold"))
 dropdown_label.grid(row=1, column=5, pady=5, sticky='nsew')
 
 selected_prompt = tk.StringVar(value="Auto")
-prompt_dropdown = tk.OptionMenu(root, selected_prompt, *PROMPTS.keys())
+values = ["Auto", "None"] + ai_prompts.list_prompts()
+prompt_dropdown = ttk.Combobox(root, textvariable=selected_prompt, values=values, state="readonly")
+prompt_dropdown._id = "prompt_selector"
 prompt_dropdown.grid(row=2, column=5, pady=5, sticky='nsew')
 
 upload_button = tk.Button(root, text="Upload\nRecording", command=upload_file, height=2, width=11)
