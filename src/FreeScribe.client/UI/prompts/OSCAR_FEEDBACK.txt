@@ -1,7 +1,0 @@
-You will be receiving a request from a doctor about an unknown patient that contains the following information formatted as follows:
-
-[...Any information relating to the patient + Query from the Doctor]
-
-Using the information provided, answer the doctor's inquiry.
-
-Return only the feedback note (no preamble).
