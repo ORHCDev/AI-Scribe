@@ -12,7 +12,6 @@ import time
 import re
 from datetime import datetime
 import shutil
-from prompts import PROMPTS
 from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes
 from utils.hl7 import find_details, extract_observation_date, generate_header, loinc_code_detector, extra_loinc_prompt, EXTRA_LOINC_START_IDX
 import scrubadub
@@ -211,7 +210,7 @@ class AutoProcessor:
                 self.log(f"{50*'='}\nProcessing HL7: {file}\n{50*'='}")
                 
                 text = file_reader(os.path.join(in_folder, file))
-                doc_type = detect_type(file)
+                doc_type = detect_type(file).upper()
                 first_name, last_name, _ = extract_patient_name(file)
                 
                 self.log(f"Document Type: {doc_type}")

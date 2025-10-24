@@ -48,7 +48,6 @@ import sys
 from UI.DebugWindow import DualOutput
 import traceback
 import shutil
-from prompts import PROMPTS, HL7_PROMPTS
 
 dual = DualOutput()
 sys.stdout = dual
@@ -62,7 +61,8 @@ root.title("AI Medical Scribe")
 
 # settings logic
 app_settings = SettingsWindow()
-ai_prompts = PromptsWindow(prompt_dir=r".\UI\prompts")
+ai_prompts = PromptsWindow(default_path=r".\UI\prompts\default_prompts.yaml", target_path=r".\UI\prompts\prompts.yaml")
+HL7_PROMPTS = ai_prompts.hl7_prompt_list
 
 #  create our ui elements and settings config
 window = MainWindowUI(root, app_settings, ai_prompts)
@@ -927,7 +927,7 @@ def generate_note(formatted_message):
                     # Extract document type and patient name from file
                     filename = os.path.basename(file_path)
                     try:
-                        doc_type = detect_type(filename)
+                        doc_type = detect_type(filename).upper()
                         first_name, last_name, _ = extract_patient_name(filename)
                         print(f"Document type: {doc_type}")
                         print(f"Patient Name: {first_name} {last_name}")
@@ -936,9 +936,15 @@ def generate_note(formatted_message):
 
                     # Generate HL7 Header
                     if first_name and last_name:
-                        sex, hin, dob, name = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
-                        obs_date = extract_observation_date(ocr_text, doc_type)
-                        hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
+                        res = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
+                        if res:
+                            sex, hin, dob, name = res
+                            obs_date = extract_observation_date(ocr_text, doc_type)
+                            hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
+                        else:
+                            print("Unable to generate HL7 header, creating header template that needs to be filled in")
+                            hl7_header = generate_header("<PATIENT NAME>", "<HIN>", "<DOB>", "<SEX>", "<MESSAGE DATE>", "<OBSERVATION DATE>")
+                        
                     else:
                         print("Unable to generate HL7 header, creating header template that needs to be filled in")
                         hl7_header = generate_header("<PATIENT NAME>", "<HIN>", "<DOB>", "<SEX>", "<MESSAGE DATE>", "<OBSERVATION DATE>")
@@ -952,14 +958,15 @@ def generate_note(formatted_message):
 
                     if "{prompt_addon}" in prompt:
                         loinc_codes = loinc_code_detector(filename)
+                        print("Extra LOINC", loinc_codes)
                         prompt = prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(prompt_type, ""), prompt_type))
                     
-                    ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
                     update_gui_with_response(hl7_header + ai_response)
 
                 else:
                     prompt = ai_prompts.get(prompt_type)
-                    ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
                 return True
