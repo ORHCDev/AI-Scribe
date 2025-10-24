@@ -154,6 +154,20 @@ class PromptsWindowUI:
     def delete_prompt(self):
         """Deletes the prompt currently selected"""
         name = self.prompt_var.get()
+        if not name:
+            messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
+            return
+
+        # Ask for confirmation before deleting
+        confirm = messagebox.askyesno(
+            "Confirm Delete",
+            f"Are you sure you want to delete '{name}.txt'?",
+            parent=self.window
+        )
+
+        if not confirm:
+          return  # User cancelled
+        
         res = self.prompts.delete_prompt(name)
         if res:
             messagebox.showwarning("Info", f"Successfully deleted {name}.txt", parent=self.window)
