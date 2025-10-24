@@ -76,6 +76,23 @@ class PromptsWindow():
         self.hl7_prompt_list = data["HL7_Prompts"]
 
 
+    def restore_prompt(self, name):
+        """Restores given prompt to its default (if exists)"""
+        with open(self.default_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            if name in data["Prompts"].keys():
+                self.save_prompt(name, data["Prompts"][name])
+            else:
+                print(f"{name} is not in default prompts")
+
+
+    def restore_all_prompts(self):
+        """Restores all prompts to their defaults (if exist)"""
+        with open(self.default_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            for name in data["Prompts"].keys():
+                self.save_prompt(name, data["Prompts"][name])
+
     def cache_prompt(self, name, text):
         """
         Caches text to given prompt. 
