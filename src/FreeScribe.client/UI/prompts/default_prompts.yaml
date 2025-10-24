@@ -1,11 +1,6 @@
 HL7_Prompts: ["LAB", "CN", "DIAG", "CR", "CXR", "ECHO", "HFC", "TEE", "HOLTER", "EST", "CATH", "DC", "OR", "UNKNOWN",]
 
 Prompts:
-
-  Auto: ""
-
-  None: "" 
-  
   CATH: |
     You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
 

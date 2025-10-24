@@ -14,7 +14,7 @@ class PromptsWindowUI:
         # Create window
         self.window = tk.Toplevel(parent)
         self.window.title("Prompt Manager")
-        self.window.geometry("650x450")
+        self.window.geometry("750x500")
 
         # --- Dropdown for prompt selection ---
         top_frame = tk.Frame(self.window)
@@ -36,6 +36,8 @@ class PromptsWindowUI:
         tk.Button(button_frame, text="Cache", width=10, command=self.cache_current_prompt).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Refresh", width=10, command=self.refresh_prompts).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Delete", width=10, command=self.delete_prompt).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Restore", width=10, command=self.restore_prompt).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Restore All", width=10, command=self.restore_all_prompts).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Close", width=10, command=self.close).pack(side=tk.RIGHT, padx=5)
 
         # --- Text box for prompt content ---
@@ -131,7 +133,7 @@ class PromptsWindowUI:
             current = self.prompt_var.get()
             self.prompts.load_prompts()
             self.load_prompts()
-            self.load_prompt(current)
+            self.prompt_var.set(current)
             self.refresh_dropdown(self.prompts.list_prompts())
 
     def refresh_dropdown(self, values):
@@ -164,7 +166,7 @@ class PromptsWindowUI:
         
         res = self.prompts.delete_prompt(name)
         if res:
-            messagebox.showwarning("Info", f"Successfully deleted {name}.txt", parent=self.window)
+            messagebox.showwarning("Info", f"Successfully deleted {name}", parent=self.window)
             # Remove deleted prompt from dropdowns
             values = list(self.prompt_selector["values"])
             if name in values:
@@ -176,7 +178,49 @@ class PromptsWindowUI:
             self.prompts.load_prompts()
             self.text_widget.delete("1.0", tk.END)
         else:
-            messagebox.showwarning("Warning", f"Unable to delete {name}.txt", parent=self.window)
+            messagebox.showwarning("Warning", f"Unable to delete {name}", parent=self.window)
+
+
+    def restore_prompt(self):
+        """Restores given prompt to default"""
+        name = self.prompt_var.get()
+        if not name:
+            messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
+            return
+
+        # Ask for confirmation before deleting
+        confirm = messagebox.askyesno(
+            "Confirm Restore",
+            f"Are you sure you want to restore '{name}'? All changes will be overwritten.",
+            parent=self.window
+        )
+
+        if not confirm:
+          return  # User cancelled
+        
+        self.prompts.restore_prompt(name)
+        self.load_prompts()
+        self.prompt_var.set(name)
+
+    def restore_all_prompts(self):
+        """Restores all prompts to default"""
+        name = self.prompt_var.get()
+        if not name:
+            messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
+            return
+
+        # Ask for confirmation before deleting
+        confirm = messagebox.askyesno(
+            "Confirm Restore",
+            f"Are you sure you want to restore all prompts to their default?",
+            parent=self.window
+        )
+
+        if not confirm:
+          return  # User cancelled
+        
+        self.prompts.restore_all_prompts()
+        self.refresh_prompts()
 
     def close(self):
         """Close the prompt window."""
