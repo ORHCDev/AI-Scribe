@@ -1,4 +1,6 @@
 import os
+import shutil
+import yaml
 
 class PromptsWindow():
     """
@@ -13,7 +15,7 @@ class PromptsWindow():
     Attributes
     ----------
     prompt_dir: (str) 
-        The directory path where prompt `.txt` files are stored.
+        The directory path where prompt .yaml files are stored.
     cache : dict[str, str]
         An in-memory dictionary storing prompt names as keys and their text
         content as values.
@@ -36,33 +38,43 @@ class PromptsWindow():
         Returns a list of all available prompt names.
     """
 
-    def __init__(self, prompt_dir="prompts"):
+    def __init__(self, default_path=r".\prompts\default_prompts.yaml", target_path=r".\prompts\prompts.yaml"):
         """
         Loads all prompts from prompt dir
 
         Args
         ----
-        prompt_dir : str, optional
-            Directory containing prompt .txt files
+        default_path : str, optional
+            Path to default .yaml file
+        target_path : str, optional
+            Path to target .yaml file 
         """
-        self.prompt_dir = prompt_dir
-        os.makedirs(self.prompt_dir, exist_ok=True)
+        self.default_path = default_path
+        self.target_path = target_path
         
-        # Default prompts, other prompts are loaded in from textfiles in the prompt directory
+        # Stored prompts, allows session prompt modification and testing without saving changes
+        self.data = {}
         self.cache = {}
+        self.hl7_prompt_list = None
+
+        if not os.path.exists(default_path):
+            print(f"No default .yaml file to read at {default_path}")
+
+        if not os.path.exists(target_path):
+            shutil.copy(default_path, target_path)
+            print(f"Created {target_path} from defaults.")
 
         self.load_prompts()
 
     def load_prompts(self):
-        """Load available prompt names from the prompt directory."""
-        self.cache = {}
-        # Get file names without .txt ending
-        files = [f for f in os.listdir(self.prompt_dir) if f.endswith(".txt")]
+        """Load prompts from target yaml file"""
+        with open(self.target_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        
+        self.data = data
+        self.cache = data["Prompts"].copy()
+        self.hl7_prompt_list = data["HL7_Prompts"]
 
-        for file in files:
-            path = os.path.join(self.prompt_dir, file)
-            with open(path, "r", encoding="utf-8") as f:
-                self.cache[file[:-4]] = f.read()    
 
     def cache_prompt(self, name, text):
         """
@@ -72,38 +84,47 @@ class PromptsWindow():
         if name in self.cache.keys():
             self.cache[name] = text
 
-    def update_prompt(self, name, text):
-        """Writes to given prompt file, updating the prompt to the given text"""
-        if name in self.cache.keys():
-            # Update file
-            with open(os.path.join(self.prompt_dir, f"{name}.txt"), "w", encoding="utf-8") as f:
-                f.write(text)
-            # Update cache
-            self.cache[name] = text
+
+    def save_yaml(self):
+        """Writes data to yaml file"""
+        with open(self.target_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(self.data, f, sort_keys=False, allow_unicode=True, indent=2)
+
+
+    def save_prompt(self, name, text):
+        """Save the yaml file for the given prompt with the given text"""
+        # Update cache and data
+        self.cache[name] = text
+        self.data["Prompts"][name] = text
+        
+        # Update yaml
+        self.save_yaml()
+        
+                
+            
 
     def create_prompt(self, name, text):
         """Creates a new prompt"""
         if name not in self.cache.keys():
-            # Create prompt
-            with open(os.path.join(self.prompt_dir, f"{name}.txt"), "w", encoding="utf-8") as f:
-                f.write(text)
-            # Add to session cache
+            self.data["Prompts"][name] = text
             self.cache[name] = text
+            # Create prompt
+            self.save_yaml()
+
+            
+
 
     def delete_prompt(self, name):
         """Deletes the given prompt"""
-         # Build full file path
-        file_path = os.path.join(self.prompt_dir, f"{name}.txt")
-
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                print(f"Prompt '{name}' deleted successfully.")
+        if name in self.cache.keys():
+            try:
+                del self.data["Prompts"][name]
+                del self.cache[name]
+                self.save_yaml()
+                print(f"{name} prompt was successfully deleted")
                 return True
-            else:
-                print(f"Prompt '{name}' does not exist.")
-        except Exception as e:
-            print(f"Error deleting prompt '{name}': {e}")
+            except Exception as e:
+                print(f"Error deleting prompt '{name}': {e}")
 
         return False
 

@@ -33,3 +33,5 @@ oscar_input/
 oscar_output/
 oscar_done/
 oscar_failed/
+
+src/FreeScribe.client/UI/prompts/prompts.yaml

@@ -72,13 +72,11 @@ class PromptsWindowUI:
         """Load a prompt (from cache or file)."""
         if name in self.prompts.cache:
             content = self.prompts.cache[name]
+            self.text_widget.delete("1.0", tk.END)
+            self.text_widget.insert(tk.END, content)
         else:
-            path = os.path.join(self.prompts.prompt_dir, f"{name}.txt")
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            self.prompts.cache_prompt(name, content)
-        self.text_widget.delete("1.0", tk.END)
-        self.text_widget.insert(tk.END, content)
+            print(f"Prompts {name} does not exist")
+        
 
 
     # --- Event handlers ---
@@ -102,10 +100,6 @@ class PromptsWindowUI:
             messagebox.showerror("Error", f"Can not use 'Auto' or 'None' for prompt name, as they are defaults")
             return
 
-        filename = os.path.join(self.prompts.prompt_dir, f"{name}.txt")
-        if os.path.exists(filename):
-            messagebox.showerror("Error", f"Prompt '{name}' already exists.")
-            return
         
         self.prompts.create_prompt(name, "")
         self.load_prompts()
@@ -121,7 +115,7 @@ class PromptsWindowUI:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
             return
 
-        self.prompts.update_prompt(name, self.text_widget.get("1.0", tk.END).strip())
+        self.prompts.save_prompt(name, self.text_widget.get("1.0", tk.END).strip())
 
         messagebox.showinfo("Saved", f"Prompt '{name}' saved successfully.", parent=self.window)
 
