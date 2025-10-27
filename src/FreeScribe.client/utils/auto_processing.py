@@ -14,6 +14,7 @@ from datetime import datetime
 import shutil
 from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes
 from utils.hl7 import find_details, extract_observation_date, generate_header, loinc_code_detector, extra_loinc_prompt, EXTRA_LOINC_START_IDX
+from utils.lab_processor import generate_lab_hl7
 import scrubadub
 
 
@@ -245,9 +246,13 @@ class AutoProcessor:
                         )
                     )
                 
-                clean_text = self.scrub_message(text)
-                ai_response = self.ai_callback(f"{prompt}\n{clean_text}")
-                self.log("Received AI response")
+                
+                if doc_type == "Lab":
+                    ai_response = generate_lab_hl7(text)
+                else:
+                    clean_text = self.scrub_message(text)
+                    ai_response = self.ai_callback(f"{prompt}\n{clean_text}")
+                    self.log("Received AI response")
                 
                 output_name = file.replace(".pdf", ".hl7") if file.endswith(".pdf") else file.replace(".txt", ".hl7")
                 with open(os.path.join(out_folder, output_name), "w") as f:
