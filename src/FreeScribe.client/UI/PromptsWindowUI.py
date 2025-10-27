@@ -130,10 +130,8 @@ class PromptsWindowUI:
     def refresh_prompts(self):
         """Reloads prompts by reading .txt files. Will reset cached changes"""
         if self.prompt_selector["values"]:
-            current = self.prompt_var.get()
             self.prompts.load_prompts()
             self.load_prompts()
-            self.prompt_var.set(current)
             self.refresh_dropdown(self.prompts.list_prompts())
 
     def refresh_dropdown(self, values):

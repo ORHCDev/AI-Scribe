@@ -42,6 +42,7 @@ from utils.ip_utils import is_private_ip
 from utils.file_utils import get_file_path, get_resource_path
 from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes
 from utils.hl7 import *
+from utils.lab_processor import generate_lab_hl7
 from utils.auto_processing import AutoProcessor
 import ctypes
 import sys
@@ -916,8 +917,11 @@ def generate_note(formatted_message):
                             update_gui_with_response(medical_note)
                 
                 
-                
-                elif prompt_type in HL7_PROMPTS:
+                elif prompt_type == "None":
+                    ai_response = send_text_to_chatgpt(formatted_message)
+                    update_gui_with_response(ai_response)
+
+                elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
                         prompt = ai_prompts.get(prompt_type)
                         ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
@@ -961,12 +965,19 @@ def generate_note(formatted_message):
                         print("Extra LOINC", loinc_codes)
                         prompt = prompt.format(prompt_addon=extra_loinc_prompt(loinc_codes, EXTRA_LOINC_START_IDX.get(prompt_type, ""), prompt_type))
                     
-                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
+                    if prompt_type == "LAB":
+                        print("Here")
+                        ai_response = generate_lab_hl7(formatted_message)
+                    else:
+                        ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
                     update_gui_with_response(hl7_header + ai_response)
 
                 else:
-                    prompt = ai_prompts.get(prompt_type)
-                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
+                    if prompt_type == "LAB":
+                        ai_response = generate_lab_hl7(formatted_message)
+                    else:
+                        prompt = ai_prompts.get(prompt_type)
+                        ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
                 return True
