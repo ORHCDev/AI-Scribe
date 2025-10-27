@@ -24,10 +24,23 @@ import json
 import pyaudio
 import tkinter.messagebox as messagebox
 from datetime import datetime
-import whisper # python package is named openai-whisper
+
+try:
+    import whisper # python package is named openai-whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    whisper = None
+    WHISPER_AVAILABLE = False
+
 import scrubadub
 import re
-import speech_recognition as sr # python package is named speechrecognition
+
+try:
+    import speech_recognition as sr # python package is named speechrecognition
+    SR_AVAILABLE = True
+except ImportError:
+    sr = None
+    SR_AVAILABLE = False
 import time
 import queue
 import atexit
@@ -1497,6 +1510,11 @@ def load_stt_model(event=None):
 
 def _load_stt_model_thread():
     global stt_local_model
+    
+    if not WHISPER_AVAILABLE:
+        messagebox.showerror("Error", "openai-whisper is not installed. Cannot use Local Whisper. Please install it or use Remote Whisper.")
+        return
+    
     model = app_settings.editable_settings["Whisper Model"].strip()
     # Create a loading window to display the loading message
     stt_loading_window = LoadingWindow(root, "Speech to Text", "Loading Speech to Text. Please wait.")
