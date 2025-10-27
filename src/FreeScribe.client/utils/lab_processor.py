@@ -59,7 +59,7 @@ def generate_lab_hl7(text, testing=False):
         # Checking if any of the lab analytes are in the current line
         for key in hl7_keys: 
             if key.lower() in line[:35].lower() and key not in found:
-                if results[key][2] != 'N/A':
+                if results[key][0]:
                     # Check if abbreviated form is used (e.g. ALT, CK)
                     if key == 'CK ' and line[:2] != 'CK':
                         continue # Skip to avoid matching other words with 'ck' in them
