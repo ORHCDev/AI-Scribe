@@ -137,6 +137,10 @@ class SettingsWindow():
             "Output Folder", 
             "Finished Folder",
             "Failed Folder",
+            "OSCAR Input Folder",
+            "OSCAR Output Folder",
+            "OSCAR Finished Folder",
+            "OSCAR Failed Folder",
         ]
 
         self.adv_whisper_settings = [
@@ -205,6 +209,10 @@ class SettingsWindow():
             "Output Folder" : r'.\output',
             "Finished Folder" : r'.\done',
             "Failed Folder" : r'.\failed',
+            "OSCAR Input Folder" : r'.\oscar_input',
+            "OSCAR Output Folder" : r'.\oscar_output',
+            "OSCAR Finished Folder" : r'.\oscar_done',
+            "OSCAR Failed Folder" : r'.\oscar_failed',
         }
 
         self.docker_settings = [
