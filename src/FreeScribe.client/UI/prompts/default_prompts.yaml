@@ -1,0 +1,528 @@
+HL7_Prompts: ["LAB", "CN", "DIAG", "CR", "CXR", "ECHO", "HFC", "TEE", "HOLTER", "EST", "CATH", "DC", "OR", "UNKNOWN",]
+
+Prompts:
+  CATH: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for observations:
+      OBX|0: Heart Rate (HR). LOINC code: XQ64
+      OBX|1: Blood Pressure (BP). LOINC code: XQ63
+      OBX|2: Weight (WT). LOINC code: XP1
+      OBX|3: Height (HT). LOINC code: XHT
+      OBX|4: Outcome/Recommendation (CATH). LOINC code: XQ69
+      OBX|5: Outcome/Recommendation Overflow (CATH1). LOINC code: XQ65
+      OBX|6: LVEF (EF_B). LOINC code: 3138-5
+      OBX|7: Past medical history (PMH). LOINC code: XQ70
+      OBX|8: Risk Factors (RISK). LOINC code: XQ68
+      OBX|9: Allergies (ALLE). LOINC code: XQ67
+      {prompt_addon}
+
+        
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: HR corresopnds to XQ64
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|CATH|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+      
+      Below is an example:
+      OBX|0|ST|XQ64^HR|CATH|60|bpm
+      OBX|1|ST|XQ63^BP|CATH|200|mmHg
+      OBX|2|ST|XQ70^EST|CATH|200|ms
+      
+      Make SURE the information you provide is straight from the text. 
+      DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  CN: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for the observations:
+    OBX|0: Heart Rate (HR). LOINC code: XQ64
+    OBX|1: Blood Pressure (BP). LOINC code: XQ63
+    OBX|2: Weight (WT). LOINC code: XP1
+    OBX|3: Height (HT). LOINC code: XHT
+    OBX|4: Final Notes (CATH1). LOINC code: XQ65
+    OBX|5: overflow (CATH). LOINC code: XQ69
+    OBX|6: Left Ventricular Ejection Fraction (EF_B). LOINC code: 3138-5
+    {prompt_addon}
+
+    Structure each OBX segment as follows:
+    OBX|<Index>|ST|<LOINC Code>^<Variable Name>|CN|<Value>|<Unit>.
+    Ensure the indices are sequential and unique.
+    Use concise final notes for observations, summarizing key points.
+    Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+    Example Format:
+    OBX|0|ST|XQ64^HR|CC|72|bpm
+    OBX|1|ST|XQ63^BP|CC|120/80|mmHg
+    OBX|2|ST|XP1^WT|CC|70|kg
+    OBX|3|ST|XHT^HT|CC|170|cm
+    OBX|4|ST|XQ65^CATH1|CC|Summary points|
+    OBX|5|ST|XQ69^CATH|CC|other important summary points|
+    OBX|6|ST|3138-5^EF_B|CC|55|%
+    Ensure consistency:
+    Match the variable names and LOINC codes precisely as provided.
+
+    Make SURE the information you provide is straight from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines.
+
+    IMPORTANT:
+    1. If multiple measurements exist for HR, BP, or Weight, always select the **most recent numeric value mentioned in the text**.
+    2. If the measurement is given as a range (e.g., 118/78-125/83), use the first value of the range.
+    3. For HR, look for a number followed by "bpm" or "beats per minute".
+    4. For BP, look for the first numeric pair formatted as systolic/diastolic (e.g., 100/67).
+    5. For Weight, pick the first numeric value followed by kg. If only pounds are given, convert to kg using 1 lb = 0.453592 kg.
+    6. Don't split BP into two OBX segments, keep values together (e.g., OBX|1|ST|XQ63^BP|CN|100/67|mmHg)
+
+
+    IMPORTANT:
+    1. Return ONLY the HL7 OBX segments in the exact format specified. 
+    2. Do NOT include any explanations, comments, notes, or placeholders outside or inside the lines. 
+    3. If a value is missing in the text (e.g., HR, BP, WT, HT, EF_B), leave the <Value> field empty, and **do NOT include the unit**. For example: OBX|0|ST|XQ64^HR|CN||
+    4. Each OBX line must end immediately after the last pipe of the value (or the unit if present). No extra text after the line.
+    5. DO NOT append anything like "Note:", "not provided", "unknown", or any other descriptive text after the OBX lines.
+
+    Example:
+
+    OBX|0|ST|XQ64^HR|CN||
+    OBX|1|ST|XQ63^BP|CN||
+    OBX|2|ST|XP1^WT|CN||
+    OBX|3|ST|XHT^HT|CN||
+    OBX|4|ST|XQ65^CATH1|CN|Summary points|
+    OBX|5|ST|XQ69^CATH|CN|Other points|
+    OBX|6|ST|3138-5^EF_B|CN||
+
+  CR: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for observations:
+      OBX|0: Heart Rate (HR). LOINC code: XQ64
+      OBX|1: Blood Pressure (BP). LOINC code: XQ63
+      OBX|2: Exercise Treadmill Test (EST). LOINC code: XQ59
+      OBX|3: Risk Factors (RISK). LOINC code: XQ62
+      OBX|4: Electrocardiograph Results (ECG). LOINC code: XQ57
+      OBX|5: VO2. LOINC code: XQ67
+      OBX|6: Breathing Reserve (BRR). LOINC code: XQ66
+      OBX|7: Final Notes (CATH1). LOINC code: XQ65
+      {prompt_addon}
+
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: HR corresponds to XQ64.
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Abbreviated Variable Name>|CR|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Final notes should be concise but highlight important factors in the report.
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+      
+      Below is an example:
+      OBX|0|ST|XQ64^HR|CR|60|bpm
+      OBX|1|ST|XQ63^BP|CR|200|mmHg
+      OBX|2|ST|XQ59^EST|CR|est results here|
+      OBX|3|ST|XQ62^RISK|CR|risk factors here|
+      OBX|4|ST|XQ57^ECG|CR|ecg notes here|
+      OBX|2|ST|XQ67^VO2|CR|vo2 here|
+      OBX|3|ST|XQ66^BRR|CR|Breathing reserve here|
+      OBX|4|ST|XQ65^CATH1|CR|final note on cath here|
+
+      
+      Make SURE the information you provide is straight from the text. 
+      DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+      Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+      You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  CXR: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for observations, your output should be one line:
+      OBX|0: Chest X-ray (CXR). LOINC code: XQ58
+      {prompt_addon}
+        
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: CXR corresponds to XQ58.
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|CXR|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Final notes should be concise but highlight important factors in the report
+      
+      
+      Below is an example:
+      OBX|0|ST|X600^CXR|CXR|Carotid US done 2024-12-14 showed ( keep it concise and enter only the summary here)|N/A
+
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  DC: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    OBX|0: Heart Rate (HR). LOINC code: XQ64
+    OBX|1: Blood Pressure (BP). LOINC code: XQ63
+    OBX|2: Weight (WT). LOINC code: XP1
+    OBX|3: Height (HT). LOINC code: XHT
+    OBX|4: Final Notes (CATH). LOINC code: XQ69
+    OBX|5: overflow (CATH1). LOINC code: XQ65
+    OBX|6: Left Ventricular Ejection Fraction (EF_B). LOINC code: 3138-5
+    OBX|7: Past medical history (PMH). LOINC code: XQ70
+    OBX|8: risk factors (RISK). LOINC code: XQ68
+    {prompt_addon}
+
+
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: HR corresponds to XQ64.
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Abbreviated Variable Name>|CR|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Final notes should be concise but highlight important factors in the report.
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+    Example Format:
+    OBX|0|ST|XQ64^HR|DC|72|bpm
+    OBX|1|ST|XQ63^BP|DC|120/80|mmHg
+    OBX|2|ST|XP1^WT|DC|70|kg
+    OBX|3|ST|XHT^HT|DC|170|cm
+    OBX|4|ST|XQ69^CATH|DC|Summary points here|
+    OBX|5|ST|XQ65^CATH1|DC|other important summary points including procedure(s) done|
+    OBX|6|ST|3138-5^EF_B|DC|55|%
+    OBX|7|ST|PMH^XQ70|DC|Past medical history here|
+    OBX|8|ST|RISK^XQ68|DC|all risk factors here|%
+
+    Make SURE the information you provide is from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  DIAG: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for the observations:
+    OBX|0: Heart Rate (HR). LOINC code: XQ64
+    OBX|1: Blood Pressure (BP). LOINC code: XQ63
+    OBX|2: Weight (WT). LOINC code: XP1
+    OBX|3: Height (HT). LOINC code: XHT
+    OBX|4: Final Notes (CATH1). LOINC code: XQ65
+    OBX|5: overflow (CATH). LOINC code: XQ69
+    OBX|6: Left Ventricular Ejection Fraction (EF_B). LOINC code: 3138-5
+    OBX|7: Chest X-ray (CXR). LOINC code: XQ58
+
+    Structure each OBX segment as follows:
+    OBX|<Index>|ST|<LOINC Code>^<Variable Name>|CN|<Value>|<Unit>.
+    Ensure the indices are sequential and unique.
+    Use concise final notes for observations, summarizing key points.
+    Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+    Example Format:
+    OBX|0|ST|XQ64^HR|CC|72|bpm
+    OBX|1|ST|XQ63^BP|CC|120/80|mmHg
+    OBX|2|ST|XP1^WT|CC|70|kg
+    OBX|3|ST|XHT^HT|CC|170|cm
+    OBX|4|ST|XQ65^CATH1|CC|Summary points|
+    OBX|5|ST|XQ69^CATH|CC|other important summary points|
+    OBX|6|ST|3138-5^EF_B|CC|55|%
+    OBX|7|ST|X600^CXR|CXR|Carotid US done 2024-12-14 showed ( keep it concise and enter only the summary here)|N/A
+
+    Ensure consistency:
+    Match the variable names and LOINC codes precisely as provided.
+
+    Make SURE the information you provide is straight from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines.
+
+  ECHO: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for the observations:
+    OBX|0: Heart Rate (HR). LOINC code: XQ64
+    OBX|1: Blood Pressure (BP). LOINC code: XQ63
+    OBX|2: Weight (WT). LOINC code: XP1
+    OBX|3: Height (HT). LOINC code: XHT
+    OBX|4: Final Notes/TEE Impressions (Echo). LOINC code: XQ70
+    OBX|5: overflow (CATH1). LOINC code: XQ69
+    OBX|6: Left Ventricular Ejection Fraction (EF_B). LOINC code: 3138-5
+    {prompt_addon}
+    Structure each OBX segment as follows:
+    OBX|<Index>|ST|<LOINC Code>^<Variable Name>|ECHO|<Value>|<Unit>.
+
+    Ensure the indices are sequential and unique.
+    Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+    Example Format:
+    OBX|0|ST|XQ64^HR|Echo|72|bpm
+    OBX|1|ST|XQ63^BP|Echo|120/80|mmHg
+    OBX|2|ST|XP1^WT|Echo|70|kg
+    OBX|3|ST|XHT^HT|Echo|170|cm
+    OBX|4|ST|XQ70^Echo|Echo|“Normal lv function and...”|
+    OBX|5|ST|XQ69^CATH1|Echo|“normal valvular function”|
+    OBX|6|ST|3138-5^EF_B|Echo|55|%
+    Ensure consistency:
+    Match the variable names and LOINC codes precisely as provided.
+
+    Make SURE the information you provide is straight from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  EST: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for observations, your output should be one line:
+      OBX|0: Heart Rate (HR). LOINC code: XQ64
+      OBX|1: Blood Pressure (BP). LOINC code: XQ63
+      OBX|2: Exercise Treadmill Test (EST). LOINC code: XQ59
+      {prompt_addon}
+
+        
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: HR corresopnds to XQ64
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|EST|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+      
+      Below is an example:
+      OBX|0|ST|XQ64^HR|EST|60|bpm
+      OBX|1|ST|XQ63^BP|EST|200|mmHg
+      OBX|2|ST|XQ70^EST|EST|200|ms
+      
+      Make SURE the information you provide is straight from the text. 
+      DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  HFC: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for observations:
+      OBX|0: Heart Rate (HR). LOINC code: XQ64
+      OBX|1: Blood Pressure (BP). LOINC code: XQ63
+      OBX|2: Weight (WT). LOINC code: XP1
+      OBX|3: Echo (Echo). LOINC code: XQ70
+      OBX|4: Final notes (CATH1). LOINC code: XQ65
+      OBX|5: overflow (CATH). LOINC code: XQ69
+      {prompt_addon}
+        
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: CXR corresponds to XQ65.
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|HFC|<Value>|<Unit>.
+      Indexes must bein chronological order and unique
+      Final notes should be concise but highlight important factors in the report
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+        
+      
+      Below is an example:
+      OBX|0|ST|X600^HR|HFC|60|bpm
+      OBX|1|ST|X601^BP|HFC|200|mmHg
+      OBX|2|ST|XP1^WT|HFC|97|kg
+      OBX|3|ST|XQ70^Echo|HFC|IVC collapses normally with inspiration|
+      OBX|4|ST|XQ65^CATH1|HFC|Summary points|
+      OBX|5|ST|XQ69^CATH|HFC|other important summary points|
+
+
+    Ensure consistency:
+    Match the variable names and LOINC codes precisely as provided.
+
+    Make SURE the information you provide is straight from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  HOLTER: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for observations, your output should be one line:
+      OBX|0: Heart Rate (HR). LOINC code: XQ64
+      OBX|1: Interpretation (Holt). LOINC code: XQ70
+      {prompt_addon}
+        
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: HR corresopnds to XQ64
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|HOLTER|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+      
+      Below is an example:
+      OBX|0|ST|XQ64^HR|Holt|60|bpm
+      OBX|1|ST|XQ70^Holt|Holt|200|mmHg
+      
+      Make SURE the information you provide is straight from the text. 
+      DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  LAB: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for the observations:
+    OBX|0: Heart Rate (HR). LOINC code: XQ64
+    OBX|1: Blood Pressure (BP). LOINC code: XQ63
+    OBX|2: Weight (WT). LOINC code: XP1
+    OBX|3: Height (HT). LOINC code: XHT
+    OBX|4: Final Notes (CATH1). LOINC code: XQ65
+    OBX|5: overflow (CATH). LOINC code: XQ69
+    OBX|6: Left Ventricular Ejection Fraction (EF_B). LOINC code: 3138-5
+    {prompt_addon}
+
+    Structure each OBX segment as follows:
+    OBX|<Index>|ST|<LOINC Code>^<Variable Name>|CN|<Value>|<Unit>.
+    Ensure the indices are sequential and unique.
+    Use concise final notes for observations, summarizing key points.
+    Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+    Example Format:
+    OBX|0|ST|XQ64^HR|CC|72|bpm
+    OBX|1|ST|XQ63^BP|CC|120/80|mmHg
+    OBX|2|ST|XP1^WT|CC|70|kg
+    OBX|3|ST|XHT^HT|CC|170|cm
+    OBX|4|ST|XQ65^CATH1|CC|Summary points|
+    OBX|5|ST|XQ69^CATH|CC|other important summary points|
+    OBX|6|ST|3138-5^EF_B|CC|55|%
+    Ensure consistency:
+    Match the variable names and LOINC codes precisely as provided.
+
+    Make SURE the information you provide is straight from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines.
+
+    IMPORTANT:
+    1. If multiple measurements exist for HR, BP, or Weight, always select the **most recent numeric value mentioned in the text**.
+    2. If the measurement is given as a range (e.g., 118/78-125/83), use the first value of the range.
+    3. For HR, look for a number followed by "bpm" or "beats per minute".
+    4. For BP, look for the first numeric pair formatted as systolic/diastolic (e.g., 100/67).
+    5. For Weight, pick the first numeric value followed by kg. If only pounds are given, convert to kg using 1 lb = 0.453592 kg.
+    6. Don't split BP into two OBX segments, keep values together (e.g., OBX|1|ST|XQ63^BP|CN|100/67|mmHg)
+
+
+    IMPORTANT:
+    1. Return ONLY the HL7 OBX segments in the exact format specified. 
+    2. Do NOT include any explanations, comments, notes, or placeholders outside or inside the lines. 
+    3. If a value is missing in the text (e.g., HR, BP, WT, HT, EF_B), leave the <Value> field empty, and **do NOT include the unit**. For example: OBX|0|ST|XQ64^HR|CN||
+    4. Each OBX line must end immediately after the last pipe of the value (or the unit if present). No extra text after the line.
+    5. DO NOT append anything like "Note:", "not provided", "unknown", or any other descriptive text after the OBX lines.
+
+    Example:
+
+    OBX|0|ST|XQ64^HR|CN||
+    OBX|1|ST|XQ63^BP|CN||
+    OBX|2|ST|XP1^WT|CN||
+    OBX|3|ST|XHT^HT|CN||
+    OBX|4|ST|XQ65^CATH1|CN|Summary points|
+    OBX|5|ST|XQ69^CATH|CN|Other points|
+    OBX|6|ST|3138-5^EF_B|CN||
+
+  OR: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    OBX|0: Procedure (CATH). LOINC code: XQ69
+    OBX|1: More procedure notes (CATH1). LOINC code: XQ65.  This should be concise for example LIMA grafted to LAD, SVG to PDA.
+    {prompt_addon}
+
+
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: HR corresponds to XQ64.
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Abbreviated Variable Name>|CR|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Final notes should be concise but highlight important factors in the report.
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+    Example Format:
+    OBX|0|ST|XQ69^CATH|OR|procedure details|
+    OBX|1|ST|XQ65^CATH1|OR|more procedure notes|
+
+    Make SURE the information you provide is from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  TEE: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for observations, your output should be one line:
+      OBX|0: Heart Rate (HR). LOINC code: XQ64
+      OBX|1: Blood Pressure (BP). LOINC code: XQ63
+      OBX|2: Weight (WT). LOINC code: XP1
+      OBX|3: Hight (HT). LOINC code: XHT
+      OBX|4: Final notes/TEE impressions (Echo). LOINC code: XQ70
+      OBX|5: overflow (CATH1). LOINC code: XQ69
+      OBX|6: Left Ventricular Ejection Fraction (EF_B). LOINC code: 3138-5
+      {prompt_addon}
+        
+    2. Use the LOINC codes and variable names corresponding to each other:
+      Example: CXR corresponds to XQ65.
+      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|TEE|<Value>|<Unit>.
+      Make sure each index goes in chronological order and only appears once
+      Final notes should be concise but highlight important factors in the report
+      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+      
+      Below is an example:
+      OBX|0|ST|X600^HR|TEE|60|bpm
+      OBX|1|ST|X601^BP|TEE|200|mmHg
+      OBX|2|ST|XP1^WT|TEE|97|kg
+      OBX|3|ST|XHT^HT|TEE|168|cm
+      OBX|4|ST|XQ70^Echo|TEE|IVC collapses normally with inspiration|
+      OBX|5|ST|3138-5^EF_B|TEE|70|%
+
+    Ensure consistency:
+    Match the variable names and LOINC codes precisely as provided.
+    Make SURE the information you provide is straight from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+        
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+
+  UNKNOWN: |
+    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
+
+    1. Add OBX segments for the observations:
+    OBX|0: Heart Rate (HR). LOINC code: XQ64
+    OBX|1: Blood Pressure (BP). LOINC code: XQ63
+    OBX|2: Weight (WT). LOINC code: XP1
+    OBX|3: Height (HT). LOINC code: XHT
+    OBX|4: Final Notes (CATH1). LOINC code: XQ65
+    OBX|5: overflow (CATH). LOINC code: XQ69
+    OBX|6: Left Ventricular Ejection Fraction (EF_B). LOINC code: 3138-5
+    {prompt_addon}
+
+    Structure each OBX segment as follows:
+    OBX|<Index>|ST|<LOINC Code>^<Variable Name>|<Variable Name>|<Value>|<Unit>.
+    Ensure the indices are sequential and unique.
+    Use concise final notes for observations, summarizing key points.
+    Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
+
+    Example Format:
+    OBX|0|ST|XQ64^HR|NA|72|bpm
+    OBX|1|ST|XQ63^BP|NA|120/80|mmHg
+    OBX|2|ST|XP1^WT|NA|70|kg
+    OBX|3|ST|XHT^HT|NA|170|cm
+    OBX|4|ST|XQ65^CATH1|NA|Summary points|
+    OBX|5|ST|XQ69^CATH|NA|other important summary points|
+    OBX|6|ST|3138-5^EF_B|NA|55|%
+    Ensure consistency:
+    Match the variable names and LOINC codes precisely as provided.
+    Make SURE the information you provide is straight from the text. 
+    DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
+    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
+    You are only responsible for generating the OBX lines.
+
+  OSCAR_FEEDBACK: |
+    You will be receiving a request from a doctor about an unknown patient that contains the following information formatted as follows:
+
+    [...Any information relating to the patient + Query from the Doctor]
+
+    Using the information provided, answer the doctor's inquiry.
+
+    Return only the feedback note (no preamble).
+
+
+
+
+
+

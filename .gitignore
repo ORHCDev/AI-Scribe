@@ -23,3 +23,15 @@ test_upload_files
 display_mics.py
 src/FreeScribe.client/models
 src/FreeScribe.client/oscarReportmasterXLS.xls
+
+# Auto processing folders
+input/
+output/
+done/
+failed/
+oscar_input/
+oscar_output/
+oscar_done/
+oscar_failed/
+
+src/FreeScribe.client/UI/prompts/prompts.yaml
