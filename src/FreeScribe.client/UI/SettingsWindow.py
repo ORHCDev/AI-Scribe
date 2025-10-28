@@ -133,14 +133,8 @@ class SettingsWindow():
             "frmttriminc",
             "frmtrmblln",
             "ReportMasterPath",
-            "Input Folder",
-            "Output Folder", 
-            "Finished Folder",
-            "Failed Folder",
-            "OSCAR Input Folder",
-            "OSCAR Output Folder",
-            "OSCAR Finished Folder",
-            "OSCAR Failed Folder",
+            "HL7 Base Folder",
+            "Feedback Base Folder",
         ]
 
         self.adv_whisper_settings = [
@@ -205,14 +199,8 @@ class SettingsWindow():
             "Post-Processing": "\n\nUsing the provided list of facts, review the SOAP note for accuracy. Verify that all details align with the information provided in the list of facts and ensure consistency throughout. Update or adjust the SOAP note as necessary to reflect the listed facts without offering opinions or subjective commentary. Ensure that the revised note excludes a \"Notes\" section and does not include a header for the SOAP note. Provide the revised note after making any necessary corrections.",
             "Show Scrub PHI": False,
             "ReportMasterPath" : r'.\oscarReportmasterXLS.xls',
-            "Input Folder" : r'.\input',
-            "Output Folder" : r'.\output',
-            "Finished Folder" : r'.\done',
-            "Failed Folder" : r'.\failed',
-            "OSCAR Input Folder" : r'.\oscar_input',
-            "OSCAR Output Folder" : r'.\oscar_output',
-            "OSCAR Finished Folder" : r'.\oscar_done',
-            "OSCAR Failed Folder" : r'.\oscar_failed',
+            "HL7 Base Folder" : r'.\hl7',
+            "Feedback Base Folder" : r'.\feedback',
         }
 
         self.docker_settings = [
