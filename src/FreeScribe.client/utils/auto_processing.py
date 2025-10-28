@@ -4,7 +4,7 @@ Auto Processing Utility
 Handles automated processing of documents in batch mode.
 Supports two processing modes:
 1. HL7 Processing: Converts medical documents to HL7 format
-2. OSCAR Feedback: Generates AI responses for doctor queries from OSCAR eForms
+2. Feedback Processing: Generates AI responses for doctor queries from feedback forms
 """
 
 import os
@@ -24,7 +24,7 @@ class AutoProcessor:
     
     Supports two modes:
     - HL7: Converts documents to HL7 format with headers
-    - OSCAR_FEEDBACK: Generates AI feedback for doctor queries
+    - Feedback: Generates AI feedback for doctor queries
     """
     
     def __init__(self, settings, ai_callback, prompts, log_callback=None):
@@ -42,6 +42,7 @@ class AutoProcessor:
         self.prompts = prompts
         self.log_callback = log_callback or print
         self.stop_processing = False
+        self.prompt_type = None
         
     def log(self, message, new_line=True):
         """Log a message using the callback."""
@@ -53,6 +54,10 @@ class AutoProcessor:
         
     def scrub_message(self, text):
         """Remove PHI from text using scrubadub and regex patterns."""
+        # Skip scrubbing for OSCAR_FEEDBACK since extract_patient_notes already removes sensitive info
+        if self.prompt_type == "OSCAR_FEEDBACK":
+            return text
+            
         scrubbed_message = scrubadub.clean(text)
         
         cleaned_message = scrubbed_message
@@ -100,9 +105,9 @@ class AutoProcessor:
             return new_path
     
     
-    def save_oscar_feedback(self, analysis, first_name, last_name, demographic_num, base_folder):
+    def save_feedback(self, analysis, first_name, last_name, demographic_num, base_folder):
         """
-        Saves the OSCAR feedback response directly to the output folder.
+        Saves the feedback response directly to the output folder.
         
         Args:
             analysis: The GPT-generated analysis
@@ -132,7 +137,7 @@ class AutoProcessor:
         except Exception as e:
             self.log(f"Error saving file {file_path}: {e}")
             # Try with a safe fallback filename
-            safe_filename = f"feedback_{timestamp}.txt"
+            safe_filename = f"feedback_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
             safe_file_path = os.path.join(base_folder, safe_filename)
             try:
                 with open(safe_file_path, 'w', encoding='utf-8') as f:
@@ -144,40 +149,32 @@ class AutoProcessor:
     
     def run(self):
         """
-        Start the auto processing loop that watches both HL7 and OSCAR folders.
+        Start the auto processing loop that watches both HL7 and Feedback folders.
         """
-        # HL7 folder paths
-        hl7_in_folder = self.settings.editable_settings["Input Folder"]
-        hl7_out_folder = self.settings.editable_settings["Output Folder"]
-        hl7_fin_folder = self.settings.editable_settings["Finished Folder"]
-        hl7_fail_folder = self.settings.editable_settings["Failed Folder"]
+        # Base folder paths
+        hl7_base_folder = self.settings.editable_settings["HL7 Base Folder"]
+        feedback_base_folder = self.settings.editable_settings["Feedback Base Folder"]
         
-        # OSCAR folder paths
-        oscar_in_folder = self.settings.editable_settings["OSCAR Input Folder"]
-        oscar_out_folder = self.settings.editable_settings["OSCAR Output Folder"]
-        oscar_fin_folder = self.settings.editable_settings["OSCAR Finished Folder"]
-        oscar_fail_folder = self.settings.editable_settings["OSCAR Failed Folder"]
+        # Create subfolder structure
+        hl7_in_folder = os.path.join(hl7_base_folder, "input")
+        hl7_out_folder = os.path.join(hl7_base_folder, "output")
+        hl7_fin_folder = os.path.join(hl7_base_folder, "done")
+        hl7_fail_folder = os.path.join(hl7_base_folder, "failed")
         
-        # Check if folders exist
-        missing_folders = []
-        if not os.path.exists(hl7_in_folder):
-            missing_folders.append(f"HL7 Input Folder: {hl7_in_folder}")
-        if not os.path.exists(oscar_in_folder):
-            missing_folders.append(f"OSCAR Input Folder: {oscar_in_folder}")
+        feedback_in_folder = os.path.join(feedback_base_folder, "input")
+        feedback_out_folder = os.path.join(feedback_base_folder, "output")
+        feedback_fin_folder = os.path.join(feedback_base_folder, "done")
+        feedback_fail_folder = os.path.join(feedback_base_folder, "failed")
         
-        if missing_folders:
-            self.log(f"\nMissing input folders:\n" + "\n".join(missing_folders))
-            self.log("Please create these folders or update settings.\n")
-            return
-        
-        # Create output folders
-        for folder in [hl7_out_folder, hl7_fin_folder, hl7_fail_folder, 
-                      oscar_out_folder, oscar_fin_folder, oscar_fail_folder]:
+        # Create all folders
+        for folder in [hl7_base_folder, feedback_base_folder, 
+                      hl7_in_folder, hl7_out_folder, hl7_fin_folder, hl7_fail_folder,
+                      feedback_in_folder, feedback_out_folder, feedback_fin_folder, feedback_fail_folder]:
             os.makedirs(folder, exist_ok=True)
         
         self.log("Starting dual-mode auto processing...")
         self.log(f"Watching HL7 folder: {hl7_in_folder}")
-        self.log(f"Watching OSCAR folder: {oscar_in_folder}")
+        self.log(f"Watching Feedback folder: {feedback_in_folder}")
         
         time.sleep(3)
         
@@ -189,14 +186,14 @@ class AutoProcessor:
                 self.log(f"\nFound {len(hl7_files)} file(s) in HL7 folder")
                 self.process_hl7_files(hl7_in_folder, hl7_out_folder, hl7_fin_folder, hl7_fail_folder, hl7_files)
             
-            # Check OSCAR folder
-            oscar_files = os.listdir(oscar_in_folder)
-            if oscar_files:
-                self.log(f"\nFound {len(oscar_files)} file(s) in OSCAR folder")
-                self.process_oscar_files(oscar_in_folder, oscar_out_folder, oscar_fin_folder, oscar_fail_folder, oscar_files)
+            # Check Feedback folder
+            feedback_files = os.listdir(feedback_in_folder)
+            if feedback_files:
+                self.log(f"\nFound {len(feedback_files)} file(s) in Feedback folder")
+                self.process_feedback_files(feedback_in_folder, feedback_out_folder, feedback_fin_folder, feedback_fail_folder, feedback_files)
             
             # If no files in either folder, wait
-            if not hl7_files and not oscar_files:
+            if not hl7_files and not feedback_files:
                 self.log("\nNo files in either folder, waiting...")
                 time.sleep(15)
             else:
@@ -204,6 +201,7 @@ class AutoProcessor:
     
     def process_hl7_files(self, in_folder, out_folder, fin_folder, fail_folder, files):
         """Process a batch of HL7 files."""
+        self.prompt_type = "HL7"  # Set prompt type for scrubbing logic
         for file in files:
             if self.stop_processing:
                 break
@@ -270,9 +268,9 @@ class AutoProcessor:
             self.log(f"{50*'-'}\n\n")
             time.sleep(2)
     
-    def extract_oscar_patient_info(self, text):
+    def extract_feedback_patient_info(self, text):
         """
-        Extract patient information from OSCAR eForm PDF text.
+        Extract patient information from feedback form PDF text.
         Uses the exact same method as formfeedback.py
         Returns: (first_name, last_name, demographic_num, patient_notes)
         """
@@ -296,17 +294,18 @@ class AutoProcessor:
             self.log(f"Error extracting patient info from PDF: {e}")
             return None, None, None, text
 
-    def process_oscar_files(self, in_folder, out_folder, fin_folder, fail_folder, files):
-        """Process a batch of OSCAR feedback files."""
+    def process_feedback_files(self, in_folder, out_folder, fin_folder, fail_folder, files):
+        """Process a batch of feedback files."""
+        self.prompt_type = "OSCAR_FEEDBACK"  # Set prompt type for scrubbing logic
         for file in files:
             if self.stop_processing:
                 break
             try:
-                self.log(f"{50*'='}\nProcessing OSCAR: {file}\n{50*'='}")
+                self.log(f"{50*'='}\nProcessing Feedback: {file}\n{50*'='}")
                 
                 text = file_reader(os.path.join(in_folder, file))
                 
-                first_name, last_name, demographic_num, patient_notes = self.extract_oscar_patient_info(text)
+                first_name, last_name, demographic_num, patient_notes = self.extract_feedback_patient_info(text)
                 
                 if first_name and last_name:
                     self.log(f"Extracted Patient: {last_name}, {first_name}")
@@ -326,7 +325,7 @@ class AutoProcessor:
                 ai_response = self.ai_callback(f"{prompt}\n{clean_text}")
                 self.log("Received AI response")
                 
-                self.save_oscar_feedback(
+                self.save_feedback(
                     ai_response, 
                     first_name or "Unknown", 
                     last_name or "Unknown",
