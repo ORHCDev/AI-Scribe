@@ -210,7 +210,7 @@ def detect_type(filename):
     echo_keywords = ["ECHO"]
     holter_keywords = ["HOLTER", "heart rhythm"]
     est_keywords = ["EST", "stress"]
-    dc_keywords = ["discharge", "DC summary", "discharge summary"]
+    dc_keywords = ["discharge", "DC summary", "discharge summary", "DC"]
     or_keywords = ["OR note", "OR"]
     diag_keywords = ["diag", "Diagnostic"]
     lab_keywords = ["lab", "lab"]
