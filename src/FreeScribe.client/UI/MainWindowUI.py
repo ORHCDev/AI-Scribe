@@ -6,6 +6,7 @@ from UI.SettingsWindowUI import SettingsWindowUI
 from UI.MarkdownWindow import MarkdownWindow
 from utils.file_utils import get_file_path
 from UI.DebugWindow import DebugPrintWindow
+from UI.PromptsWindowUI import PromptsWindowUI
 
 DOCKER_CONTAINER_CHECK_INTERVAL = 10000  # Interval in milliseconds to check the Docker container status
 DOCKER_DESKTOP_CHECK_INTERVAL = 10000  # Interval in milliseconds to check the Docker Desktop status
@@ -19,7 +20,7 @@ class MainWindowUI:
     :param settings: The application settings passed to control the containers' behavior.
     """
     
-    def __init__(self, root, settings):
+    def __init__(self, root, settings, prompts):
         """
         Initialize the MainWindowUI class.
 
@@ -30,6 +31,7 @@ class MainWindowUI:
         self.docker_status_bar = None  # Docker status bar frame
         self.is_status_bar_enabled = False  # Flag to indicate if the Docker status bar is enabled
         self.app_settings = settings  # Application settings
+        self.prompts = prompts # AI prompts 
         self.logic = mw.MainWindow(self.app_settings)  # Logic to control the container behavior
         self.scribe_template = None
         self.setting_window = SettingsWindowUI(self.app_settings, self, self.root)  # Settings window
@@ -193,6 +195,7 @@ class MainWindowUI:
         self.root.config(menu=self.menu_bar)
         self._create_settings_menu()
         self._create_help_menu()
+        self._create_prompt_menu()
 
     def _destroy_menu_bar(self):
         """
@@ -204,6 +207,7 @@ class MainWindowUI:
             self.menu_bar = None
             self._destroy_settings_menu()
             self._destroy_help_menu()
+            self._destroy_prompt_menu()
 
     def _create_settings_menu(self):
         # Add Settings menu
@@ -237,6 +241,18 @@ class MainWindowUI:
             help_menu = self.menu_bar.nametowidget('Help')
             if help_menu is not None:
                 help_menu.destroy()
+
+    def _create_prompt_menu(self):
+        # Add Prompt menu
+        prompt_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="Prompts", menu=prompt_menu)
+        prompt_menu.add_command(label="Prompts", command=lambda: PromptsWindowUI(self.root, self.prompts))
+        
+    def _destroy_prompt_menu(self):
+        if self.menu_bar is not None:
+            prompt_menu = self.menu_bar.nametowidget('Prompts')
+            if prompt_menu is not None:
+                prompt_menu.destroy()
 
     def disable_settings_menu(self):
         """

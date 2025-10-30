@@ -1,4 +1,10 @@
-from llama_cpp import Llama
+try:
+    from llama_cpp import Llama
+    LLAMA_AVAILABLE = True
+except ImportError:
+    Llama = None
+    LLAMA_AVAILABLE = False
+
 import os
 from typing import Optional, Dict, Any
 import threading
@@ -37,7 +43,7 @@ class Model:
     ):
         """
         Initializes the GGUF model with GPU acceleration.
-        
+
         Args:
             model_path: Path to the model file
             context_size: Size of the context window
@@ -48,6 +54,9 @@ class Model:
             n_threads: Number of CPU threads
             seed: Random seed for reproducibility
         """
+        if not LLAMA_AVAILABLE:
+            raise ImportError("llama-cpp-python is not installed. Cannot use Local LLM. Please use remote API mode or install llama-cpp-python.")
+        
         try:
             # Set environment variables for GPU
             os.environ["CUDA_VISIBLE_DEVICES"] = str(main_gpu)
