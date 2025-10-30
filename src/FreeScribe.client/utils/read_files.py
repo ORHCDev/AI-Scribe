@@ -145,6 +145,45 @@ def extract_patient_name(file_name):
     
 
 
+
+def extract_patient_notes(text: str) -> str:
+    """
+    Extracts the Patient Notes section from a text blob (e.g., OSCAR eForm text).
+
+    Strategy:
+    - Look for a heading like "Patient Notes" (case-insensitive)
+    - Return content from that heading to the next known label (e.g., "Extras") or end of text
+    - If heading not found, return original text
+    """
+    try:
+        lower_text = text.lower()
+        # Identify start index
+        candidates = ["patient notes:", "patient notes"]
+        start = -1
+        for c in candidates:
+            start = lower_text.find(c)
+            if start != -1:
+                start += len(c)
+                break
+
+        if start == -1:
+            return text
+
+        # Identify end index (next known label)
+        end_labels = [
+            "extras:", "extras", "first name:", "last name:", "demographic number:",
+            "query:", "questions:", "notes end:", "end of notes"
+        ]
+        end = len(text)
+        for label in end_labels:
+            idx = lower_text.find(label, start)
+            if idx != -1:
+                end = min(end, idx)
+
+        return text[start:end].strip()
+    except Exception:
+        return text
+
 def detect_type(filename):
     """
     Identifies document type from filename keywords
@@ -171,7 +210,7 @@ def detect_type(filename):
     echo_keywords = ["ECHO"]
     holter_keywords = ["HOLTER", "heart rhythm"]
     est_keywords = ["EST", "stress"]
-    dc_keywords = ["discharge", "DC summary", "discharge summary"]
+    dc_keywords = ["discharge", "DC summary", "discharge summary", "DC"]
     or_keywords = ["OR note", "OR"]
     diag_keywords = ["diag", "Diagnostic"]
     lab_keywords = ["lab", "lab"]
