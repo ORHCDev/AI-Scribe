@@ -47,6 +47,7 @@ import atexit
 from UI.MainWindowUI import MainWindowUI
 from UI.SettingsWindow import SettingsWindow, SettingsKeys
 from UI.PromptsWindow import PromptsWindow
+from UI.OscarEforms import OscarEforms
 from UI.Widgets.CustomTextBox import CustomTextBox
 from UI.LoadingWindow import LoadingWindow
 from UI.Widgets.MicrophoneSelector import MicrophoneState
@@ -62,10 +63,86 @@ import sys
 from UI.DebugWindow import DualOutput
 import traceback
 import shutil
+import subprocess
 
 dual = DualOutput()
 sys.stdout = dual
 sys.stderr = dual
+
+"""
+#########################################################
+# THIS WILL LIKELY BE CHANGED
+def run_oscar_eform(first, last, hin):
+    # Can change these paths as needed
+    script_path = "./Oscar_eforms/main.py"
+    python_exe = "./Oscar_eforms/oscar_venv/scripts/python.exe"
+
+
+
+    # Run deidentify process
+    args = [
+        python_exe,
+        script_path,
+        str(first or ""),
+        str(last or ""),
+        str(hin or "")
+    ]
+    try:
+        result = subprocess.run(args, check=True, text=True, capture_output=True)
+        print("Script executed successfully!")
+        print("Output:\n", result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("Error occurred while running the script!")
+        print("Error:\n", e.stderr)
+
+
+
+firstname = ""
+lastname = ""
+
+def open_name_popup(root):
+    def save_name():
+        
+        firstname = first_name_entry.get().strip()
+        lastname = last_name_entry.get().strip()
+
+        res = find_details(app_settings.editable_settings['ReportMasterPath'], lastname, firstname)
+        if res:
+            _, _, _, _, demNo = res
+        else:
+            demNo = ""
+            print("Can't find patient details")
+
+        print(firstname, lastname)
+        run_oscar_eform(firstname, lastname, demNo)
+        popup.destroy()
+
+    popup = tk.Toplevel(root)
+    popup.title("Name Input")
+
+    root.update_idletasks()
+    x = root.winfo_x() + root.winfo_width() + 10
+    y = root.winfo_y()
+    popup.geometry(f"300x160+{x}+{y}")
+
+    # UI
+    ttk.Label(popup, text="First Name:").pack(pady=(10, 0))
+    first_name_entry = ttk.Entry(popup)
+    first_name_entry.pack(pady=5)
+
+    ttk.Label(popup, text="Last Name:").pack()
+    last_name_entry = ttk.Entry(popup)
+    last_name_entry.pack(pady=5)
+
+    ttk.Button(popup, text="Save", command=save_name).pack(pady=5)
+
+    popup.transient(root)
+    popup.grab_set()
+    popup.focus_force()
+
+##########################################################
+"""
+
 
 
 
@@ -73,15 +150,33 @@ sys.stderr = dual
 root = tk.Tk()
 root.title("AI Medical Scribe")
 
+
+
 # settings logic
 app_settings = SettingsWindow()
 ai_prompts = PromptsWindow(default_path=r".\UI\prompts\default_prompts.yaml", target_path=r".\UI\prompts\prompts.yaml")
 HL7_PROMPTS = ai_prompts.hl7_prompt_list
 
+oscar = OscarEforms("./UI/oscar_config/config.yaml", False)
 #  create our ui elements and settings config
-window = MainWindowUI(root, app_settings, ai_prompts)
+window = MainWindowUI(root, app_settings, ai_prompts, oscar)
 
 app_settings.set_main_window(window)
+
+"""# Will probably be changed
+root.after(100, lambda: open_name_popup(root))"""
+
+
+root.after(100, oscar.run)  # <-- no parentheses
+
+# Cleanup on window close
+def on_close():
+    oscar.cleanup()
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_close)
+
+
 
 if app_settings.editable_settings["Use Docker Status Bar"]:
     window.create_docker_status_bar()
@@ -955,7 +1050,7 @@ def generate_note(formatted_message):
                     if first_name and last_name:
                         res = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
                         if res:
-                            sex, hin, dob, name = res
+                            sex, hin, dob, name, _ = res
                             obs_date = extract_observation_date(ocr_text, doc_type)
                             hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
                         else:
@@ -1471,7 +1566,7 @@ window.load_main_window()
 
 user_input = CustomTextBox(root, height=12)
 user_input.grid(row=0, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
-
+user_input._id = "input_tbox"
 
 # Insert placeholder text
 user_input.scrolled_text.insert("1.0", "Transcript of Conversation")
