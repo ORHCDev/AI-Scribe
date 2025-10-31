@@ -184,6 +184,9 @@ def extract_patient_notes(text: str) -> str:
     except Exception:
         return text
 
+
+
+
 def detect_type(filename):
     """
     Identifies document type from filename keywords

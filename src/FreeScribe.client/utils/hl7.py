@@ -175,6 +175,7 @@ def extract_observation_date(text, doc_type):
     return
 
 
+
 def loinc_code_detector(filename): 
     """
     Identifies LOINC codes in filenames based on predefined parameter mappings
@@ -224,6 +225,7 @@ def loinc_code_detector(filename):
     else: 
         print("No matches found")
     return loinc_codes 
+
 
 
 def extra_loinc_prompt(loinc_codes, start_index, file_type): 
@@ -281,6 +283,7 @@ def extra_loinc_prompt(loinc_codes, start_index, file_type):
             extra_loincs += line
             start_index += 1
     return extra_loincs
+
 
 
 def find_details(file_path, surname, first_name, middle_name=None):
@@ -348,6 +351,7 @@ def find_details(file_path, surname, first_name, middle_name=None):
     YOB = str(first_row['YOB'])
     MOB = str(first_row['MOB']).zfill(2)  # Ensure 2-digit month
     DOB = str(first_row['DOB']).zfill(2)  # Ensure 2-digit day
+    demNo = str(first_row['DemNo'])
     name = first_row['First Name/Demographic link'] + " " + first_row['Surname/eChart']
 
     dob = YOB + MOB + DOB
@@ -357,8 +361,9 @@ def find_details(file_path, surname, first_name, middle_name=None):
     print(f"Healthcare Number: {healthcare_number}")
     print(f"Date of Birth (YYYYMMDD): {dob}")
 
-    return sex, healthcare_number, dob, name
+    return sex, healthcare_number, dob, name, demNo
       
+
 
 def generate_header(name, hin, dob, sex, date_of_message, date_of_collection):
     """

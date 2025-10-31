@@ -216,7 +216,7 @@ class AutoProcessor:
                 
                 if first_name and last_name:
                     self.log(f"Extracted Patient: {last_name}, {first_name}")
-                    sex, hin, dob, name = find_details(
+                    sex, hin, dob, name, _ = find_details(
                         self.settings.editable_settings['ReportMasterPath'], 
                         last_name, 
                         first_name
