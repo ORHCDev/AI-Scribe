@@ -1498,7 +1498,7 @@ dropdown_label = tk.Label(root, text="Select Prompt", font=("Arial", 8, "bold"))
 dropdown_label.grid(row=1, column=5, pady=5, sticky='nsew')
 
 selected_prompt = tk.StringVar(value="Auto")
-values = ["Auto", "None"] + ai_prompts.list_prompts()
+values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts()
 prompt_dropdown = ttk.Combobox(root, textvariable=selected_prompt, values=values, state="readonly")
 prompt_dropdown._id = "prompt_selector"
 prompt_dropdown.grid(row=2, column=5, pady=5, sticky='nsew')

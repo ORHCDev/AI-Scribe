@@ -135,7 +135,7 @@ class PromptsWindowUI:
 
     def refresh_dropdown(self, values):
         """Refreshes main window prompt selector"""
-        defaults = ["Auto", "None"]
+        defaults = ["Auto", "None", "Scribe"]
         for widget in self.parent.winfo_children():
             if getattr(widget, "_id", None) == "prompt_selector":
                 if values:
