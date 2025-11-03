@@ -6,14 +6,28 @@ from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from utils.hl7 import find_details
 
 class OscarEforms:
-    def __init__(self, config_path, headless=False):
+    def __init__(self, config_path, headless=False, oscar_report_path=None):
+        """
+        Initializes a selenium driver that interacts with Oscar EMR, with the intention of opening eForm
+        creation windows for searched patients.
+
+        Args
+        ----
+            config_path: Path to YAML configuration file (Will contain things like Oscar credentials and driver path)
+            headless: Boolean option to run selenium driver in headless mode
+            oscar_report_path: Path to oscarReportmasterXLS.xls (Used for patient demographic number searching)
+        
+        """
         with open(config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
 
+        self.oscar_report_path = oscar_report_path
         self.driver = None
         self.wait = None
         self.patient = None
@@ -71,7 +85,7 @@ class OscarEforms:
 
 
     def oscar_login(self):
-        """Login using credentials in config."""
+        """Login to Oscar using credentials in config."""
         try:
             # Handle privacy/SSL page if present
             try:
@@ -105,15 +119,15 @@ class OscarEforms:
 
 
 
-    def search_patient(self, first_name, last_name, demNo=None):
+    def search_patient(self, first_name, last_name, chartNo=None):
         """
         Searches for patient using demographic number or name.
         Sets self.patient if found.
         """
-        print(f"Searching for patient: {first_name} {last_name}, demNo={demNo}")
+        print(f"Searching for patient: {first_name} {last_name}, chartNo={chartNo}")
         
         # Click search button
-        if not self.search_window:
+        if self.search_window not in self.driver.window_handles:
             search_btn = self.driver.find_element(By.XPATH, "//*[@id='search']")
             search_btn.click()
             
@@ -127,10 +141,14 @@ class OscarEforms:
 
         self.driver.minimize_window()
 
-        if demNo:
+        if chartNo:
             # Search by demographic number
-            dropdown = self.driver.find_element(By.XPATH, "//*[@class='wideInput]")
+            dropdown = Select(self.driver.find_element(By.XPATH, "//*[@class='wideInput']"))
             dropdown.select_by_value("search_demographic_no")
+
+            name_input = self.driver.find_element(By.XPATH, "//*[@class='searchBox']/ul/li[2]/input")
+            name_input.send_keys(chartNo)
+            time.sleep(1)
 
         else:
             # Search by patient name: lastname, firstname
@@ -179,7 +197,7 @@ class OscarEforms:
             return
         
         print("Opening encounter page...")
-        if not self.encounter_window:
+        if self.encounter_window not in self.driver.window_handles:
             elink = self.patient.find_element(By.XPATH, "//*[@class='links']/a")
             elink.click()
 
@@ -213,9 +231,10 @@ class OscarEforms:
         """
         Opens eform library window. Requires a patient encounter window to be open
         """
-        if not self.encounter_window:
-            print("No encounter window opened, can't open eform library")
-            return
+        if self.encounter_window not in self.driver.window_handles:
+            print("No encounter window opened, reopening encounter window")
+            res = self.open_encounter()
+            if not res: return
         
         print("Opening eForm Library Window")
         try:
@@ -253,7 +272,6 @@ class OscarEforms:
             
 
 
-
     def open_eform_from_search(self, form_type):
         """
         Assumes self.patient has been found and will open encounter, eform library, and eform windows
@@ -265,3 +283,50 @@ class OscarEforms:
             self.open_eform_library()
         
         self.open_new_eform(form_type)
+
+
+
+    def open_eform_from_link(self, first_name, last_name, form_type, chartNo=None):
+        """
+        Searches for patient in the oscarReportmasterXLS.xls and gets the patients demographic number.
+        Then creates a link using demographic number and form_type to open up the eForm window directly.
+        """
+        eform_map = {
+            "0.1Rfx" : 725,
+            "1.2LabCardiac" : 659,
+        }
+
+        if not self.oscar_report_path:
+            print("Need path to oscarReportMaster")
+            return
+
+        if not chartNo:
+            res = find_details(self.oscar_report_path, last_name, first_name)
+            if res:
+                _, _, _, _, chartNo = res
+            else:
+                return
+
+        formID = eform_map.get(form_type, "")
+        if not formID:
+            return
+
+
+        link = f"https://72.137.170.174:8443/oscar/eform/efmformadd_data.jsp?fid={formID}&demographic_no={chartNo}&appointment=&parentAjaxId=eforms"
+
+        self.driver.execute_script(f"window.open('{link}', '_blank', 'width=800,height=600');")
+        return True
+        
+
+    def is_window_open(self, window):
+        """
+        Checks is given window is opened
+        """
+        cur_window = self.driver.current_window_handle
+
+        try:
+            self.driver.switch_to.window(window)
+            self.driver.switch_to.window(cur_window)
+            return True
+        except:
+            return False
