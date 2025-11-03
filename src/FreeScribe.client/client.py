@@ -63,87 +63,11 @@ import sys
 from UI.DebugWindow import DualOutput
 import traceback
 import shutil
-import subprocess
+
 
 dual = DualOutput()
 sys.stdout = dual
 sys.stderr = dual
-
-"""
-#########################################################
-# THIS WILL LIKELY BE CHANGED
-def run_oscar_eform(first, last, hin):
-    # Can change these paths as needed
-    script_path = "./Oscar_eforms/main.py"
-    python_exe = "./Oscar_eforms/oscar_venv/scripts/python.exe"
-
-
-
-    # Run deidentify process
-    args = [
-        python_exe,
-        script_path,
-        str(first or ""),
-        str(last or ""),
-        str(hin or "")
-    ]
-    try:
-        result = subprocess.run(args, check=True, text=True, capture_output=True)
-        print("Script executed successfully!")
-        print("Output:\n", result.stdout)
-    except subprocess.CalledProcessError as e:
-        print("Error occurred while running the script!")
-        print("Error:\n", e.stderr)
-
-
-
-firstname = ""
-lastname = ""
-
-def open_name_popup(root):
-    def save_name():
-        
-        firstname = first_name_entry.get().strip()
-        lastname = last_name_entry.get().strip()
-
-        res = find_details(app_settings.editable_settings['ReportMasterPath'], lastname, firstname)
-        if res:
-            _, _, _, _, demNo = res
-        else:
-            demNo = ""
-            print("Can't find patient details")
-
-        print(firstname, lastname)
-        run_oscar_eform(firstname, lastname, demNo)
-        popup.destroy()
-
-    popup = tk.Toplevel(root)
-    popup.title("Name Input")
-
-    root.update_idletasks()
-    x = root.winfo_x() + root.winfo_width() + 10
-    y = root.winfo_y()
-    popup.geometry(f"300x160+{x}+{y}")
-
-    # UI
-    ttk.Label(popup, text="First Name:").pack(pady=(10, 0))
-    first_name_entry = ttk.Entry(popup)
-    first_name_entry.pack(pady=5)
-
-    ttk.Label(popup, text="Last Name:").pack()
-    last_name_entry = ttk.Entry(popup)
-    last_name_entry.pack(pady=5)
-
-    ttk.Button(popup, text="Save", command=save_name).pack(pady=5)
-
-    popup.transient(root)
-    popup.grab_set()
-    popup.focus_force()
-
-##########################################################
-"""
-
-
 
 
 # GUI Setup
@@ -157,14 +81,11 @@ app_settings = SettingsWindow()
 ai_prompts = PromptsWindow(default_path=r".\UI\prompts\default_prompts.yaml", target_path=r".\UI\prompts\prompts.yaml")
 HL7_PROMPTS = ai_prompts.hl7_prompt_list
 
-oscar = OscarEforms("./UI/oscar_config/config.yaml", False)
+oscar = OscarEforms("./UI/oscar_config/config.yaml", oscar_report_path=app_settings.editable_settings["ReportMasterPath"])
 #  create our ui elements and settings config
 window = MainWindowUI(root, app_settings, ai_prompts, oscar)
 
 app_settings.set_main_window(window)
-
-"""# Will probably be changed
-root.after(100, lambda: open_name_popup(root))"""
 
 
 root.after(100, oscar.run)  # <-- no parentheses
