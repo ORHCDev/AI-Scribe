@@ -1191,6 +1191,7 @@ def set_full_view():
     dropdown_label.grid()
     prompt_dropdown.grid()
     upload_file_button.grid()
+    download_file_btn.grid()
     upload_button.grid()
     response_display.grid()
     timestamp_listbox.grid()
@@ -1261,6 +1262,7 @@ def set_minimal_view():
     dropdown_label.grid_remove()
     prompt_dropdown.grid_remove()
     upload_file_button.grid_remove()
+    download_file_btn.grid_remove()
     auto_process_button.grid_remove()
     auto_process_tbox.grid_remove()
     upload_button.grid_remove()
@@ -1363,7 +1365,7 @@ def set_auto_view():
     # Hide all other UI elements
     for widget in [
         user_input, send_button, clear_button, dropdown_label, prompt_dropdown,
-        upload_file_button, upload_button, response_display, timestamp_listbox,
+        upload_file_button, download_file_btn, upload_button, response_display, timestamp_listbox,
         blinking_circle_canvas, mic_button, pause_button, switch_view_button
     ]:
         widget.grid_remove()
