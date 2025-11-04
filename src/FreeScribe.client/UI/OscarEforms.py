@@ -126,6 +126,17 @@ class OscarEforms:
         """
         print(f"Searching for patient: {first_name} {last_name}, chartNo={chartNo}")
         
+        # Close patient encounter and eform library windows if opened and clear patient
+        if self.is_window_opened(self.encounter_window):
+            self.close_window(self.encounter_window)
+            self.encounter_window = None
+
+        if self.is_window_opened(self.eform_lib_window):
+            self.close_window(self.eform_lib_window) 
+            self.eform_lib_window = None
+
+        self.patient = None
+
         # Click search button
         if self.search_window not in self.driver.window_handles:
             search_btn = self.driver.find_element(By.XPATH, "//*[@id='search']")
@@ -152,6 +163,9 @@ class OscarEforms:
 
         else:
             # Search by patient name: lastname, firstname
+            dropdown = Select(self.driver.find_element(By.XPATH, "//*[@class='wideInput']"))
+            dropdown.select_by_value("search_name")
+
             name = f"{last_name}, {first_name}"
             name_input = self.driver.find_element(By.XPATH, "//*[@class='searchBox']/ul/li[2]/input")
             name_input.send_keys(name)
@@ -179,6 +193,11 @@ class OscarEforms:
             print("Found single patient")
             patient = rows[1]
             self.patient = patient
+
+            # Open encounter and eform library pages
+            self.open_encounter()
+            time.sleep(1)
+            self.open_eform_library()
             return True
         
         # Multiple patients found
@@ -197,7 +216,7 @@ class OscarEforms:
             return
         
         print("Opening encounter page...")
-        if self.encounter_window not in self.driver.window_handles:
+        if not self.is_window_opened(self.encounter_window):
             elink = self.patient.find_element(By.XPATH, "//*[@class='links']/a")
             elink.click()
 
@@ -231,14 +250,14 @@ class OscarEforms:
         """
         Opens eform library window. Requires a patient encounter window to be open
         """
-        if self.encounter_window not in self.driver.window_handles:
+        if not self.is_window_opened(self.encounter_window):
             print("No encounter window opened, reopening encounter window")
             res = self.open_encounter()
             if not res: return
         
         print("Opening eForm Library Window")
         try:
-            if not self.eform_lib_window:
+            if not self.is_window_opened(self.eform_lib_window):
                 eform_btn = self.driver.find_element(By.XPATH, "//*[@id='menuTitleeforms']/h3")
                 eform_btn.click()
 
@@ -259,8 +278,9 @@ class OscarEforms:
         """
         Opens the specified eForm type. Requires self.eform_lib_window to be open
         """
-        if not self.eform_lib_window:
-            print("No eForm Library window opened, can't open a new eForm")
+        if not self.is_window_opened(self.eform_lib_window):
+            print("No eForm Library window opened, attempting to open eForm library window")
+            self.open_eform_library()
             return
 
         try:
@@ -277,9 +297,9 @@ class OscarEforms:
         Assumes self.patient has been found and will open encounter, eform library, and eform windows
         if not already opened
         """
-        if not self.encounter_window:
+        if not self.is_window_opened(self.encounter_window):
             self.open_encounter()
-        if not self.eform_lib_window:
+        if not self.is_window_opened(self.eform_lib_window):
             self.open_eform_library()
         
         self.open_new_eform(form_type)
@@ -318,15 +338,48 @@ class OscarEforms:
         return True
         
 
-    def is_window_open(self, window):
+    def is_window_opened(self, window):
         """
         Checks is given window is opened
         """
+        if not window: return False
+        
         cur_window = self.driver.current_window_handle
-
+        
         try:
             self.driver.switch_to.window(window)
             self.driver.switch_to.window(cur_window)
             return True
+        except:
+            return False
+        
+    def close_window(self, window):
+        """
+        Closes the given window. Assumes window is opened.
+
+        If window to be closed is the drivers current window, will switch driver focus
+        to last window in window_handles.
+
+        Args
+        ----
+            window: window to be closed
+
+        Returns
+        -------
+            Returns True if successfully closed window, False otherwise
+        """
+        try:
+            cur_window = self.driver.current_window_handle
+            if cur_window == window:
+                self.driver.close()
+                # Switch to last window
+                self.driver.switch_to.window(self.driver.window_handles[-1])
+            else:
+                self.driver.switch_to.window(window)
+                self.driver.close()
+                self.driver.switch_to.window(cur_window)
+
+            return True
+        
         except:
             return False
