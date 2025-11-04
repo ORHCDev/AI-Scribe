@@ -1461,6 +1461,37 @@ def read_file_text():
     if file_path:
         threaded_file_reading()  # Add this line to process the file immediately
 
+def download_transcript():
+    """
+    Downloads AI outputted text as either a .txt file or .hl7 file.
+    """
+    # If file was uploaded, create default file name based on pdf name
+    default_name = ""
+    if file_path:
+        default_name = os.path.basename(file_path)
+
+    # User select file path and type (for now only hl7s and txts)
+    download_path = filedialog.asksaveasfilename(
+        title="Save Downloaded File As",
+        defaultextension=".hl7",
+        filetypes=[("HL7 Files", "*.hl7"), ("Text Files", "*.txt")],
+        initialfile=default_name
+    )
+
+    if download_path:
+        print("File will be saved as:", download_path)
+    else:
+        print("No file selected")
+        return
+
+    # Get AI response text
+    text = response_display.scrolled_text.get("1.0", tk.END).strip()
+
+    # Right text to selected path
+    with open(download_path, "w") as f:
+        f.write(text)
+
+
 # Configure grid weights for scalability
 root.grid_columnconfigure(0, weight=1, minsize= 10)
 root.grid_columnconfigure(1, weight=1)
@@ -1531,7 +1562,10 @@ auto_process_button.grid(row=2, column=7, pady=5, rowspan=1, sticky='nsew')
 auto_process_tbox = CustomTextBox(root, height=12)
 
 upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
-upload_file_button.grid(row=1, column=8, pady=5, rowspan=2, sticky='nsew')
+upload_file_button.grid(row=1, column=8, pady=5, rowspan=1, sticky='nsew')
+
+download_file_btn = tk.Button(root, text="Download \nTranscript", command=download_transcript, height=2, width=11)
+download_file_btn.grid(row=2, column=8, pady=5, rowspan=1, sticky="nsew")
 
 blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
 blinking_circle_canvas.grid(row=1, column=9, rowspan=2, pady=5)
