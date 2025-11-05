@@ -1468,8 +1468,9 @@ def download_transcript():
     Downloads AI outputted text as either a .txt file or .hl7 file.
     """
     # If file was uploaded, create default file name based on pdf name
+    global file_path
     default_name = ""
-    if file_path:
+    if 'file_path' in globals() and file_path:
         default_name = os.path.basename(file_path)
 
     # User select file path and type (for now only hl7s and txts)
