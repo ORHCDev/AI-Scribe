@@ -1463,7 +1463,7 @@ def read_file_text():
     if file_path:
         threaded_file_reading()  # Add this line to process the file immediately
 
-def download_transcript():
+def download_results():
     """
     Downloads AI outputted text as either a .txt file or .hl7 file.
     """
@@ -1567,7 +1567,7 @@ auto_process_tbox = CustomTextBox(root, height=12)
 upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
 upload_file_button.grid(row=1, column=8, pady=5, rowspan=1, sticky='nsew')
 
-download_file_btn = tk.Button(root, text="Download \nTranscript", command=download_transcript, height=2, width=11)
+download_file_btn = tk.Button(root, text="Download \Results", command=download_results, height=2, width=11)
 download_file_btn.grid(row=2, column=8, pady=5, rowspan=1, sticky="nsew")
 
 blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
