@@ -1567,7 +1567,7 @@ auto_process_tbox = CustomTextBox(root, height=12)
 upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
 upload_file_button.grid(row=1, column=8, pady=5, rowspan=1, sticky='nsew')
 
-download_file_btn = tk.Button(root, text="Download \Results", command=download_results, height=2, width=11)
+download_file_btn = tk.Button(root, text="Download \nResults", command=download_results, height=2, width=11)
 download_file_btn.grid(row=2, column=8, pady=5, rowspan=1, sticky="nsew")
 
 blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
