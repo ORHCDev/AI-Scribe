@@ -35,3 +35,4 @@ oscar_done/
 oscar_failed/
 
 src/FreeScribe.client/UI/prompts/prompts.yaml
+src/FreeScribe.client/UI/oscar_config/config.yaml
