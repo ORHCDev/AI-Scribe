@@ -47,6 +47,7 @@ import atexit
 from UI.MainWindowUI import MainWindowUI
 from UI.SettingsWindow import SettingsWindow, SettingsKeys
 from UI.PromptsWindow import PromptsWindow
+from UI.OscarEforms import OscarEforms
 from UI.Widgets.CustomTextBox import CustomTextBox
 from UI.LoadingWindow import LoadingWindow
 from UI.Widgets.MicrophoneSelector import MicrophoneState
@@ -63,25 +64,40 @@ from UI.DebugWindow import DualOutput
 import traceback
 import shutil
 
+
 dual = DualOutput()
 sys.stdout = dual
 sys.stderr = dual
-
 
 
 # GUI Setup
 root = tk.Tk()
 root.title("AI Medical Scribe")
 
+
+
 # settings logic
 app_settings = SettingsWindow()
 ai_prompts = PromptsWindow(default_path=r".\UI\prompts\default_prompts.yaml", target_path=r".\UI\prompts\prompts.yaml")
 HL7_PROMPTS = ai_prompts.hl7_prompt_list
 
+oscar = OscarEforms("./UI/oscar_config/config.yaml", oscar_report_path=app_settings.editable_settings["ReportMasterPath"])
 #  create our ui elements and settings config
-window = MainWindowUI(root, app_settings, ai_prompts)
+window = MainWindowUI(root, app_settings, ai_prompts, oscar)
 
 app_settings.set_main_window(window)
+
+
+root.after(100, oscar.run)  # <-- no parentheses
+
+# Cleanup on window close
+def on_close():
+    oscar.cleanup()
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_close)
+
+
 
 if app_settings.editable_settings["Use Docker Status Bar"]:
     window.create_docker_status_bar()
@@ -955,7 +971,7 @@ def generate_note(formatted_message):
                     if first_name and last_name:
                         res = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
                         if res:
-                            sex, hin, dob, name = res
+                            sex, hin, dob, name, _ = res
                             obs_date = extract_observation_date(ocr_text, doc_type)
                             hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
                         else:
@@ -1175,6 +1191,7 @@ def set_full_view():
     dropdown_label.grid()
     prompt_dropdown.grid()
     upload_file_button.grid()
+    download_file_btn.grid()
     upload_button.grid()
     response_display.grid()
     timestamp_listbox.grid()
@@ -1245,6 +1262,7 @@ def set_minimal_view():
     dropdown_label.grid_remove()
     prompt_dropdown.grid_remove()
     upload_file_button.grid_remove()
+    download_file_btn.grid_remove()
     auto_process_button.grid_remove()
     auto_process_tbox.grid_remove()
     upload_button.grid_remove()
@@ -1347,7 +1365,7 @@ def set_auto_view():
     # Hide all other UI elements
     for widget in [
         user_input, send_button, clear_button, dropdown_label, prompt_dropdown,
-        upload_file_button, upload_button, response_display, timestamp_listbox,
+        upload_file_button, download_file_btn, upload_button, response_display, timestamp_listbox,
         blinking_circle_canvas, mic_button, pause_button, switch_view_button
     ]:
         widget.grid_remove()
@@ -1445,6 +1463,38 @@ def read_file_text():
     if file_path:
         threaded_file_reading()  # Add this line to process the file immediately
 
+def download_results():
+    """
+    Downloads AI outputted text as either a .txt file or .hl7 file.
+    """
+    # If file was uploaded, create default file name based on pdf name
+    global file_path
+    default_name = ""
+    if 'file_path' in globals() and file_path:
+        default_name = os.path.basename(file_path)
+
+    # User select file path and type (for now only hl7s and txts)
+    download_path = filedialog.asksaveasfilename(
+        title="Save Downloaded File As",
+        defaultextension=".hl7",
+        filetypes=[("HL7 Files", "*.hl7"), ("Text Files", "*.txt")],
+        initialfile=default_name
+    )
+
+    if download_path:
+        print("File will be saved as:", download_path)
+    else:
+        print("No file selected")
+        return
+
+    # Get AI response text
+    text = response_display.scrolled_text.get("1.0", tk.END).strip()
+
+    # Right text to selected path
+    with open(download_path, "w") as f:
+        f.write(text)
+
+
 # Configure grid weights for scalability
 root.grid_columnconfigure(0, weight=1, minsize= 10)
 root.grid_columnconfigure(1, weight=1)
@@ -1471,7 +1521,7 @@ window.load_main_window()
 
 user_input = CustomTextBox(root, height=12)
 user_input.grid(row=0, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
-
+user_input._id = "input_tbox"
 
 # Insert placeholder text
 user_input.scrolled_text.insert("1.0", "Transcript of Conversation")
@@ -1515,7 +1565,10 @@ auto_process_button.grid(row=2, column=7, pady=5, rowspan=1, sticky='nsew')
 auto_process_tbox = CustomTextBox(root, height=12)
 
 upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
-upload_file_button.grid(row=1, column=8, pady=5, rowspan=2, sticky='nsew')
+upload_file_button.grid(row=1, column=8, pady=5, rowspan=1, sticky='nsew')
+
+download_file_btn = tk.Button(root, text="Download \nResults", command=download_results, height=2, width=11)
+download_file_btn.grid(row=2, column=8, pady=5, rowspan=1, sticky="nsew")
 
 blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
 blinking_circle_canvas.grid(row=1, column=9, rowspan=2, pady=5)
