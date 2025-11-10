@@ -152,7 +152,7 @@ class OscarEformsUI:
 
         for key, val in eform_map.items():
             if key in text:
-                self.open_eform(val, bylink=bylink)
+                self.open_single_eform(val, bylink=bylink)
 
 
 
