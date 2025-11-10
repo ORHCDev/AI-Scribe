@@ -88,7 +88,7 @@ window = MainWindowUI(root, app_settings, ai_prompts, oscar)
 app_settings.set_main_window(window)
 
 
-root.after(100, oscar.run)  # <-- no parentheses
+root.after(100, oscar.run)
 
 # Cleanup on window close
 def on_close():

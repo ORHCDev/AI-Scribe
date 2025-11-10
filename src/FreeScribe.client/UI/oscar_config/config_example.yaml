@@ -2,7 +2,9 @@ oscar_credentials :
   username : "User"
   password : "Password"
   pin : "Pin"
-
 url : "https://oscar_url"
-
 driver_path :  "C:\\Path\\To\\geckodriver.exe"
+eForms : 
+  0.1Rfx : 725
+  1.2LabCardiac : 659
+  
