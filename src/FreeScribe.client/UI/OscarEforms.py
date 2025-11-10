@@ -1,7 +1,7 @@
-
-
 import yaml
 import time
+import re
+
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -24,14 +24,24 @@ class OscarEforms:
             oscar_report_path: Path to oscarReportmasterXLS.xls (Used for patient demographic number searching)
         
         """
-        with open(config_path, "r", encoding="utf-8") as f:
+        self.config_path = config_path
+        with open(self.config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
 
         self.oscar_report_path = oscar_report_path
+        self.default_eforms = {"Auto" : ""}
+        try:
+            self.eforms = self.default_eforms | self.config['eForms']
+        except:
+            self.eforms = self.default_eforms
         self.driver = None
         self.wait = None
         self.patient = None
 
+        # Links
+        self.eform_lib_link = "https://72.137.170.174:8443/oscar/eform/efmformslistadd.jsp"
+        self.eform_link_template = "https://72.137.170.174:8443/oscar/eform/efmformadd_data.jsp?fid={formID}&demographic_no={chartNo}&appointment=&parentAjaxId=eforms"
+        
         # Windows
         self.home_window = None
         self.search_window = None
@@ -311,10 +321,6 @@ class OscarEforms:
         Searches for patient in the oscarReportmasterXLS.xls and gets the patients demographic number.
         Then creates a link using demographic number and form_type to open up the eForm window directly.
         """
-        eform_map = {
-            "0.1Rfx" : 725,
-            "1.2LabCardiac" : 659,
-        }
 
         if not self.oscar_report_path:
             print("Need path to oscarReportMaster")
@@ -327,16 +333,61 @@ class OscarEforms:
             else:
                 return
 
-        formID = eform_map.get(form_type, "")
+        formID = self.eforms.get(form_type, "")
         if not formID:
+            print(f"No form ID for {form_type}")
             return
 
-
-        link = f"https://72.137.170.174:8443/oscar/eform/efmformadd_data.jsp?fid={formID}&demographic_no={chartNo}&appointment=&parentAjaxId=eforms"
+        link = self.eform_link_template.format(formID=formID, chartNo=chartNo)
 
         self.driver.execute_script(f"window.open('{link}', '_blank', 'width=800,height=600');")
         return True
         
+
+    def scan_and_update_eforms(self):
+        """
+        Opens eForm library in Oscar EMR then scans and saves the all the eForm names
+        as a dictionary in the passed config file. Stores eForm name and corresponding form ID.
+        """
+
+        # Open and switch to eForm library window
+        self.driver.execute_script(f"window.open('{self.eform_lib_link}', '_blank', 'width=800,height=600');")
+        self.driver.switch_to.window(self.driver.window_handles[-1])
+        
+        # Get list of all eForm WebElements
+        eforms = self.wait.until(
+            EC.presence_of_all_elements_located((By.XPATH, "//*[@id='scrollNumber1']/tbody/tr[2]/td[2]/table/tbody/tr"))
+        )
+        
+        # Extract eForm names
+        eform_dict = {}
+        for eform in eforms[1:]:
+            try:
+                # eForm name
+                td = eform.find_element(By.XPATH, "./td[1]")
+                eform_name = td.text.strip()
+                
+                # eForm ID
+                a = td.find_element(By.XPATH, "./a")
+                onclick_value = a.get_attribute("onclick")
+                match = re.search(r"fid=(\d+)", onclick_value)
+                if match:
+                    fid = match.group(1)
+                
+                eform_dict[eform_name] = fid                
+            except:
+                pass
+            
+        # Save list to config file
+        self.eforms = self.default_eforms | eform_dict
+        self.config["eForms"] = self.eforms
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(self.config, f, sort_keys=False, allow_unicode=True, indent=2)
+
+        # Close eForm library window
+        self.driver.close()
+        self.driver.switch_to.window(self.driver.window_handles[-1])
+
 
     def is_window_opened(self, window):
         """
@@ -352,7 +403,8 @@ class OscarEforms:
             return True
         except:
             return False
-        
+
+
     def close_window(self, window):
         """
         Closes the given window. Assumes window is opened.

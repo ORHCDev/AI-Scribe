@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from UI.Widgets.SearchableSelector import SearchableComboBox
 
 class OscarEformsUI:
     def __init__(self, parent, oscar):
@@ -56,31 +57,27 @@ class OscarEformsUI:
         self.chartno_entry.grid(row=1, column=2, padx=5, pady=5, sticky="nsew")
         
 
+
+        # --- EFORM DROPDOWN --- #
+        self.eform_var = tk.StringVar(value="Auto")
+        values = list(self.oscar.eforms.keys())
+        self.eform_selector = SearchableComboBox(frame, textvariable=self.eform_var, values=values)
+        self.eform_selector.grid(row=2, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
+
+
+
         # --- BUTTONS --- #
-        # Search Via Oscar
-        self.search_oscar = ttk.Button(frame, text="Oscar Search", command=self.search_patient, width=18)
-        self.search_oscar.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
+        # Open eForms by navigating Oscar
+        self.search_eform = ttk.Button(frame, text="Search eForm", command=self.open_eforms, width=18)
+        self.search_eform.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
 
-        # Eform buttons (initially disabled until a patient has been found)
-        self.rfx_btn = ttk.Button(frame, text="Oscar Rfx", command=lambda: self.open_eform("0.1Rfx"), state='disabled', width=18)
-        self.rfx_btn.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
+        # Open eForms by link
+        self.link_eform = ttk.Button(frame, text="Link eForm", command=lambda: self.open_eforms(True), width=18)
+        self.link_eform.grid(row=3, column=1, padx=5, pady=5, sticky="nsew")
 
-        self.lab_btn = ttk.Button(frame, text="Oscar Lab", command=lambda: self.open_eform("1.2LabCardiac"), state='disabled', width=18)
-        self.lab_btn.grid(row=4, column=0, padx=5, pady=5, sticky="nsew")
-
-        self.eform_btn = ttk.Button(frame, text="Oscar eForms", command=self.open_all_eforms, state='disabled', width=18)
-        self.eform_btn.grid(row=5, column=0, padx=5, pady=5, sticky="nsew")
-
-
-        # Search Via Link
-        self.eform_link_btn = ttk.Button(frame, text="Link eForms", command=lambda: self.open_all_eforms(bylink=True), width=18)
-        self.eform_link_btn.grid(row=2, column=2, padx=5, pady=5, sticky="nsew")
-
-        self.rfx_link_btn = ttk.Button(frame, text="Link Rfx", command=lambda: self.open_eform("0.1Rfx", bylink=True), width=18)
-        self.rfx_link_btn.grid(row=3, column=2, padx=5, pady=5, sticky="nsew")
-
-        self.lab_link_btn = ttk.Button(frame, text="Link Lab", command=lambda: self.open_eform("1.2LabCardiac", bylink=True), width=18)
-        self.lab_link_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
+        # Scan eForm library for all eForms and load them into dropdown selector
+        self.eform_scan = ttk.Button(frame, text="eForm Scan", command=self.scan_eforms, width=18)
+        self.eform_scan.grid(row=3, column=2, padx=5, pady=5, sticky="nsew")
 
 
         # Focus first entry
@@ -103,17 +100,15 @@ class OscarEformsUI:
             return
 
         # Call OscarEforms search method
-        success = self.oscar.search_patient(first, last, chartNo)
+        res = self.oscar.search_patient(first, last, chartNo)
 
-        if success:
-            messagebox.showinfo("Search Result", f"Patient {first} {last} found!", parent=self.window)
-            self.eform_btn.config(state='normal')
-            self.lab_btn.config(state='normal')
-            self.rfx_btn.config(state='normal')
-        else:
+        if not res:
             messagebox.showerror("Search Result", f"Patient {first} {last} not found.", parent=self.window)
 
-    def open_eform(self, type, bylink=False):
+        return res
+
+
+    def open_single_eform(self, type, bylink=False):
         """
         Opens eForm window for creating a new eForm.
 
@@ -126,6 +121,8 @@ class OscarEformsUI:
             If True, will open eForm via link creation rather than selenium navigation
         """
         if not bylink:
+            res = self.search_patient()
+            if not res: return
             self.oscar.open_eform_from_search(type)
 
         else:
@@ -157,4 +154,34 @@ class OscarEformsUI:
             if key in text:
                 self.open_eform(val, bylink=bylink)
 
+
+
+
+    def open_eforms(self, bylink=False):
+        """Opens eform window(s)"""
+        eform = self.eform_var.get()
+
+        if eform == "Auto":
+            self.open_all_eforms(bylink)
+        else:
+            self.open_single_eform(eform, bylink)
+     
+
+    def scan_eforms(self):
+        """
+        Opens eForm library page, scans eForm names and form IDs and updates
+        dropdown to all scanned eForms.
+        """
+        # Ask for confirmation before scanning
+        confirm = messagebox.askyesno(
+            "Confirm Scan",
+            f"Are you sure you want to scan all eforms?",
+            parent=self.window
+        )
+
+        if not confirm:
+          return  # User cancelled
+        
+        self.oscar.scan_and_update_eforms()
+        self.eform_selector.set_values(self.oscar.eforms.keys())
         
