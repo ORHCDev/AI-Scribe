@@ -260,12 +260,12 @@ class MainWindowUI:
     def _create_oscar_menu(self):
         # Add Prompt menu
         oscar_menu = tk.Menu(self.menu_bar, tearoff=0)
-        self.menu_bar.add_cascade(label="Oscar", menu=oscar_menu)
-        oscar_menu.add_command(label="Oscar", command=lambda: OscarEformsUI(self.root, self.oscar))
+        self.menu_bar.add_cascade(label="eForms", menu=oscar_menu)
+        oscar_menu.add_command(label="eForms", command=lambda: OscarEformsUI(self.root, self.oscar))
         
     def _destroy_oscar_menu(self):
         if self.menu_bar is not None:
-            oscar_menu = self.menu_bar.nametowidget('Oscar')
+            oscar_menu = self.menu_bar.nametowidget('eForms')
             if oscar_menu is not None:
                 oscar_menu.destroy()
 
