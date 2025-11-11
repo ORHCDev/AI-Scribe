@@ -473,10 +473,6 @@ class OscarEforms:
             except Exception as e:
                 print(f"error: {e}")
 
-        
-
-        with open("0letter.txt", "w") as f:
-            f.write(text)
         return text
         
 
