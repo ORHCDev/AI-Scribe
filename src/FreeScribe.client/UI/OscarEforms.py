@@ -39,8 +39,9 @@ class OscarEforms:
         self.patient = None
 
         # Links
-        self.eform_lib_link = "https://72.137.170.174:8443/oscar/eform/efmformslistadd.jsp"
-        self.eform_link_template = "https://72.137.170.174:8443/oscar/eform/efmformadd_data.jsp?fid={formID}&demographic_no={chartNo}&appointment=&parentAjaxId=eforms"
+        url = self.config['url'].rsplit('/', 1)[0]
+        self.eform_lib_link = url + "/eform/efmformslistadd.jsp"
+        self.eform_link_template = url + "/eform/efmformadd_data.jsp?fid={formID}&demographic_no={chartNo}&appointment=&parentAjaxId=eforms"
         
         # Windows
         self.home_window = None
@@ -129,7 +130,7 @@ class OscarEforms:
 
 
 
-    def search_patient(self, first_name, last_name, chartNo=None):
+    def search_patient(self, first_name, last_name, chartNo=None, open_encounter=True, open_eform_lib=True):
         """
         Searches for patient using demographic number or name.
         Sets self.patient if found.
@@ -205,9 +206,9 @@ class OscarEforms:
             self.patient = patient
 
             # Open encounter and eform library pages
-            self.open_encounter()
+            if open_encounter: self.open_encounter()
             time.sleep(1)
-            self.open_eform_library()
+            if open_eform_lib: self.open_eform_library()
             return True
         
         # Multiple patients found
@@ -342,7 +343,8 @@ class OscarEforms:
 
         self.driver.execute_script(f"window.open('{link}', '_blank', 'width=800,height=600');")
         return True
-        
+
+
 
     def scan_and_update_eforms(self):
         """
@@ -389,6 +391,96 @@ class OscarEforms:
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
 
+    def read_0letters(self):
+        """
+        Will read and return the text from all patient 0letter eForms on the patients encounter page.
+        Requires patients encounter page to be opened.
+        """
+
+        # Return if patient's encounter page isn't opened
+        if not self.is_window_opened(self.encounter_window):
+            # Try to open
+            try:
+                self.open_encounter()
+            except:
+                print("Requires patient encounter window to be opened")
+                return
+        
+        # Switch to encounter window
+        self.driver.switch_to.window(self.encounter_window)
+
+        # Grab all of patients eForm WebElements
+        try:
+            eforms = self.wait.until(
+                EC.presence_of_all_elements_located((By.XPATH, "//*[@id='eformslist']/li"))
+            )
+        except Exception as e:
+            print("Could not find patient's eForms: {e}")
+            return 
+
+
+        # Get fdids from 0letter eForms
+        fdids = []
+        for eform in eforms:
+            try:
+                # eForm name
+                a = eform.find_element(By.XPATH, "./span[1]/a")
+                eform_name = a.text.strip()
+                print(f"Eform: {eform_name}")
+
+                if "letter" in eform_name:
+                    # eForm fdIDs
+                    onclick_value = a.get_attribute("onclick")
+                    match = re.search(r"fdid=(\d+)", onclick_value)
+                    if match:
+                        fdids.append(match.group(1))
+                    
+            except Exception as e:
+                print(f"Error: {e}")
+
+        # Extract text from 0letter eForms
+        text = ""
+        for fdid in fdids:
+            try:
+                # Find eForm by fdid
+                print(f"Eform fdid: {fdid}")
+                xpath = f"//a[contains(@onclick, 'fdid={fdid}')]"
+                a = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                
+                # Open 0letter eForm 
+                a.click()
+                self.switch_to_last()
+                
+                # Find and switch to iframe
+                iframe = self.wait.until(
+                    EC.presence_of_element_located((By.XPATH, "//iframe"))
+                )
+                self.driver.switch_to.frame(iframe)
+                
+                # Find and extract text from iframe body (the 0letter text)
+                letter = self.wait.until(
+                    EC.presence_of_element_located((By.XPATH, "/html/body"))
+                )
+                text += letter.text.strip()
+
+                # Switch out of iframe
+                self.driver.switch_to.default_content()
+                
+                # Close 0letter window
+                self.driver.close()
+                self.driver.switch_to.window(self.encounter_window)
+                    
+            except Exception as e:
+                print(f"error: {e}")
+
+        
+
+        with open("0letter.txt", "w") as f:
+            f.write(text)
+        return text
+        
+
+
     def is_window_opened(self, window):
         """
         Checks is given window is opened
@@ -403,6 +495,7 @@ class OscarEforms:
             return True
         except:
             return False
+
 
 
     def close_window(self, window):
@@ -435,3 +528,8 @@ class OscarEforms:
         
         except:
             return False
+        
+
+    def switch_to_last(self):
+        """Switches driver foces to last window in window handles"""
+        self.driver.switch_to.window(self.driver.window_handles[-1])

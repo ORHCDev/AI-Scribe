@@ -79,13 +79,17 @@ class OscarEformsUI:
         self.eform_scan = ttk.Button(frame, text="eForm Scan", command=self.scan_eforms, width=18)
         self.eform_scan.grid(row=3, column=2, padx=5, pady=5, sticky="nsew")
 
+        # Read 0letters
+        self.letter_btn = ttk.Button(frame, text="Read 0letter", command=self.read_0letter, width=18)
+        self.letter_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
+
 
         # Focus first entry
         self.first_name_entry.focus_set()
 
 
 
-    def search_patient(self):
+    def search_patient(self, open_encounter=True, open_eform_lib=True):
         """
         Gets input from first name, last name, and chart number entries and calls OscarEforms search_patient() method
         which opens the Oscar search window and searches for patient.
@@ -100,7 +104,13 @@ class OscarEformsUI:
             return
 
         # Call OscarEforms search method
-        res = self.oscar.search_patient(first, last, chartNo)
+        res = self.oscar.search_patient(
+            first, 
+            last, 
+            chartNo, 
+            open_encounter=open_encounter,
+            open_eform_lib=open_eform_lib
+        )
 
         if not res:
             messagebox.showerror("Search Result", f"Patient {first} {last} not found.", parent=self.window)
@@ -155,8 +165,6 @@ class OscarEformsUI:
                 self.open_single_eform(val, bylink=bylink)
 
 
-
-
     def open_eforms(self, bylink=False):
         """Opens eform window(s)"""
         eform = self.eform_var.get()
@@ -185,3 +193,21 @@ class OscarEformsUI:
         self.oscar.scan_and_update_eforms()
         self.eform_selector.set_values(self.oscar.eforms.keys())
         
+
+    def read_0letter(self):
+        """Reads patient's 0letters and pastes the text in the input box"""
+        # Search for patient
+        res = self.search_patient(open_eform_lib=False)
+        if not res: return
+        # Read 0letter text
+        text = self.oscar.read_0letters()
+        if not text: return
+        # Paste text in input box
+        for widget in self.parent.winfo_children():
+            if getattr(widget, "_id", None) == "input_tbox":
+                # Display 0letter text
+                widget.scrolled_text.delete("1.0", tk.END)
+                widget.scrolled_text.insert(tk.END, text)
+
+
+
