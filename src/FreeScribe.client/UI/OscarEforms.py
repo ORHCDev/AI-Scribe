@@ -60,19 +60,15 @@ class OscarEforms:
         self.wait = None
         self.patient = None
         try:
-            profile = webdriver.FirefoxProfile()
-
-            # Always save PDF files to disk
-            profile = webdriver.FirefoxProfile()
-            profile.set_preference("browser.download.folderList", 2)
-            profile.set_preference("browser.download.dir", self.temp_pdf_folder)
-            profile.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/pdf")
-            profile.set_preference("pdfjs.disabled", True)
-            profile.set_preference("browser.download.manager.showWhenStarting", False)
-
 
             options = FirefoxOptions()
-            options.profile = profile
+           
+            options.set_preference("browser.download.folderList", 2)
+            options.set_preference("browser.download.dir", self.temp_pdf_folder)
+            options.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/pdf")
+            options.set_preference("pdfjs.disabled", True)
+            options.set_preference("browser.download.manager.showWhenStarting", False)
+
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--ignore-ssl-errors')
             if headless:
@@ -524,6 +520,7 @@ class OscarEforms:
         res = self.switch_to_encounter()
         if not res: return
 
+        doc_dict = {}
         try:
             # Expand document section
             expand_arrow = self.wait.until(
@@ -533,7 +530,6 @@ class OscarEforms:
             time.sleep(2)
 
             docs_count = len(self.driver.find_elements(By.XPATH, "//*[@id='docslist']/li"))
-            doc_dict = {}
 
             for i in range(1, docs_count+1):
                 a = self.wait.until(
@@ -724,6 +720,7 @@ class OscarEforms:
         if not res: return
         try:
             letter = self.read_0letters(num=1)
+            time.sleep(2)
             docs = self.read_dcs_and_angiograms()
 
             text = "0Letter:\n" + letter + "\n\n\n" + docs
