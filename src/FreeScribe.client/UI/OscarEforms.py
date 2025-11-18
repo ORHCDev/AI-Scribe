@@ -1,6 +1,7 @@
 import yaml
 import time
 import re
+import os
 
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
@@ -10,6 +11,7 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from utils.hl7 import find_details
+from utils.read_files import pdf_image_to_text
 
 class OscarEforms:
     def __init__(self, config_path, headless=False, oscar_report_path=None):
@@ -21,37 +23,56 @@ class OscarEforms:
         ----
             config_path: Path to YAML configuration file (Will contain things like Oscar credentials and driver path)
             headless: Boolean option to run selenium driver in headless mode
-            oscar_report_path: Path to oscarReportmasterXLS.xls (Used for patient demographic number searching)
+            oscar_report_path: Path to oscarReportmasterXLS.xls (Used for patient chart number searching)
         
         """
+        # Load config file
         self.config_path = config_path
         with open(self.config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
 
-        self.oscar_report_path = oscar_report_path
+        # PDF path for downloading files off of Oscar
+        self.temp_pdf_folder = self.config['pdf_path']
+        os.makedirs(self.temp_pdf_folder, exist_ok=True)
+
+        # eForms
         self.default_eforms = {"Auto" : ""}
         try:
             self.eforms = self.default_eforms | self.config['eForms']
         except:
             self.eforms = self.default_eforms
-        self.driver = None
-        self.wait = None
-        self.patient = None
+    
+        self.oscar_report_path = oscar_report_path
 
         # Links
         url = self.config['url'].rsplit('/', 1)[0]
         self.eform_lib_link = url + "/eform/efmformslistadd.jsp"
         self.eform_link_template = url + "/eform/efmformadd_data.jsp?fid={formID}&demographic_no={chartNo}&appointment=&parentAjaxId=eforms"
-        
+            
         # Windows
         self.home_window = None
         self.search_window = None
         self.encounter_window = None
-        self.eform_lib_window = None        
-        
+        self.eform_lib_window = None  
+
         # Initialize WebDriver
+        self.driver = None
+        self.wait = None
+        self.patient = None
         try:
+            profile = webdriver.FirefoxProfile()
+
+            # Always save PDF files to disk
+            profile = webdriver.FirefoxProfile()
+            profile.set_preference("browser.download.folderList", 2)
+            profile.set_preference("browser.download.dir", self.temp_pdf_folder)
+            profile.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/pdf")
+            profile.set_preference("pdfjs.disabled", True)
+            profile.set_preference("browser.download.manager.showWhenStarting", False)
+
+
             options = FirefoxOptions()
+            options.profile = profile
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--ignore-ssl-errors')
             if headless:
@@ -61,10 +82,14 @@ class OscarEforms:
             self.driver = webdriver.Firefox(service=service, options=options)
             self.wait = WebDriverWait(self.driver, 10)
 
+            self.home_window = self.driver.current_window_handle
+
         except Exception as e:
             print(f"Failed to initialize WebDriver: {e}")
             self.cleanup()  # Ensure cleanup if initialization fails
             raise
+
+
 
 
 
@@ -149,7 +174,8 @@ class OscarEforms:
         self.patient = None
 
         # Click search button
-        if self.search_window not in self.driver.window_handles:
+        if not self.is_window_opened(self.search_window):
+            self.driver.switch_to.window(self.home_window)
             search_btn = self.driver.find_element(By.XPATH, "//*[@id='search']")
             search_btn.click()
             
@@ -391,23 +417,21 @@ class OscarEforms:
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
 
-    def read_0letters(self):
+
+    def read_0letters(self, num=1):
         """
         Will read and return the text from all patient 0letter eForms on the patients encounter page.
         Requires patients encounter page to be opened.
         """
-
-        # Return if patient's encounter page isn't opened
-        if not self.is_window_opened(self.encounter_window):
-            # Try to open
-            try:
-                self.open_encounter()
-            except:
-                print("Requires patient encounter window to be opened")
-                return
+        res = self.switch_to_encounter()
+        if not res: return
         
-        # Switch to encounter window
-        self.driver.switch_to.window(self.encounter_window)
+        # Expand eForm section
+        expand_arrow = self.wait.until(
+            EC.element_to_be_clickable((By.ID, "imgeforms5"))
+        )
+        expand_arrow.click()
+        time.sleep(2)
 
         # Grab all of patients eForm WebElements
         try:
@@ -421,6 +445,7 @@ class OscarEforms:
 
         # Get fdids from 0letter eForms
         fdids = []
+        count = 0
         for eform in eforms:
             try:
                 # eForm name
@@ -428,12 +453,14 @@ class OscarEforms:
                 eform_name = a.text.strip()
                 print(f"Eform: {eform_name}")
 
-                if "letter" in eform_name:
+                if "0letter" in eform_name:
                     # eForm fdIDs
                     onclick_value = a.get_attribute("onclick")
                     match = re.search(r"fdid=(\d+)", onclick_value)
                     if match:
                         fdids.append(match.group(1))
+                        count += 1
+                        if count >= num: break
                     
             except Exception as e:
                 print(f"Error: {e}")
@@ -475,6 +502,293 @@ class OscarEforms:
 
         return text
         
+
+
+    def find_documents(self):
+        """
+        Will read the documents off a patients encouter page and return a dictionary where 
+        the keys are the document name and the value is a list of document ids. Earlier ids in 
+        the list are earlier documents.
+
+        Requires patients encouter page to be opened.
+
+        Returns
+        -------
+            A dictionary formatted like:
+                'Document Name' : [list of segment ids]
+
+            Formatted as such due to duplicate document names. Each segment id is unique
+            and points to a different document. If the list contains multiple ids then note
+            that the earlier the id is in the list implies that the document is newer.
+        """
+        res = self.switch_to_encounter()
+        if not res: return
+
+        try:
+            # Expand document section
+            expand_arrow = self.wait.until(
+                EC.element_to_be_clickable((By.ID, "imgdocs5"))
+            )
+            expand_arrow.click()
+            time.sleep(2)
+
+            docs_count = len(self.driver.find_elements(By.XPATH, "//*[@id='docslist']/li"))
+            doc_dict = {}
+
+            for i in range(1, docs_count+1):
+                a = self.wait.until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, f"(//*[@id='docslist']/li)[{i}]/span[1]/a")
+                    )
+                )
+                # Clean document name
+                doc_name_raw = a.text.strip()
+                doc_name = re.sub(r'[^A-Za-z0-9]+', ' ', doc_name_raw).strip('_')
+
+                # Document segment ids
+                onclick_value = a.get_attribute("onclick")
+                match = re.search(r"segmentID=(\d+)", onclick_value)
+                if match:
+                    segID = match.group(1)
+                    if not doc_dict.get(doc_name, ""):
+                        doc_dict[doc_name] = [segID]
+                    else:
+                        doc_dict[doc_name].append(segID)
+                else:
+                    print("None")
+
+        except Exception as e:
+            print(f"Error: {e}")
+
+        return doc_dict
+
+
+
+    def read_document(self, segID):
+        """
+        Extracts and returns the text from the given document.
+        Requires the patients encounter page to be opened and for the given document id to 
+        exist for the patient. 
+
+        Args
+        ----
+            segID (str): String of numbers that represents a documents ID (i.e. '111111').
+
+        Returns
+        -------
+            The OCR'd text that is extracted from the document.
+        """
+        res = self.switch_to_encounter()
+        if not res: return
+        text = ""
+
+        # Clean up the temporary folder by making sure its empty
+        # If can't empty it, make a note of the existing pdfs in it so can determine new
+        # pdf added.
+        files = [file for file in os.listdir(self.temp_pdf_folder) if file.lower().endswith("pdf")]
+        old_pdfs = []
+        for file in files:
+            try:
+                os.remove(os.path.join(self.temp_pdf_folder, file))
+            except:
+                print(f"Unable to remove {file} from {self.temp_pdf_folder}")
+                old_pdfs.append(file) # Pdfs that were unable to be deleted
+
+        # Open document
+        try:
+            # Expand the documents section to make sure document can be found
+            try:
+                expand_arrow = self.wait.until(
+                    EC.element_to_be_clickable((By.ID, "imgdocs5"))
+                )
+                expand_arrow.click()
+                time.sleep(2)
+            except:
+                print("Section is already expanded, or unable to expand.")
+
+            # Find eForm by segment ID
+            xpath = f"//a[contains(@onclick, 'segmentID={segID}')]"
+            a = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+            
+            # Open Document 
+            a.click()
+            self.switch_to_last()
+            print("Opened Doc")
+            time.sleep(1)
+            
+            # Download doc as PDF
+            print_btn = self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//*[@type='button' and contains(@value, ' Print ')]"))
+            )
+            print_btn.click()
+
+            print("Clicked Print")
+            time.sleep(1)
+
+            # Close document window
+            self.driver.close()
+            try:
+                self.switch_to_encounter()
+            except:
+                self.switch_to_last()
+
+            print(f"Old pdfs {old_pdfs}")
+            # OCR PDF to extract text and then delete PDF
+            pdfs = [file for file in os.listdir(self.temp_pdf_folder) if file.lower().endswith("pdf")]
+            for pdf in pdfs:
+                pdf_path = os.path.join(self.temp_pdf_folder, pdf)
+                if pdf in old_pdfs:
+                    # Try to remove agian
+                    try:
+                        os.remove(pdf_path)
+                    except:
+                        pass
+
+                # Newly added pdf
+                else:
+                    # Extract text and remove
+                    try:
+                        text = pdf_image_to_text(pdf_path)
+                        time.sleep(1)
+                        os.remove(pdf_path)
+                    except Exception as e:
+                        print(f"Error trying to read text and remove pdf: {e}")
+    
+        except Exception as e:
+            print(f"An error occurred when downloading and ocring PDF off of Oscar: {e}")
+
+
+        return text
+
+
+
+    def read_dcs_and_angiograms(self):
+        """
+        Extracts the text from a patients DC and Angiogram documents.
+        Requires patient encounter page is opened.
+        """
+        # Switch to encounter page
+        res = self.switch_to_encounter()
+        if not res: return
+
+        DC = [
+            "dc summary",
+            "discharge",
+            "discharge summary", 
+            "dc information", 
+            "discharge information"
+        ]
+
+        ANG = [
+            "angiogram",
+            "catheterization",
+            "pci report",
+            "interventional",
+            "cath report",
+            "pci assessment",
+        ]
+
+        # Get all patient documents
+        docs = self.find_documents()
+
+        # Filter to get most recent DC and most recent Angiogram (if exist)
+        text = ""
+        dc_found = False
+        ang_found = False
+        for key in docs.keys():
+            
+            if not dc_found and any([val in key.lower() for val in DC]):
+                print(f"KEY: {key}: {docs.get(key, '')}")
+                segIDs = docs.get(key, "")
+                if segIDs:
+                    text += "DC:\n" + self.read_document(segIDs[0]) + "\n\n\n" 
+                    dc_found = True
+
+            elif not ang_found and any([val in key.lower() for val in ANG]):
+                print(f"KEY: {key}: {docs.get(key, '')}")
+                segIDs = docs.get(key, "")
+                if segIDs:
+                    text += "ANGIOGRAM:\n" + self.read_document(segIDs[0]) + "\n\n\n" 
+                    ang_found = True
+
+        return text
+
+        
+
+    def read_medical_history(self):
+        """
+        Extracts and returns the text from the patients most recent 0letter, angiogram and dc files (if exist).
+        Requires patient encounter page to be opened.
+        """
+        res = self.switch_to_encounter()
+        if not res: return
+        try:
+            letter = self.read_0letters(num=1)
+            docs = self.read_dcs_and_angiograms()
+
+            text = "0Letter:\n" + letter + "\n\n\n" + docs
+            return text
+        except Exception as e:
+            print(f"Error occurred when reading medical history: {e}")
+            return
+
+
+
+    def insert_medical_history(self, text):
+        """
+        Inserts the given text into the patients medical history tab.
+        Requires patient encounter window to be opened.
+        """
+        res = self.switch_to_encounter()
+        if not res: return
+
+        try:
+            # Open medical history tab
+            self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//*[@id='divR1I2']/div[1]/h3/a"))
+            ).click()
+            
+            # Insert text
+            tbox = self.wait.until(
+                EC.presence_of_element_located((By.XPATH, "//*[@id='noteEditTxt']"))
+            )
+            tbox.send_keys(text)
+
+            # Save
+            self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//*[@id='frmIssueNotes']/span[1]/input[4]"))
+            ).click()
+            return True
+        
+        except Exception as e:
+            print(f"Error occurred when inserting and saving medical history: {e}")
+            return False
+
+
+
+    def switch_to_encounter(self):
+        """
+        Checks if a patient encounter page is opened. 
+        If opened will switch to it, else will attempt to open and switch to it.
+
+        Returns
+        -------
+            Returns True if able to switch to encounter page, False otherwise.
+        """
+        # Return if patient's encounter page isn't opened
+        if not self.is_window_opened(self.encounter_window):
+            # Try to open
+            try:
+                res = self.open_encounter()
+                if not res: return False
+            except:
+                print("Unable to open encouter windows")
+                return False
+        
+        # Switch to encounter window
+        self.driver.switch_to.window(self.encounter_window)
+        return True
+
 
 
     def is_window_opened(self, window):
@@ -525,6 +839,7 @@ class OscarEforms:
         except:
             return False
         
+
 
     def switch_to_last(self):
         """Switches driver foces to last window in window handles"""

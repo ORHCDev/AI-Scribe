@@ -950,6 +950,12 @@ def generate_note(formatted_message):
                     ai_response = send_text_to_chatgpt(formatted_message)
                     update_gui_with_response(ai_response)
 
+                elif prompt_type == "Medical History":
+                    ai_response = send_text_to_chatgpt(formatted_message)
+                    update_gui_with_response(ai_response)
+                    res = oscar.insert_medical_history(ai_response)
+                    if not res: print("Failed to insert medical history")
+                
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
                         prompt = ai_prompts.get(prompt_type)
