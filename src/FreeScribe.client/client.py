@@ -793,6 +793,9 @@ def update_gui_with_response(response_text):
     if prompt_type == "Scribe":
         plan_text = extract_plan_section(response_text)
         if plan_text:
+            # Shrink response_display to make room for lab panel
+            response_display.grid(row=3, column=1, columnspan=7, padx=5, pady=15, sticky='nsew')
+            
             # Analyze plan using LLM in a separate thread
             def analyze_and_update():
                 try:
@@ -808,11 +811,13 @@ def update_gui_with_response(response_text):
             
             threading.Thread(target=analyze_and_update, daemon=True).start()
         else:
-            # No PLAN found, hide panel
+            # No PLAN found, hide panel and expand response_display
             lab_selection_panel.hide()
+            response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
     else:
-        # Not a Scribe prompt, hide panel
+        # Not a Scribe prompt, hide panel and expand response_display
         lab_selection_panel.hide()
+        response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 def show_response(event):
     global IS_FIRST_LOG
@@ -947,6 +952,9 @@ def get_labs_from_response():
     """Analyze text and open the lab panel with suggested checkboxes."""
     from utils.lab_analysis import analyze_plan_for_labs
     from utils.read_files import extract_plan_section
+    
+    # Shrink response_display to make room for lab panel
+    response_display.grid(row=3, column=1, columnspan=7, padx=5, pady=15, sticky='nsew')
     
     # Get text from response display (which can be edited)
     response_text = response_display.scrolled_text.get("1.0", tk.END).strip()
@@ -1644,7 +1652,7 @@ blinking_circle_canvas.grid(row=1, column=9, rowspan=2, pady=5)
 circle = blinking_circle_canvas.create_oval(5, 5, 15, 15, fill='white')
 
 response_display = CustomTextBox(root, height=13, state="normal")
-response_display.grid(row=3, column=1, columnspan=7, padx=5, pady=15, sticky='nsew')
+response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')  # Full width initially
 
 # Insert placeholder text
 response_display.scrolled_text.insert("1.0", "Medical Note")
@@ -1652,8 +1660,10 @@ response_display.scrolled_text.config(fg='grey')
 
 # Lab selection panel (initially hidden) - positioned next to response display
 def close_lab_panel():
-    """Close the lab panel."""
+    """Close the lab panel and expand response display."""
     lab_selection_panel.hide()
+    # Expand response_display to fill the full width
+    response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 lab_selection_panel = LabSelectionPanel(root, height=8, close_callback=close_lab_panel)
 lab_selection_panel.grid(row=3, column=8, columnspan=2, padx=(0, 5), pady=15, sticky='nsew')

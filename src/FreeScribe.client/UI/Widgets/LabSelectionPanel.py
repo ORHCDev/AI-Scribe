@@ -70,11 +70,9 @@ class LabSelectionPanel(tk.Frame):
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
         
-        # Bind mousewheel to canvas (Windows/Mac)
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-        # Linux uses Button-4 and Button-5
-        self.canvas.bind_all("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
-        self.canvas.bind_all("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+        # Bind mousewheel only when hovering over the widget
+        self.bind("<Enter>", self._bind_mousewheel)
+        self.bind("<Leave>", self._unbind_mousewheel)
         
         # Dictionary to store checkboxes: {ui_label: checkbox_var}
         self.checkbox_vars = {}
@@ -83,6 +81,18 @@ class LabSelectionPanel(tk.Frame):
         self._create_checkboxes()
         
         # Initially hidden (will be shown via grid when needed)
+    
+    def _bind_mousewheel(self, event):
+        """Bind mousewheel scrolling when mouse enters the widget."""
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        self.canvas.bind_all("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+    
+    def _unbind_mousewheel(self, event):
+        """Unbind mousewheel scrolling when mouse leaves the widget."""
+        self.canvas.unbind_all("<MouseWheel>")
+        self.canvas.unbind_all("<Button-4>")
+        self.canvas.unbind_all("<Button-5>")
     
     def _on_mousewheel(self, event):
         """Handle mousewheel scrolling on the canvas."""
