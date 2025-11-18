@@ -522,6 +522,10 @@ Prompts:
     Return only the feedback note (no preamble).
 
 
+  Medical History: |
+    The attached document is a amalgamation of 3 patient documents for the same patient.  Using them, do create a complete but concise past cardiac 
+    history for this patient as if written by a cardiologist. Give prominence to procedures such as CABG, PCI and then diagnostic test results such as 
+    angiogram, nuclear stress tests and echocardiogram
 
 
 

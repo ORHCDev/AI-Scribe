@@ -79,9 +79,13 @@ class OscarEformsUI:
         self.eform_scan = ttk.Button(frame, text="eForm Scan", command=self.scan_eforms, width=18)
         self.eform_scan.grid(row=3, column=2, padx=5, pady=5, sticky="nsew")
 
-        # Read 0letters
-        self.letter_btn = ttk.Button(frame, text="Read 0letter", command=self.read_0letter, width=18)
+        # Read Medical History 
+        self.letter_btn = ttk.Button(frame, text="Medical History", command=self.read_medical_history, width=18)
         self.letter_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
+
+        # Read Documents
+        #self.doc_btn = ttk.Button(frame, text="Read Docs", command=self.read_docs, width=18)
+        #self.doc_btn.grid(row=5, column=2, padx=5, pady=5, sticky="nsew")
 
 
         # Focus first entry
@@ -194,20 +198,30 @@ class OscarEformsUI:
         self.eform_selector.set_values(self.oscar.eforms.keys())
         
 
-    def read_0letter(self):
-        """Reads patient's 0letters and pastes the text in the input box"""
+    def read_medical_history(self):
+        """Reads patient's most recent 0letter, angiogram, and dc, and pastes the text in the input box"""
         # Search for patient
         res = self.search_patient(open_eform_lib=False)
         if not res: return
         # Read 0letter text
-        text = self.oscar.read_0letters()
+        text = self.oscar.read_medical_history()
         if not text: return
         # Paste text in input box
         for widget in self.parent.winfo_children():
+            # Display extracted text in input textbox
             if getattr(widget, "_id", None) == "input_tbox":
-                # Display 0letter text
                 widget.scrolled_text.delete("1.0", tk.END)
                 widget.scrolled_text.insert(tk.END, text)
 
+            # Change prompt to "Medical History"
+            elif getattr(widget, "_id", None) == "prompt_selector":
+                widget.set("Medical History")
+
+            
+
+
+    def read_docs(self):
+        self.search_patient(open_eform_lib=False)
+        self.oscar.read_dcs_and_angiograms()
 
 
