@@ -1,5 +1,5 @@
 import cv2
-from pdf2image import convert_from_path
+from pdf2image import convert_from_path, convert_from_bytes
 from PIL import Image
 import pytesseract
 import numpy as np
@@ -8,17 +8,19 @@ import re
 import unicodedata
 
 
-def pdf_image_to_text(pdf_path, first_page=None, last_page=None, write_out_text=False, filename=None):
+def pdf_image_to_text(pdf_path=None, pdf_bytes=None, first_page=None, last_page=None, write_out_text=False, filename="output.txt"):
     """
     Convert a PDF (or pdf bytes) file containing images to text using pytesseract OCR.
     
     Args:
     -----
-        pdf_path (str): Path to PDF file
+        pdf_path (str, optional if pdf_bytes provided): Path to PDF file
+        pdf_bytes (bytes, optional if pdf_path provided): PDF content as bytes.
         first_page (int, optional): First page to process.
         last_page (int, optional): Last page to process.
         write_out_text (bool, optional): If True, saves the extracted text to a file.
         filename (str, optional): Filename for writing out text.
+    ** Either pdf_path or pdf_bytes must be provided, if both provided will use bytes **
         
         
     Returns:
@@ -26,12 +28,25 @@ def pdf_image_to_text(pdf_path, first_page=None, last_page=None, write_out_text=
         str: Extracted text from the PDF images.
     """
 
-    pages = convert_from_path(
-        pdf_path, 
-        dpi=375,
-        first_page=first_page,
-        last_page=last_page
-    )
+    if not pdf_path and not pdf_bytes:
+        raise Exception("Must specify pdf_path or pdf_bytes")
+
+    # Convert PDF to a list of images
+    if pdf_bytes:
+        pages = convert_from_bytes(
+            pdf_bytes,
+            dpi=375,
+            first_page=first_page,
+            last_page=last_page
+        )
+    else:
+        pages = convert_from_path(
+            pdf_path, 
+            dpi=375,
+            first_page=first_page,
+            last_page=last_page
+        )
+
 
     # Extract text from each image using pytesseract
     text = ""
@@ -93,7 +108,7 @@ def file_reader(file_path):
                 return text
 
         elif file_path.lower().endswith(".pdf"):
-            text = pdf_image_to_text(file_path)
+            text = pdf_image_to_text(pdf_path=file_path)
             return text
 
         else:
