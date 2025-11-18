@@ -32,7 +32,7 @@ class OscarEforms:
             self.config = yaml.safe_load(f)
 
         # PDF path for downloading files off of Oscar
-        self.temp_pdf_folder = self.config['pdf_path']
+        self.temp_pdf_folder = self.config['pdf_folder']
         os.makedirs(self.temp_pdf_folder, exist_ok=True)
 
         # eForms
