@@ -122,7 +122,7 @@ class OscarEformsUI:
         return res
 
 
-    def open_single_eform(self, type, bylink=False):
+    def open_single_eform(self, type, bylink=False, checkbox_names=None, plan_text=None):
         """
         Opens eForm window for creating a new eForm.
 
@@ -133,7 +133,24 @@ class OscarEformsUI:
 
           bylink (bool, optional):
             If True, will open eForm via link creation rather than selenium navigation
+            
+          checkbox_names (list, optional):
+            List of eform checkbox names to check (for lab eforms)
+            
+          plan_text (str, optional):
+            PLAN text to populate in eform (for lab eforms)
         """
+        # Special handling for 1.2LabCardiacP eform with checkboxes
+        if type == "1.2LabCardiacP" and checkbox_names is not None:
+            first = self.first_name_entry.get().strip()
+            last = self.last_name_entry.get().strip()
+            chartNo = self.chartno_entry.get().strip()
+            if not ((first and last) or chartNo):
+                messagebox.showwarning("Missing Info", "Please enter both first and last names or patients chart number.", parent=self.window)
+                return
+            self.oscar.open_lab_eform_with_checkboxes(first, last, checkbox_names, plan_text, chartNo)
+            return
+        
         if not bylink:
             res = self.search_patient()
             if not res: return
@@ -157,7 +174,7 @@ class OscarEformsUI:
         
         eform_map = {
             "PLAN:" : "0.1Rfx",
-            "LAB WORK" : "1.2LabCardiac"
+            "LAB WORK" : "1.2LabCardiacP"
         }
 
         for widget in self.parent.winfo_children():
@@ -166,7 +183,47 @@ class OscarEformsUI:
 
         for key, val in eform_map.items():
             if key in text:
-                self.open_single_eform(val, bylink=bylink)
+                # For lab eform, get checked boxes and plan text
+                checkbox_names = None
+                plan_text = None
+                
+                if val == "1.2LabCardiacP":
+                    # Find lab panel and get checked boxes
+                    def find_lab_panel(widget):
+                        if hasattr(widget, 'get_checked_eform_names'):
+                            return widget
+                        for child in widget.winfo_children():
+                            result = find_lab_panel(child)
+                            if result:
+                                return result
+                        return None
+                    
+                    lab_panel = find_lab_panel(self.parent)
+                    if lab_panel:
+                        checkbox_names = lab_panel.get_checked_eform_names()
+                    
+                    # Get plan text from response display
+                    def find_response_display(widget):
+                        if hasattr(widget, 'scrolled_text'):
+                            try:
+                                content = widget.scrolled_text.get("1.0", "10.0")
+                                if "Medical Note" in content or len(content.strip()) > 50:
+                                    return widget
+                            except:
+                                pass
+                        for child in widget.winfo_children():
+                            result = find_response_display(child)
+                            if result:
+                                return result
+                        return None
+                    
+                    response_widget = find_response_display(self.parent)
+                    if response_widget:
+                        response_text = response_widget.scrolled_text.get("1.0", tk.END).strip()
+                        from utils.read_files import extract_plan_section
+                        plan_text = extract_plan_section(response_text)
+                
+                self.open_single_eform(val, bylink=bylink, checkbox_names=checkbox_names, plan_text=plan_text)
 
 
     def open_eforms(self, bylink=False):
@@ -176,7 +233,49 @@ class OscarEformsUI:
         if eform == "Auto":
             self.open_all_eforms(bylink)
         else:
-            self.open_single_eform(eform, bylink)
+            # Check if this is the lab eform and get checked boxes from panel
+            checkbox_names = None
+            plan_text = None
+            
+            if eform == "1.2LabCardiacP":
+                # Try to find lab_selection_panel in parent window
+                # Search recursively through all widgets
+                def find_lab_panel(widget):
+                    if hasattr(widget, 'get_checked_eform_names'):
+                        return widget
+                    for child in widget.winfo_children():
+                        result = find_lab_panel(child)
+                        if result:
+                            return result
+                    return None
+                
+                lab_panel = find_lab_panel(self.parent)
+                if lab_panel:
+                    checkbox_names = lab_panel.get_checked_eform_names()
+                
+                # Also try to get plan text from response_display
+                def find_response_display(widget):
+                    if hasattr(widget, 'scrolled_text'):
+                        # Check if it's the response display (has title "Medical Note" or similar)
+                        try:
+                            content = widget.scrolled_text.get("1.0", "10.0")
+                            if "Medical Note" in content or len(content.strip()) > 50:
+                                return widget
+                        except:
+                            pass
+                    for child in widget.winfo_children():
+                        result = find_response_display(child)
+                        if result:
+                            return result
+                    return None
+                
+                response_widget = find_response_display(self.parent)
+                if response_widget:
+                    response_text = response_widget.scrolled_text.get("1.0", tk.END).strip()
+                    from utils.read_files import extract_plan_section
+                    plan_text = extract_plan_section(response_text)
+            
+            self.open_single_eform(eform, bylink, checkbox_names, plan_text)
      
 
     def scan_eforms(self):

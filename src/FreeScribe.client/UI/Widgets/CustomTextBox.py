@@ -50,6 +50,35 @@ class CustomTextBox(tk.Frame):
             borderwidth=1
         )
         self.copy_button.place(relx=1.0, rely=1.0, x=-2, y=-2, anchor="se")
+        
+        # Get Labs button (optional, can be set via set_get_labs_callback)
+        self.get_labs_button = None
+        self.get_labs_callback = None
+    
+    def set_get_labs_callback(self, callback):
+        """Set the callback function for the Get Labs button."""
+        self.get_labs_callback = callback
+        if self.get_labs_callback:
+            if self.get_labs_button is None:
+                self.get_labs_button = tk.Button(
+                    self.scrolled_text,
+                    text="Lab Form",
+                    command=self._get_labs,
+                    relief="raised",
+                    borderwidth=1
+                )
+                # Place next to copy button
+                self.get_labs_button.place(relx=1.0, rely=1.0, x=-82, y=-2, anchor="se")
+    
+    def _get_labs(self):
+        """Internal method to call the Get Labs callback."""
+        if self.get_labs_callback:
+            self.get_labs_callback()
+    
+    def update_lab_button_text(self, text):
+        """Update the lab form button text."""
+        if self.get_labs_button:
+            self.get_labs_button.config(text=text)
 
     def copy_text(self):
         """
