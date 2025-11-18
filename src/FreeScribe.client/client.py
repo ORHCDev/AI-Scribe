@@ -392,7 +392,6 @@ def toggle_recording():
         response_display.scrolled_text.configure(state='normal')
         response_display.scrolled_text.delete("1.0", tk.END)
         response_display.scrolled_text.configure(fg='black')
-        response_display.scrolled_text.configure(state='disabled')
         is_recording = True
 
         recording_thread = threading.Thread(target=record_audio)
@@ -462,7 +461,6 @@ def disable_recording_ui_elements():
     send_button.config(state='disabled')
     #toggle_button.config(state='disabled') 
     upload_button.config(state='disabled')
-    response_display.scrolled_text.configure(state='disabled')
     timestamp_listbox.config(state='disabled')
 
 def enable_recording_ui_elements():
@@ -550,7 +548,6 @@ def clear_all_text_fields():
     response_display.scrolled_text.delete("1.0", tk.END)
     response_display.scrolled_text.insert(tk.END, "Medical Note")
     response_display.scrolled_text.config(fg='grey')
-    response_display.scrolled_text.configure(state='disabled')
 
 """def toggle_aiscribe():
     global use_aiscribe
@@ -763,7 +760,6 @@ def display_text(text):
     response_display.scrolled_text.delete("1.0", tk.END)
     response_display.scrolled_text.insert(tk.END, f"{text}\n")
     response_display.scrolled_text.configure(fg='black')
-    response_display.scrolled_text.configure(state='disabled')
 
 IS_FIRST_LOG = True
 def update_gui_with_response(response_text):
@@ -806,7 +802,6 @@ def show_response(event):
         response_display.scrolled_text.delete('1.0', tk.END)
         response_display.scrolled_text.insert('1.0', response_text)
         response_display.scrolled_text.config(fg='black')
-        response_display.scrolled_text.configure(state='disabled')
         pyperclip.copy(response_text)
 
 def send_text_to_api(edited_text):
@@ -1580,14 +1575,12 @@ blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
 blinking_circle_canvas.grid(row=1, column=9, rowspan=2, pady=5)
 circle = blinking_circle_canvas.create_oval(5, 5, 15, 15, fill='white')
 
-response_display = CustomTextBox(root, height=13, state="disabled")
+response_display = CustomTextBox(root, height=13, state="normal")
 response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 # Insert placeholder text
-response_display.scrolled_text.configure(state='normal')
 response_display.scrolled_text.insert("1.0", "Medical Note")
 response_display.scrolled_text.config(fg='grey')
-response_display.scrolled_text.configure(state='disabled')
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
