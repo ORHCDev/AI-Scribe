@@ -801,9 +801,8 @@ def update_gui_with_response(response_text):
                 try:
                     from utils.lab_analysis import analyze_plan_for_labs
                     suggested_labels = analyze_plan_for_labs(plan_text, send_text_to_chatgpt)
-                    # Update panel on main thread
-                    if suggested_labels:
-                        root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
+                    # Update panel on main thread - always call set_checkboxes (even if empty) to clear previous selections
+                    root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
                     root.after(0, lambda: lab_selection_panel.show())
                 except Exception as e:
                     print(f"Error analyzing plan for labs: {e}")
@@ -976,9 +975,8 @@ def get_labs_from_response():
     def analyze_and_update():
         try:
             suggested_labels = analyze_plan_for_labs(plan_text, send_text_to_chatgpt)
-            # Update panel on main thread
-            if suggested_labels:
-                root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
+            # Update panel on main thread - always call set_checkboxes (even if empty) to clear previous selections
+            root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
             root.after(0, lambda: lab_selection_panel.show())
         except Exception as e:
             print(f"Error analyzing plan for labs: {e}")
