@@ -8,72 +8,79 @@ Separated from client.py to keep code organized.
 import json
 
 
-LAB_CHECKBOX_ANALYSIS_PROMPT = """Analyze the medical PLAN section and identify which lab test checkboxes should be checked. Return a JSON array of checkbox names.
+LAB_CHECKBOX_ANALYSIS_PROMPT = """Analyze the medical PLAN section and identify which lab test checkboxes should be checked on a requisition form. Return a JSON array of eform checkbox code names.
 
-Available checkboxes by section:
+Available checkboxes by section (use the CODE NAME, not the description):
 
 INSTRUCTIONS:
-- Fasting Instructions (do NOT select - auto-added by fasting-required checkboxes)
+- FastingInfo (do NOT select - auto-added by fasting-required checkboxes)
 
 PRE-PROCEDURE:
-- pre-cath
-- pre-EP procedure
+- cath (pre-cath)
+- EP (pre-EP)
 
 THERAPEUTIC MONITORING:
-- Amiodarone follow up
-- Digoxin level
+- Amiodarone (Amiodarone follow up)
+- Digoxin (Digoxin level)
 
 COMPREHENSIVE CARDIAC:
 - comprehensive (most complete cardiac panel)
 - minicomprehensive (alternative when full panel not needed)
-- RR (renal risk for statin patients)
-- Cardiomyopathy (new cardiomyopathy/IHD workup)
+- COMRR (renal risk for statin patients)
+- NewCardiomyopathy (new cardiomyopathy/IHD workup)
 
 CHF:
-- Baseline (initial CHF workup)
-- Follow-up
-- Standing Order Q3M
-- Follow-up post thiazide
-- Follow-up post SGLT2
-- Follow-up post high K+
+- CHFBaseline (initial CHF workup)
+- CHFFollowUp (CHF Follow-up)
+- CHFFollowUpStandingQ3months (CHF Standing Order Q3M)
+- thiazideFollowUp (CHF Follow-up post thiazide)
+- SGLT2FollowUp (CHF Follow-up post SGLT2)
+- KFollowUp (CHF Follow-up post high K+)
 
 CKD STAGE 3:
-- Annual
-- eGFR/ACR Q6M (standing order)
+- CKDAnnual (CKD Annual)
+- CKDQ6months (eGFR/ACR Q6M - standing order)
 
 DM:
-- DM Annual
-- A1C Q3M (standing order)
+- DMAnnual (DM Annual)
+- DMStandingQ3months (A1C Q3M - standing order)
 
 DYSLIPIDEMIA:
-- Screening
-- On Statin
+- CholesterolFBS (Screening)
+- DyslipidemiaOnStatin (check if "lipids" or "lipid profile" is mentioned)
 
 HYPERTENSION:
-- Hypertension Annual
-- Hypertension (new hypertension)
-- Hypotension
+- HypertensionAnnual (Hypertension Annual)
+- NewHypertension (New Hypertension)
+- NewHypotension (New Hypotension)
 
 OTHERS:
-- Autoimmune ANA, RF
-- CBC
-- Pericarditis follow up
-- CTD Workup (connective tissue disease)
-- Dementia
-- Eating disorder workup
-- Fatigue
-- INR - Standing Order (warfarin)
-- LFTs (routine liver function)
-- LFT Elevation Acute (recently elevated - mutually exclusive with Chronic)
-- LFT Elevation Chronic (long-standing - mutually exclusive with Acute)
-- Renal Function (RAAS start) (before ACE/ARB)
-- Thrombosis screen
-- TSH Standing Order
-- Urine C&S (UTI)
+- Autoimmune (Autoimmune ANA, RF)
+- CompleteBloodCount (CBC - check if "cbc" is mentioned)
+- Pericarditis (Pericarditis follow up)
+- CTDSerology (CTD Workup - connective tissue disease)
+- Dementia (Dementia)
+- Eatingdisorderworkup (Eating disorder workup)
+- Fatigue (Fatigue)
+- INRStanding (INR - Standing Order - warfarin)
+- LFT (LFTs - check if "lft" or "lfts" is mentioned)
+- AcuteElevatedLFT (LFT Elevation Acute)
+- ChronicElevatedLFT (LFT Elevation Chronic)
+- RenalFunction  (check if "renal function", "kidney function and electrolytes", or "kidney function" is mentioned)
+- Thrombosisscreen (Thrombosis screen)
+- TSHStandingorder (TSH Standing Order)
+- UrineCulture (Urine C&S - UTI)
 
-Return ONLY a JSON array matching the PLAN. Do NOT include "Fasting Instructions".
+Return ONLY a JSON array of code names matching the PLAN. Do NOT include "FastingInfo".
 
-Example: ["Renal Function (RAAS start)", "On Statin"]"""
+Example PLAN snippet: "Check lipid profile and CBC."
+Expected JSON: ["DyslipidemiaOnStatin", "CompleteBloodCount"]
+
+Example PLAN snippet: "repeat chf follow-up labs in 2 weeks to recheck renal function and electrolytes while patient remains on Lasix."
+Expected JSON: ["RenalFunction ", "CHFFollowUp"]
+
+Use your judgment to determine which checkboxes are appropriate for the form.
+"""
 
 
 def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func) -> list[str]:
@@ -119,11 +126,22 @@ def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func) -> list[str
         
         if json_start != -1 and json_end > json_start:
             json_str = response[json_start:json_end]
-            checkbox_labels = json.loads(json_str)
+            checkbox_code_names = json.loads(json_str)
             
             # Validate that it's a list of strings
-            if isinstance(checkbox_labels, list):
-                return [str(label) for label in checkbox_labels if isinstance(label, str)]
+            if isinstance(checkbox_code_names, list):
+                # Convert eform code names back to UI labels
+                from utils.lab_checkbox_mapping import get_ui_label
+                ui_labels = []
+                for code_name in checkbox_code_names:
+                    ui_label = get_ui_label(str(code_name))
+                    if ui_label:
+                        ui_labels.append(ui_label)
+                    else:
+                        # If code name not found, try using it as-is (might be a valid code name)
+                        print(f"Warning: Could not map code name '{code_name}' to UI label")
+                        ui_labels.append(str(code_name))
+                return ui_labels
         
         print(f"Failed to parse LLM response as JSON: {response}")
         return []
