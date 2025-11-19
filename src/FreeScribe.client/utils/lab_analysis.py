@@ -16,8 +16,8 @@ INSTRUCTIONS:
 - FastingInfo (do NOT select - auto-added by fasting-required checkboxes)
 
 PRE-PROCEDURE:
-- cath (pre-cath)
-- EP (pre-EP)
+- cath (pre-cath procedure)
+- EP (pre-EP procedure)
 
 THERAPEUTIC MONITORING:
 - Amiodarone (Amiodarone follow up)
@@ -66,20 +66,22 @@ OTHERS:
 - LFT (LFTs - check if "lft" or "lfts" is mentioned)
 - AcuteElevatedLFT (LFT Elevation Acute)
 - ChronicElevatedLFT (LFT Elevation Chronic)
-- RenalFunction  (check if "renal function", "kidney function and electrolytes", or "kidney function" is mentioned)
+- RenalFunction (check if "renal function", "kidney function and electrolytes", or "kidney function" is mentioned)
 - Thrombosisscreen (Thrombosis screen)
 - TSHStandingorder (TSH Standing Order)
-- UrineCulture (Urine C&S - UTI)
+- UrineC&S (Urine C&S - UTI)
 
-Return ONLY a JSON array of code names matching the PLAN. Do NOT include "FastingInfo".
+CRITICAL RULES:
+1. Return ONLY a JSON array. Do NOT include any explanatory text, comments, or additional content before or after the JSON array.
+2. Your response must start with [ and end with ]. No other text.
+3. ONLY use code names from the list above. Do NOT invent new code names or use descriptions.
+4. If a term in the PLAN doesn't match any checkbox code name in the list above, do NOT include it in your response.
 
 Example PLAN snippet: "Check lipid profile and CBC."
-Expected JSON: ["DyslipidemiaOnStatin", "CompleteBloodCount"]
+Correct response: ["DyslipidemiaOnStatin", "CompleteBloodCount"]
 
 Example PLAN snippet: "repeat chf follow-up labs in 2 weeks to recheck renal function and electrolytes while patient remains on Lasix."
-Expected JSON: ["RenalFunction ", "CHFFollowUp"]
-
-Use your judgment to determine which checkboxes are appropriate for the form.
+Correct response: ["RenalFunction ", "CHFFollowUp"]
 """
 
 
@@ -121,12 +123,24 @@ def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func) -> list[str
                 response = response[start_idx:end_idx].strip()
         
         # Try to find JSON array in the response
-        json_start = response.find("[")
+        # Look for the last complete JSON array (in case LLM provides multiple)
+        json_start = response.rfind("[")
         json_end = response.rfind("]") + 1
         
         if json_start != -1 and json_end > json_start:
             json_str = response[json_start:json_end]
-            checkbox_code_names = json.loads(json_str)
+            try:
+                checkbox_code_names = json.loads(json_str)
+            except json.JSONDecodeError:
+                # If that fails, try finding all JSON arrays and use the longest one
+                import re
+                json_arrays = re.findall(r'\[[^\]]*\]', response)
+                if json_arrays:
+                    # Use the longest array (most likely to be complete)
+                    json_str = max(json_arrays, key=len)
+                    checkbox_code_names = json.loads(json_str)
+                else:
+                    raise
             
             # Validate that it's a list of strings
             if isinstance(checkbox_code_names, list):
@@ -134,13 +148,14 @@ def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func) -> list[str
                 from utils.lab_checkbox_mapping import get_ui_label
                 ui_labels = []
                 for code_name in checkbox_code_names:
-                    ui_label = get_ui_label(str(code_name))
+                    code_name_str = str(code_name).strip()
+                    ui_label = get_ui_label(code_name_str)
                     if ui_label:
                         ui_labels.append(ui_label)
                     else:
-                        # If code name not found, try using it as-is (might be a valid code name)
+                        # If code name not found, warn and skip
                         print(f"Warning: Could not map code name '{code_name}' to UI label")
-                        ui_labels.append(str(code_name))
+                return ui_labels
                 return ui_labels
         
         print(f"Failed to parse LLM response as JSON: {response}")
