@@ -345,6 +345,12 @@ class OscarEforms:
         Then creates a link using demographic number and form_type to open up the eForm window directly.
         """
 
+        # Make sure on window that exists
+        try:
+            self.switch_to_last()
+        except:
+            self.driver.switch_to.window(self.home_window)
+
         if not self.oscar_report_path:
             print("Need path to oscarReportMaster")
             return
@@ -381,6 +387,12 @@ class OscarEforms:
         Returns:
             bool: True if successful, False otherwise
         """
+        # Make sure on window that exists
+        try:
+            self.switch_to_last()
+        except:
+            self.driver.switch_to.window(self.home_window)
+
         form_type = "1.2LabCardiacP"
         formID = self.eforms.get(form_type, "")
         if not formID:
@@ -438,8 +450,25 @@ class OscarEforms:
                     
                     time.sleep(0.2)  # Small delay between checks
                 except Exception as e:
-                    print(f"Could not check checkbox '{checkbox_name}': {e}")
-                    # Continue with other checkboxes even if one fails
+                    print(f"Could not check checkbox '{checkbox_name}': {e}\nRetrying...")
+                    # Secondary check that normalizes name
+                    try:
+                        checkbox = self.driver.find_element(
+                            By.XPATH,
+                            f"//*[@type='checkbox' and normalize-space(@name)='{checkbox_name}']"
+                        )
+                        # Check if it's already checked
+                        if checkbox.get_attribute("type") == "checkbox":
+                            if not checkbox.is_selected():
+                                checkbox.click()
+                        else:
+                            # It's a text input, set value to 'X' to check it
+                            current_value = checkbox.get_attribute("value")
+                            if current_value != 'X':
+                                checkbox.click()  # Click to toggle (the eform uses flip() function)
+                    except Exception as e:
+                        print(f"Could not check checkbox '{checkbox_name}': {e}")
+                        # Continue with other checkboxes even if one fails
             
             print(f"Successfully opened lab eform and checked {len(checkbox_names)} checkboxes")
             return True
