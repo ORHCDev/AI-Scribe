@@ -65,7 +65,7 @@ LAB_CHECKBOX_MAPPING = {
     "Renal Function (RAAS start)": "RenalFunction",
     "Thrombosis screen": "Thrombosisscreen",
     "TSH Standing Order": "TSHStandingorder",
-    "Urine C&S": "UrineCulture",
+    "Urine C&S": "UrineC&S",
 }
 
 # Reverse mapping: Eform Checkbox Name -> UI Label (for display)
