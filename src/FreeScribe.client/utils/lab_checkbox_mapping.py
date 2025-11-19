@@ -26,15 +26,15 @@ LAB_CHECKBOX_MAPPING = {
     "Cardiomyopathy": "NewCardiomyopathy",
     
     # CHF
-    "Baseline": "CHFBaseline",
-    "Follow-up": "CHFFollowUp",
-    "Standing Order Q3M": "CHFFollowUpStandingQ3months",
-    "Follow-up post thiazide": "thiazideFollowUp",
-    "Follow-up post SGLT2": "SGLT2FollowUp",
-    "Follow-up post high K+": "KFollowUp",
+    "CHF Baseline": "CHFBaseline",
+    "CHF Follow-up": "CHFFollowUp",
+    "CHF Standing Order Q3M": "CHFFollowUpStandingQ3months",
+    "CHF Follow-up post thiazide": "thiazideFollowUp",
+    "CHF Follow-up post SGLT2": "SGLT2FollowUp",
+    "CHF Follow-up post high K+": "KFollowUp",
     
     # CKD STAGE 3
-    "Annual": "CKDAnnual",
+    "CKD Annual": "CKDAnnual",
     "eGFR/ACR Q6M": "CKDQ6months",
     
     # DM
@@ -47,8 +47,8 @@ LAB_CHECKBOX_MAPPING = {
     
     # HYPERTENSION
     "Hypertension Annual": "HypertensionAnnual",
-    "Hypertension": "NewHypertension",
-    "Hypotension": "NewHypotension",
+    "New Hypertension": "NewHypertension",
+    "New Hypotension": "NewHypotension",
     
     # OTHERS
     "Autoimmune ANA, RF": "Autoimmune",
@@ -62,7 +62,7 @@ LAB_CHECKBOX_MAPPING = {
     "LFTs": "LFT",
     "LFT Elevation Acute": "AcuteElevatedLFT",
     "LFT Elevation Chronic": "ChronicElevatedLFT",
-    "Renal Function (RAAS start)": "RenalFunction ",
+    "Renal Function (RAAS start)": "RenalFunction",
     "Thrombosis screen": "Thrombosisscreen",
     "TSH Standing Order": "TSHStandingorder",
     "Urine C&S": "UrineCulture",
@@ -91,15 +91,15 @@ LAB_CHECKBOX_CATEGORIES = {
         "Cardiomyopathy",
     ],
     "CHF": [
-        "Baseline",
-        "Follow-up",
-        "Standing Order Q3M",
-        "Follow-up post thiazide",
-        "Follow-up post SGLT2",
-        "Follow-up post high K+",
+        "CHF Baseline",
+        "CHF Follow-up",
+        "CHF Standing Order Q3M",
+        "CHF Follow-up post thiazide",
+        "CHF Follow-up post SGLT2",
+        "CHF Follow-up post high K+",
     ],
     "CKD STAGE 3": [
-        "Annual",
+        "CKD Annual",
         "eGFR/ACR Q6M",
     ],
     "DM": [
@@ -112,8 +112,8 @@ LAB_CHECKBOX_CATEGORIES = {
     ],
     "HYPERTENSION": [
         "Hypertension Annual",
-        "Hypertension",
-        "Hypotension",
+        "New Hypertension",
+        "New Hypotension",
     ],
     "OTHERS": [
         "Autoimmune ANA, RF",
@@ -190,14 +190,14 @@ PLAN_KEYWORD_PATTERNS = {
     "RR": ["rr", "comrr", "renal risk"],
     "Cardiomyopathy": ["cardiomyopathy", "new cardiomyopathy", "ihd"],
     
-    "Baseline": ["chf baseline", "heart failure baseline", "congestive heart failure baseline"],
-    "Follow-up": ["chf follow", "heart failure follow", "chf follow-up", "chf follow up"],
-    "Standing Order Q3M": ["chf standing", "chf q3", "standing order q3"],
-    "Follow-up post thiazide": ["post thiazide", "after thiazide", "thiazide follow"],
-    "Follow-up post SGLT2": ["post sglt2", "after sglt2", "sglt2 follow"],
-    "Follow-up post high K+": ["post high k", "after high potassium", "high k+ follow", "hyperkalemia follow"],
+    "CHF Baseline": ["chf baseline", "heart failure baseline", "congestive heart failure baseline"],
+    "CHF Follow-up": ["chf follow", "heart failure follow", "chf follow-up", "chf follow up"],
+    "CHF Standing Order Q3M": ["chf standing", "chf q3", "standing order q3"],
+    "CHF Follow-up post thiazide": ["post thiazide", "after thiazide", "thiazide follow"],
+    "CHF Follow-up post SGLT2": ["post sglt2", "after sglt2", "sglt2 follow"],
+    "CHF Follow-up post high K+": ["post high k", "after high potassium", "high k+ follow", "hyperkalemia follow"],
     
-    "Annual": ["ckd annual", "chronic kidney disease annual", "ckd stage 3"],
+    "CKD Annual": ["ckd annual", "chronic kidney disease annual", "ckd stage 3"],
     "eGFR/ACR Q6M": ["egfr/acr q6", "egfr acr q6", "egfr q6", "acr q6"],
     
     "DM Annual": ["dm annual", "diabetes annual", "diabetic annual"],
@@ -207,8 +207,8 @@ PLAN_KEYWORD_PATTERNS = {
     "On Statin": ["on statin", "statin", "lipid profile", "lipids", "cholesterol"],
     
     "Hypertension Annual": ["hypertension annual", "htn annual", "high blood pressure annual"],
-    "Hypertension": ["hypertension", "htn", "high blood pressure", "new hypertension"],
-    "Hypotension": ["hypotension", "low blood pressure"],
+    "New Hypertension": ["hypertension", "htn", "high blood pressure", "new hypertension"],
+    "New Hypotension": ["hypotension", "low blood pressure"],
     
     "Autoimmune ANA, RF": ["autoimmune", "ana", "rf", "rheumatoid factor", "antinuclear antibody"],
     "CBC": ["cbc", "complete blood count", "blood count"],
