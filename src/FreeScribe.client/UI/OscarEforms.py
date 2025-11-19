@@ -367,6 +367,87 @@ class OscarEforms:
         return True
 
 
+    def open_lab_eform_with_checkboxes(self, first_name, last_name, checkbox_names: list[str], plan_text: str = None, chartNo=None):
+        """
+        Opens 1.2LabCardiacP eform and automatically checks specified checkboxes.
+        
+        Args:
+            first_name: Patient first name
+            last_name: Patient last name
+            checkbox_names: List of eform checkbox names to check (e.g., ["RenalFunction ", "DyslipidemiaOnStatin"])
+            plan_text: Optional PLAN text to populate in the PLAN field
+            chartNo: Optional demographic number
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        form_type = "1.2LabCardiacP"
+        formID = self.eforms.get(form_type, "")
+        if not formID:
+            print(f"No form ID for {form_type}")
+            return False
+        
+        # Get chart number if not provided
+        if not chartNo:
+            if not self.oscar_report_path:
+                print("Need path to oscarReportMaster")
+                return False
+            res = find_details(self.oscar_report_path, last_name, first_name)
+            if res:
+                _, _, _, _, chartNo = res
+            else:
+                print(f"Could not find patient {first_name} {last_name}")
+                return False
+        
+        # Open eform via link
+        link = self.eform_link_template.format(formID=formID, chartNo=chartNo)
+        self.driver.execute_script(f"window.open('{link}', '_blank', 'width=800,height=600');")
+        
+        # Switch to new window and wait for load
+        self.driver.switch_to.window(self.driver.window_handles[-1])
+        time.sleep(2)  # Wait for page to load
+        
+        try:
+            # Wait for form to be present
+            self.wait.until(EC.presence_of_element_located((By.NAME, "lab")))
+            
+            # Optionally populate PLAN field
+            if plan_text:
+                try:
+                    plan_field = self.driver.find_element(By.ID, "PLAN")
+                    self.driver.execute_script("arguments[0].value = arguments[1];", plan_field, plan_text)
+                except Exception as e:
+                    print(f"Could not populate PLAN field: {e}")
+            
+            # Check each checkbox
+            for checkbox_name in checkbox_names:
+                try:
+                    # Try to find checkbox by name
+                    # Some checkboxes are type="checkbox", others are text inputs with name attribute
+                    checkbox = self.driver.find_element(By.NAME, checkbox_name)
+                    
+                    # Check if it's already checked
+                    if checkbox.get_attribute("type") == "checkbox":
+                        if not checkbox.is_selected():
+                            checkbox.click()
+                    else:
+                        # It's a text input, set value to 'X' to check it
+                        current_value = checkbox.get_attribute("value")
+                        if current_value != 'X':
+                            checkbox.click()  # Click to toggle (the eform uses flip() function)
+                    
+                    time.sleep(0.2)  # Small delay between checks
+                except Exception as e:
+                    print(f"Could not check checkbox '{checkbox_name}': {e}")
+                    # Continue with other checkboxes even if one fails
+            
+            print(f"Successfully opened lab eform and checked {len(checkbox_names)} checkboxes")
+            return True
+            
+        except Exception as e:
+            print(f"Error opening lab eform with checkboxes: {e}")
+            return False
+
 
     def scan_and_update_eforms(self):
         """

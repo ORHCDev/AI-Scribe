@@ -49,12 +49,13 @@ from UI.SettingsWindow import SettingsWindow, SettingsKeys
 from UI.PromptsWindow import PromptsWindow
 from UI.OscarEforms import OscarEforms
 from UI.Widgets.CustomTextBox import CustomTextBox
+from UI.Widgets.LabSelectionPanel import LabSelectionPanel
 from UI.LoadingWindow import LoadingWindow
 from UI.Widgets.MicrophoneSelector import MicrophoneState
 from Model import  ModelManager
 from utils.ip_utils import is_private_ip
 from utils.file_utils import get_file_path, get_resource_path
-from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes
+from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes, extract_plan_section
 from utils.hl7 import *
 from utils.lab_processor import generate_lab_hl7
 from utils.auto_processing import AutoProcessor
@@ -548,6 +549,10 @@ def clear_all_text_fields():
     response_display.scrolled_text.delete("1.0", tk.END)
     response_display.scrolled_text.insert(tk.END, "Medical Note")
     response_display.scrolled_text.config(fg='grey')
+    
+    # Hide and clear lab selection panel
+    lab_selection_panel.hide()
+    lab_selection_panel.clear_all()
 
 """def toggle_aiscribe():
     global use_aiscribe
@@ -782,6 +787,37 @@ def update_gui_with_response(response_text):
     pyperclip.copy(response_text)
     user_input.scrolled_text.configure(state='normal')
     stop_flashing()
+    
+    # Automatically analyze and show lab panel for Scribe prompts
+    prompt_type = selected_prompt.get()
+    if prompt_type == "Scribe":
+        plan_text = extract_plan_section(response_text)
+        if plan_text:
+            # Shrink response_display to make room for lab panel
+            response_display.grid(row=3, column=1, columnspan=7, padx=5, pady=15, sticky='nsew')
+            
+            # Analyze plan using LLM in a separate thread
+            def analyze_and_update():
+                try:
+                    from utils.lab_analysis import analyze_plan_for_labs
+                    suggested_labels = analyze_plan_for_labs(plan_text, send_text_to_chatgpt)
+                    # Update panel on main thread
+                    if suggested_labels:
+                        root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
+                    root.after(0, lambda: lab_selection_panel.show())
+                except Exception as e:
+                    print(f"Error analyzing plan for labs: {e}")
+                    root.after(0, lambda: lab_selection_panel.show())
+            
+            threading.Thread(target=analyze_and_update, daemon=True).start()
+        else:
+            # No PLAN found, hide panel and expand response_display
+            lab_selection_panel.hide()
+            response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
+    else:
+        # Not a Scribe prompt, hide panel and expand response_display
+        lab_selection_panel.hide()
+        response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 def show_response(event):
     global IS_FIRST_LOG
@@ -910,6 +946,46 @@ def send_text_to_chatgpt(edited_text):
         return send_text_to_localmodel(edited_text)
     else:
         return send_text_to_api(edited_text)
+
+
+def get_labs_from_response():
+    """Analyze text and open the lab panel with suggested checkboxes."""
+    from utils.lab_analysis import analyze_plan_for_labs
+    from utils.read_files import extract_plan_section
+    
+    # Shrink response_display to make room for lab panel
+    response_display.grid(row=3, column=1, columnspan=7, padx=5, pady=15, sticky='nsew')
+    
+    # Get text from response display (which can be edited)
+    response_text = response_display.scrolled_text.get("1.0", tk.END).strip()
+    
+    if not response_text:
+        print("No text in response display to analyze")
+        return
+    
+    # Extract PLAN section
+    plan_text = extract_plan_section(response_text)
+    
+    if not plan_text:
+        print("No PLAN section found in response text")
+        # Show panel anyway so doctor can manually select
+        lab_selection_panel.show()
+        return
+    
+    # Analyze plan using LLM in a separate thread
+    def analyze_and_update():
+        try:
+            suggested_labels = analyze_plan_for_labs(plan_text, send_text_to_chatgpt)
+            # Update panel on main thread
+            if suggested_labels:
+                root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
+            root.after(0, lambda: lab_selection_panel.show())
+        except Exception as e:
+            print(f"Error analyzing plan for labs: {e}")
+            # Show panel anyway so doctor can manually select
+            root.after(0, lambda: lab_selection_panel.show())
+    
+    threading.Thread(target=analyze_and_update, daemon=True).start()
 
 def generate_note(formatted_message):
             try:
@@ -1576,11 +1652,26 @@ blinking_circle_canvas.grid(row=1, column=9, rowspan=2, pady=5)
 circle = blinking_circle_canvas.create_oval(5, 5, 15, 15, fill='white')
 
 response_display = CustomTextBox(root, height=13, state="normal")
-response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
+response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')  # Full width initially
 
 # Insert placeholder text
 response_display.scrolled_text.insert("1.0", "Medical Note")
 response_display.scrolled_text.config(fg='grey')
+
+# Lab selection panel (initially hidden) - positioned next to response display
+def close_lab_panel():
+    """Close the lab panel and expand response display."""
+    lab_selection_panel.hide()
+    # Expand response_display to fill the full width
+    response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
+
+lab_selection_panel = LabSelectionPanel(root, height=8, close_callback=close_lab_panel)
+lab_selection_panel.grid(row=3, column=8, columnspan=2, padx=(0, 5), pady=15, sticky='nsew')
+lab_selection_panel.grid_remove()  # Initially hidden
+
+# Set up Get Labs button callback (after panel is created)
+# Button always says "Lab Form" and opens/analyzes the panel
+response_display.set_get_labs_callback(get_labs_from_response)
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
