@@ -1664,7 +1664,7 @@ def close_lab_panel():
     # Expand response_display to fill the full width
     response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
-lab_selection_panel = LabSelectionPanel(root, height=8, close_callback=close_lab_panel)
+lab_selection_panel = LabSelectionPanel(root, height=8, close_callback=close_lab_panel, oscar=oscar)
 lab_selection_panel.grid(row=3, column=8, columnspan=2, padx=(0, 5), pady=15, sticky='nsew')
 lab_selection_panel.grid_remove()  # Initially hidden
 

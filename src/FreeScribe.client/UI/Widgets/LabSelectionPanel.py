@@ -9,7 +9,8 @@ Classes:
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
+from UI.Widgets.SearchableSelector import SearchableComboBox
 from utils.lab_checkbox_mapping import LAB_CHECKBOX_CATEGORIES, get_eform_checkbox_name
 
 
@@ -25,8 +26,10 @@ class LabSelectionPanel(tk.Frame):
         **kwargs: Additional keyword arguments for tk.Frame
     """
     
-    def __init__(self, parent, height=8, close_callback=None, **kwargs):
+    def __init__(self, parent, height=8, close_callback=None, oscar=None, **kwargs):
         tk.Frame.__init__(self, parent, **kwargs)
+        
+        self.oscar = oscar
         
         # Title frame with label and close button
         title_frame = tk.Frame(self)
@@ -80,6 +83,13 @@ class LabSelectionPanel(tk.Frame):
         # Create checkboxes organized by category
         self._create_checkboxes()
         
+        # Cache for patient list (formatted strings)
+        self._cached_patient_list = None
+        
+        # Patient selector and open button inside scrollable area (must scroll to see)
+        if self.oscar:
+            self._create_patient_controls()
+        
         # Initially hidden (will be shown via grid when needed)
     
     def _bind_mousewheel(self, event):
@@ -129,6 +139,8 @@ class LabSelectionPanel(tk.Frame):
                 )
                 checkbox.grid(row=row, column=0, sticky="w", padx=(15, 3), pady=1)
                 row += 1
+        
+        self._last_checkbox_row = row
     
     def set_checkboxes(self, ui_labels: list[str]):
         """
@@ -175,10 +187,174 @@ class LabSelectionPanel(tk.Frame):
             var.set(False)
     
     def show(self):
-        """Show the panel."""
+        """Show the panel and refresh patient list if needed."""
         self.grid()
+        if self.oscar and hasattr(self, 'patient_selector'):
+            self._refresh_patient_list(force_refresh=False)
     
     def hide(self):
         """Hide the panel."""
         self.grid_remove()
+    
+    def _create_patient_controls(self):
+        """Create patient selector and open lab form button inside scrollable area."""
+        row = getattr(self, '_last_checkbox_row', len(self.checkbox_vars) + len(LAB_CHECKBOX_CATEGORIES))
+        
+        separator = ttk.Separator(self.scrollable_frame, orient="horizontal")
+        separator.grid(row=row, column=0, columnspan=2, sticky="ew", padx=3, pady=(10, 5))
+        row += 1
+        
+        patient_frame = tk.Frame(self.scrollable_frame)
+        patient_frame.grid(row=row, column=0, columnspan=2, sticky="ew", padx=3, pady=(0, 5))
+        row += 1
+        
+        patient_label = tk.Label(patient_frame, text="Patient (Chart #):", font=("Arial", 8, "bold"), anchor="w")
+        patient_label.pack(fill="x", pady=(0, 2))
+        
+        self.patient_var = tk.StringVar()
+        self.patient_selector = SearchableComboBox(patient_frame, textvariable=self.patient_var, values=[])
+        self.patient_selector.pack(fill="x", pady=(0, 5))
+        self.patient_selector.bind("<Button-1>", lambda e: self._refresh_patient_list())
+        self.patient_selector.bind("<<ComboboxSelected>>", self._on_patient_selected)
+        
+        self.open_button = tk.Button(
+            patient_frame,
+            text="Open Lab Form",
+            command=self._open_lab_form,
+            font=("Arial", 9),
+            cursor="hand2",
+            relief="raised",
+            bd=2
+        )
+        self.open_button.pack(fill="x")
+    
+    def _refresh_patient_list(self, force_refresh=False):
+        """
+        Refresh the patient list from appointments when selector is clicked.
+        Uses cached list if available, unless force_refresh is True.
+        
+        Args:
+            force_refresh: If True, force a refresh even if cache exists
+        """
+        if hasattr(self, 'patient_selector'):
+            try:
+                patient_values = self._get_patient_list(force_refresh=force_refresh)
+                self.patient_selector.set_values(patient_values)
+            except Exception as e:
+                print(f"Could not load patient list: {e}")
+                self.patient_selector.set_values([])
+    
+    def _get_patient_list(self, force_refresh=False):
+        """
+        Get list of all patients from appointments, formatted for display.
+        Uses cached formatted list if available, and uses oscar.appts directly
+        if it exists (avoiding unnecessary scans).
+        
+        Args:
+            force_refresh: If True, refresh cache even if it exists
+        
+        Returns:
+            List of formatted patient strings: ["Lastname, Firstname (Chart#)"]
+        """
+        if not self.oscar:
+            return []
+        
+        if self._cached_patient_list is not None and not force_refresh:
+            return self._cached_patient_list
+        
+        if self.oscar.appts:
+            all_patients = []
+            for doctor, appts in self.oscar.appts.items():
+                all_patients.extend(appts)
+        else:
+            all_patients = self.oscar.get_all_patients()
+        
+        patients = []
+        for appt in all_patients:
+            name = appt.get("Name", "")
+            chart_no = appt.get("Demo#", "")
+            if name and chart_no:
+                formatted = f"{name} ({chart_no})"
+                patients.append(formatted)
+        
+        self._cached_patient_list = sorted(set(patients))
+        return self._cached_patient_list
+    
+    def _on_patient_selected(self, event=None):
+        """When a patient is selected from dropdown, extract and store just the chart number."""
+        selected = self.patient_var.get().strip()
+        if selected:
+            chart_no = self._extract_chart_number(selected)
+            if chart_no:
+                self.patient_var.set(chart_no)
+    
+    def _extract_chart_number(self, selection):
+        """
+        Extract chart number from selection string.
+        
+        Args:
+            selection: Either "Lastname, Firstname (Chart#)" format or just chart number
+        
+        Returns:
+            Chart number string, or None if not found
+        """
+        if not selection:
+            return None
+        
+        if selection.isdigit():
+            return selection
+        
+        try:
+            if "(" in selection and ")" in selection:
+                chart_part = selection[selection.rindex("(")+1:selection.rindex(")")].strip()
+                return chart_part
+        except Exception:
+            pass
+        
+        return None
+    
+    def _get_patient_name_from_chart(self, chart_no):
+        """
+        Look up patient name from chart number in appointments.
+        
+        Args:
+            chart_no: Demographic number
+        
+        Returns:
+            Tuple of (first_name, last_name) or (None, None) if not found
+        """
+        if not self.oscar or not self.oscar.appts:
+            return (None, None)
+        
+        for doctor, appts in self.oscar.appts.items():
+            for appt in appts:
+                if appt.get("Demo#") == chart_no:
+                    name = appt.get("Name", "")
+                    if name and "," in name:
+                        parts = name.split(",", 1)
+                        return (parts[1].strip(), parts[0].strip())
+        
+        return (None, None)
+    
+    def _open_lab_form(self):
+        """Open the lab form with selected patient and checked checkboxes."""
+        if not self.oscar:
+            messagebox.showerror("Error", "Oscar connection not available.", parent=self)
+            return
+        
+        selected = self.patient_var.get().strip()
+        if not selected:
+            messagebox.showwarning("Missing Patient", "Please enter or select a patient chart number.", parent=self)
+            return
+        
+        chart_no = self._extract_chart_number(selected)
+        if not chart_no:
+            messagebox.showerror("Error", "Invalid chart number format.", parent=self)
+            return
+        
+        checkbox_names = self.get_checked_eform_names()
+        
+        first_name, last_name = self._get_patient_name_from_chart(chart_no)
+        
+        self.oscar.open_lab_eform_with_checkboxes(first_name, last_name, checkbox_names, None, chart_no)
 
