@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from UI.Widgets.SearchableSelector import SearchableComboBox
-
+from datetime import datetime
 class OscarEformsUI:
     def __init__(self, parent, oscar):
         """
@@ -20,77 +20,122 @@ class OscarEformsUI:
         # Create popup window
         self.window = tk.Toplevel(parent)
         self.window.title("Oscar eForms")
-        self.window.geometry("500x300")
+        self.window.geometry("500x600")
 
-         # Frame for inputs and button
-        frame = ttk.Frame(self.window)
-        frame.pack(padx=20, pady=20)
+        # Frame for inputs and button
+        self.frame = ttk.Frame(self.window)
+        self.frame.pack(padx=20, pady=20)
 
         # Grid columns and rows configuration
         for i in range(3):
-            frame.grid_columnconfigure(i, weight=1)
+            self.frame.grid_columnconfigure(i, weight=1)
 
         for i in range(6):
-            frame.grid_rowconfigure(i, weight=1)
+            self.frame.grid_rowconfigure(i, weight=1)
 
 
         # --- INPUTS --- #
         # First Name
-        self.first_name_lbl = ttk.Label(frame, text="First Name:", font=('Ariel', 8, 'bold'), width=18)
+        self.first_name_lbl = ttk.Label(self.frame, text="First Name:", font=('Ariel', 8, 'bold'), width=18)
         self.first_name_lbl.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
-        self.first_name_entry = ttk.Entry(frame, width=20)
+        self.first_name_entry = ttk.Entry(self.frame, width=20)
         self.first_name_entry.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
         # Last Name
-        self.last_name_lbl = ttk.Label(frame, text="Last Name:", font=('Ariel', 8, 'bold'), width=18)
+        self.last_name_lbl = ttk.Label(self.frame, text="Last Name:", font=('Ariel', 8, 'bold'), width=18)
         self.last_name_lbl.grid(row=0, column=1, padx=5, pady=5, sticky="nsew") 
 
-        self.last_name_entry = ttk.Entry(frame, width=18)
+        self.last_name_entry = ttk.Entry(self.frame, width=18)
         self.last_name_entry.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
         # Chart Number
-        self.chartno_lbl = ttk.Label(frame, text="Chart No.", font=('Ariel', 8, 'bold'), width=18)
+        self.chartno_lbl = ttk.Label(self.frame, text="Chart No.", font=('Ariel', 8, 'bold'), width=18)
         self.chartno_lbl.grid(row=0, column=2, padx=5, pady=5, sticky="nsew")
 
-        self.chartno_entry = ttk.Entry(frame, width=18)
+        self.chartno_entry = ttk.Entry(self.frame, width=18)
         self.chartno_entry.grid(row=1, column=2, padx=5, pady=5, sticky="nsew")
         
-
+        # Doctor Name
+        self.doctor_name = tk.StringVar(value="Maheswaran Srivamadevan")
+        self.doctor_entry = ttk.Entry(self.frame, width=20, textvariable=self.doctor_name)
+        self.doctor_entry.grid(row=5, column=0, padx=5, pady=5, sticky="nsew", columnspan=2)
 
         # --- EFORM DROPDOWN --- #
         self.eform_var = tk.StringVar(value="Auto")
         values = list(self.oscar.eforms.keys())
-        self.eform_selector = SearchableComboBox(frame, textvariable=self.eform_var, values=values)
+        self.eform_selector = SearchableComboBox(self.frame, textvariable=self.eform_var, values=values)
         self.eform_selector.grid(row=2, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
-
 
 
         # --- BUTTONS --- #
         # Open eForms by navigating Oscar
-        self.search_eform = ttk.Button(frame, text="Search eForm", command=self.open_eforms, width=18)
+        self.search_eform = ttk.Button(self.frame, text="Search eForm", command=self.open_eforms, width=18)
         self.search_eform.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
 
         # Open eForms by link
-        self.link_eform = ttk.Button(frame, text="Link eForm", command=lambda: self.open_eforms(True), width=18)
+        self.link_eform = ttk.Button(self.frame, text="Link eForm", command=lambda: self.open_eforms(True), width=18)
         self.link_eform.grid(row=3, column=1, padx=5, pady=5, sticky="nsew")
 
         # Scan eForm library for all eForms and load them into dropdown selector
-        self.eform_scan = ttk.Button(frame, text="eForm Scan", command=self.scan_eforms, width=18)
+        self.eform_scan = ttk.Button(self.frame, text="eForm Scan", command=self.scan_eforms, width=18)
         self.eform_scan.grid(row=3, column=2, padx=5, pady=5, sticky="nsew")
 
         # Read Medical History 
-        self.letter_btn = ttk.Button(frame, text="Medical History", command=self.read_medical_history, width=18)
+        self.letter_btn = ttk.Button(self.frame, text="Medical History", command=self.read_medical_history, width=18)
         self.letter_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
 
-        # Read Documents
-        #self.doc_btn = ttk.Button(frame, text="Read Docs", command=self.read_docs, width=18)
-        #self.doc_btn.grid(row=5, column=2, padx=5, pady=5, sticky="nsew")
+        # Load Apointments 
+        self.load_patient_btn = ttk.Button(self.frame, text="Load Appointments", command=self.load_appointments, width=18)
+        self.load_patient_btn.grid(row=5, column=2, padx=5, pady=5, sticky="nsew")
+
+
+        # ---- SCROLLABLE FRAME ----
+        # Scrollable frame for Patient Appointments
+        scroll_container = ttk.Frame(self.window)
+        scroll_container.pack(fill="both", expand=True)
+
+        # Canvas for scrolling
+        self.canvas = tk.Canvas(scroll_container)
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(scroll_container, orient="vertical", command=self.canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        # The Frame INSIDE the canvas (for patient appointments)
+        self.appt_frame = ttk.Frame(self.canvas)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.appt_frame, anchor="nw")
+
+        # Auto-resize scroll region
+        self.appt_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        # Expand inner frame horizontally
+        self.canvas.bind("<Configure>", self._on_canvas_resize)
+
+        # Mouse wheel scroll
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+        # Grid setup for scrollable frame
+        for i in range(3):
+            self.appt_frame.grid_columnconfigure(i, weight=1)
 
 
         # Focus first entry
         self.first_name_entry.focus_set()
 
+
+    def _on_mousewheel(self, event):
+        """Mousewheel scrolling"""
+        self.canvas.yview_scroll(-1 * (event.delta // 120), "units")
+
+    def _on_canvas_resize(self, event):
+        """Keep the internal frame stretched to canvas width."""
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
 
 
     def search_patient(self, open_encounter=True, open_eform_lib=True):
@@ -316,11 +361,61 @@ class OscarEformsUI:
             elif getattr(widget, "_id", None) == "prompt_selector":
                 widget.set("Medical History")
 
-            
+
+    def insert_patient_details(self, first_name, last_name, chartNo):
+        """Inserts patients first and last name and chartNo into entries"""
+        self.first_name_entry.delete(0, tk.END)
+        self.last_name_entry.delete(0, tk.END)
+        self.chartno_entry.delete(0, tk.END)
+        self.first_name_entry.insert(0, first_name)
+        self.last_name_entry.insert(0, last_name)
+        self.chartno_entry.insert(0, chartNo)
 
 
-    def read_docs(self):
-        self.search_patient(open_eform_lib=False)
-        self.oscar.read_dcs_and_angiograms()
+    def load_appointments(self):
+        """
+        Reads the inputted doctor name and loads all of the doctor's appointments
+        into the scrollable frame at the bottom of the window. 
+        Each appointment will be structured like:
+            <Patient Name>        <Chart Number>        <Button to load info into entry boxes>
+        """
+        # Scan all appointments
+        if not self.oscar.appts:
+            print("Scanning appointments")
+            self.oscar.scan_appointments()
 
+        # Get appointments only for given doctor
+        appts = self.oscar.appts.get(self.doctor_name.get())
+        if not appts:
+            print("No appointments for entered doctor")
+            return
+        
+        # For each appointment, create row in scrollable frame
+        for i, elem in enumerate(appts, start=6):
+            appt_time = elem.get("Time") # Currently not used
+            chartNo = elem.get("Demo#")
+            name = elem.get("Name").split(',', 1)
 
+            # Create row
+            ttk.Label(
+                self.appt_frame, 
+                text=elem.get("Name"), 
+                font=('Ariel', 8, 'bold'), 
+                width=18
+            ).grid(row=i, column=0, padx=5, pady=5, sticky="nsew")
+            ttk.Label(
+                self.appt_frame, 
+                text=chartNo, 
+                font=('Ariel', 8, 'bold'), 
+                width=18
+            ).grid(row=i, column=1, padx=5, pady=5, sticky="nsew")
+            ttk.Button(
+                self.appt_frame,
+                text="Load",
+                command=lambda n=name, c=chartNo: self.insert_patient_details(n[1], n[0], c),
+                width=18
+            ).grid(row=i, column=2, padx=5, pady=5, sticky="nsew")
+                        
+                
+                
+        

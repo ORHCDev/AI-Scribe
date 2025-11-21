@@ -86,7 +86,7 @@ class OscarEforms:
             raise
 
 
-
+        self.appts = None
 
 
     def run(self):
@@ -872,6 +872,123 @@ class OscarEforms:
             return False
 
 
+
+    def scan_appointments(self):
+        """
+        Scans the Oscar home page for all patient appointments registered for the day.
+        
+        Returns
+        -------
+            Returns a dictionary where the key is the doctor and the value is a list
+            a dictionaries where each one represents an appointment. 
+
+            Each appointment dictionary is structured like:
+                "Demo#"  : Patient's demographic number
+                "Name"   : Patient's name formatted "<lastname>,<firstname>"
+                "Type"   : Appointment type
+                "Reason" : Appointment reason
+                "Notes"  : Appointment notes
+                "Time"   : Appointment start time
+
+        """
+        # Switch to oscar home window
+        self.driver.switch_to.window(self.home_window)
+        
+        # Find all appointment columns
+        columns = self.wait.until(
+            EC.presence_of_all_elements_located((By.XPATH, "/html/body/table[2]/tbody/tr[2]/td/table/tbody/tr/td"))
+        )
+
+        doc_dict = {}
+        # For each column get the doctor name and their appointments
+        for col in columns:
+            try:
+                doctor = col.find_element(By.XPATH, "./table/tbody/tr[1]/td/b/b/a[1]").text.strip()
+            except:
+                print("No doctor, continuing")
+                continue
+
+            doc_dict[doctor] = []
+            """appts = col.find_elements(By.CLASS_NAME, "appt")
+            for appt in appts:
+                try:
+                    enc = appt.find_element(By.CLASS_NAME, "encounterBtn")
+                    onclick_value = enc.get_attribute("onclick")
+                    match = re.search(r"demographicNo=(\d+)", onclick_value)
+                    if match:
+                        demNo = match.group(1)
+                        print(demNo)
+                        doc_dict[doctor].append(demNo)
+                except Exception as e:
+                    print(f"Error: {e}")
+                    continue"""
+
+            # Iterate over all rows and find appointments
+            # Can use above commented out code to get appointments as is cleaner
+            # if there is no need for appointment start times
+            rows = col.find_elements(By.XPATH, ".//*[@id='providerSchedule']/tbody/tr")
+            for row in rows:
+                # Check if timeslot has appointment
+                try:
+                    appt = row.find_element(By.CLASS_NAME, "appt")
+                except:
+                    continue
+
+                try:
+                    # Find encounter element
+                    enc = appt.find_element(By.CLASS_NAME, "encounterBtn")
+                    # Extract demographic number from encounter link
+                    onclick_value = enc.get_attribute("onclick")
+                    match = re.search(r"demographicNo=(\d+)", onclick_value)
+                    if match:
+                        demNo = match.group(1)
+
+                        # Get appointment time slot
+                        timeslot = row.find_element(By.XPATH, "./td[1]/a")
+                        appt_time = timeslot.text.strip()
+
+                        # get appointment details 
+                        details = appt.find_element(By.CLASS_NAME, "apptLink").get_attribute("title")
+                        try:
+                            split_details = details.split("\n")
+                            name =      split_details[0].strip()
+                            appt_type = split_details[1].strip()
+                            reason =    split_details[2].strip()
+                            notes =     split_details[3].strip()
+                        except Exception as e:
+                            print(f"Unable to get patient details: {e}")
+                            name = ""
+                            appt_type = ""
+                            reason = ""
+                            notes = ""
+
+                        # Add appointment dictionary to list
+                        patient = {
+                            "Demo#" : demNo,
+                            "Name" : name,
+                            "Type" : appt_type,
+                            "Reason" : reason,
+                            "Notes" : notes,
+                            "Time" : appt_time,
+                        }
+                        doc_dict[doctor].append(patient)
+
+                except Exception as e:
+                    print(f"Error")
+                    continue
+
+        # Print dictionary contents
+        for key, val in doc_dict.items():
+            print(f"{25*'='}\n{key}\n{25*'='}")
+            for elem in val:
+                print(f"{15*'-'}")
+                for k, v in elem.items():
+                    print(f"\t {k:10} : {v}")
+                
+                print(f"{15*'-'}")
+
+        self.appts = doc_dict
+        return self.appts
 
     def switch_to_encounter(self):
         """
