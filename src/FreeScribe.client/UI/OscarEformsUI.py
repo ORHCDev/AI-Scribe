@@ -56,17 +56,21 @@ class OscarEformsUI:
         self.chartno_entry = ttk.Entry(self.frame, width=18)
         self.chartno_entry.grid(row=1, column=2, padx=5, pady=5, sticky="nsew")
         
-        # Doctor Name
-        self.doctor_name = tk.StringVar(value="Maheswaran Srivamadevan")
-        self.doctor_entry = ttk.Entry(self.frame, width=20, textvariable=self.doctor_name)
-        self.doctor_entry.grid(row=5, column=0, padx=5, pady=5, sticky="nsew", columnspan=2)
+        
 
-        # --- EFORM DROPDOWN --- #
+        # --- DROPDOWNS --- #
         self.eform_var = tk.StringVar(value="Auto")
         values = list(self.oscar.eforms.keys())
         self.eform_selector = SearchableComboBox(self.frame, textvariable=self.eform_var, values=values)
         self.eform_selector.grid(row=2, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
 
+
+        # Doctor Name
+        vals = list(self.oscar.appts.keys())
+        self.doctor_name = tk.StringVar(value="Maheswaran Srivamadevan")
+        self.doctor_selector = ttk.Combobox(self.frame, textvariable=self.doctor_name, values=vals, state="readonly")
+        self.doctor_selector.grid(row=5, column=0,  columnspan=3, padx=5, pady=5, sticky="nsew")
+        self.doctor_selector.bind("<<ComboboxSelected>>", self.load_appointments)
 
         # --- BUTTONS --- #
         # Open eForms by navigating Oscar
@@ -86,8 +90,8 @@ class OscarEformsUI:
         self.letter_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
 
         # Load Apointments 
-        self.load_patient_btn = ttk.Button(self.frame, text="Load Appointments", command=self.load_appointments, width=18)
-        self.load_patient_btn.grid(row=5, column=2, padx=5, pady=5, sticky="nsew")
+        #self.load_patient_btn = ttk.Button(self.frame, text="Load Appointments", command=self.load_appointments, width=18)
+        #self.load_patient_btn.grid(row=5, column=2, padx=5, pady=5, sticky="nsew")
 
 
         # ---- SCROLLABLE FRAME ----
@@ -124,6 +128,8 @@ class OscarEformsUI:
         for i in range(3):
             self.appt_frame.grid_columnconfigure(i, weight=1)
 
+        # Load appointments into frame
+        self.load_appointments()
 
         # Focus first entry
         self.first_name_entry.focus_set()
@@ -372,7 +378,7 @@ class OscarEformsUI:
         self.chartno_entry.insert(0, chartNo)
 
 
-    def load_appointments(self):
+    def load_appointments(self, event=None):
         """
         Reads the inputted doctor name and loads all of the doctor's appointments
         into the scrollable frame at the bottom of the window. 
@@ -383,15 +389,18 @@ class OscarEformsUI:
         if not self.oscar.appts:
             print("Scanning appointments")
             self.oscar.scan_appointments()
+            self.doctor_selector["values"] = list(self.oscar.appts.keys())
 
+        # Clear any previous elements in appointment frame
+        for widget in self.appt_frame.winfo_children():
+            widget.destroy()
+        
         # Get appointments only for given doctor
         appts = self.oscar.appts.get(self.doctor_name.get())
-        if not appts:
-            print("No appointments for entered doctor")
-            return
         
+
         # For each appointment, create row in scrollable frame
-        for i, elem in enumerate(appts, start=6):
+        for i, elem in enumerate(appts, start=0):
             appt_time = elem.get("Time") # Currently not used
             chartNo = elem.get("Demo#")
             name = elem.get("Name").split(',', 1)

@@ -48,6 +48,7 @@ from UI.MainWindowUI import MainWindowUI
 from UI.SettingsWindow import SettingsWindow, SettingsKeys
 from UI.PromptsWindow import PromptsWindow
 from UI.OscarEforms import OscarEforms
+from UI.OscarEformsUI import OscarEformsUI
 from UI.Widgets.CustomTextBox import CustomTextBox
 from UI.Widgets.LabSelectionPanel import LabSelectionPanel
 from UI.LoadingWindow import LoadingWindow
@@ -88,8 +89,11 @@ window = MainWindowUI(root, app_settings, ai_prompts, oscar)
 
 app_settings.set_main_window(window)
 
-
+# Login to oscar
 root.after(100, oscar.run)
+
+# Open eForm Window on Startup
+root.after(100, lambda: OscarEformsUI(root, oscar))
 
 # Cleanup on window close
 def on_close():
