@@ -42,8 +42,7 @@ class MainWindowUI:
         self.current_docker_status_check_id = None  # ID for the current Docker status check
         self.current_container_status_check_id = None  # ID for the current container status check
 
-        # Open eForm Window on Startup
-        self.root.after(0, lambda: OscarEformsUI(self.root, self.oscar))
+
 
     def load_main_window(self):
         """

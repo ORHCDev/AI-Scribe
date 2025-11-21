@@ -86,7 +86,7 @@ class OscarEforms:
             raise
 
 
-        self.appts = None
+        self.appts = {}
 
 
     def run(self):
@@ -96,6 +96,8 @@ class OscarEforms:
             self.driver.minimize_window()
             self.oscar_login()
             print("Oscar session ready.")
+            print("Scanning Appointments")
+            self.scan_appointments()
         except Exception as e:
             print(f"Error in run(): {e}")
             self.cleanup()
@@ -978,14 +980,15 @@ class OscarEforms:
                     continue
 
         # Print dictionary contents
-        for key, val in doc_dict.items():
-            print(f"{25*'='}\n{key}\n{25*'='}")
-            for elem in val:
-                print(f"{15*'-'}")
-                for k, v in elem.items():
-                    print(f"\t {k:10} : {v}")
-                
-                print(f"{15*'-'}")
+        if False:
+            for key, val in doc_dict.items():
+                print(f"{25*'='}\n{key}\n{25*'='}")
+                for elem in val:
+                    print(f"{15*'-'}")
+                    for k, v in elem.items():
+                        print(f"\t {k:10} : {v}")
+                    
+                    print(f"{15*'-'}")
 
         self.appts = doc_dict
         return self.appts
