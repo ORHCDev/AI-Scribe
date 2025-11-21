@@ -64,6 +64,8 @@ def extract_observation_date(text, doc_type):
         r'\b[A-Za-z]{3} \d{2}, \d{4}\b': '%b %d, %Y',  # MMM DD, YYYY
         r'\b[A-Za-z]{3} \d{1}, \d{4}\b': '%b %d, %Y',  # MMM D, YYYY
         r'\b\d{1}-[A-Za-z]{3}-\d{4}\b': '%d-%b-%Y',  # D-MMM-YYYY
+        r'\b\d{2}-[A-Za-z]{3}-\d{2}\b': '%d-%b-%y', # DD-MMM-YY 
+        r'\b\d{2} [A-Za-z]{3} \d{4}\b': '%d %b %Y', # DD MMM YYYY
         r'\b\d{4}-[A-Za-z]{3}-\d{2}\b': '%Y-%b-%d', # YYYY-MMM-DD
         r'\b[A-Za-z]{3}/\d{1}/\d{4}\b': '%b/%d/%Y',  # MMM/D/YYYY
         r'\b\d{2}/\d{2}/\d{2}\b': '%d/%m/%y',  # DD/MM/YY

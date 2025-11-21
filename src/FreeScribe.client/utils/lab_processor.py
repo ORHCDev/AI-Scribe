@@ -21,9 +21,7 @@ def generate_lab_hl7(text, testing=False):
     Notes:
     ------
         - Only the first occurrence of each analyte is processed.
-        - The function handles values with inequalities ('<' or '>') and ranges ('-').
         - Analytes with 'N/A' as their HL7 code are skipped.
-        - The function is tailored to a specific set of analytes and may require updates for new tests.
     """
 
     df = pd.read_csv(r".\utils\lab_results.csv", index_col="Test Name")
