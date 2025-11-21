@@ -89,10 +89,6 @@ class OscarEformsUI:
         self.letter_btn = ttk.Button(self.frame, text="Medical History", command=self.read_medical_history, width=18)
         self.letter_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
 
-        # Load Apointments 
-        #self.load_patient_btn = ttk.Button(self.frame, text="Load Appointments", command=self.load_appointments, width=18)
-        #self.load_patient_btn.grid(row=5, column=2, padx=5, pady=5, sticky="nsew")
-
 
         # ---- SCROLLABLE FRAME ----
         # Scrollable frame for Patient Appointments
@@ -121,8 +117,10 @@ class OscarEformsUI:
         # Expand inner frame horizontally
         self.canvas.bind("<Configure>", self._on_canvas_resize)
 
-        # Mouse wheel scroll
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        # Mouse wheel scroll.
+        # Only allows scrolling when mouse is hovering over appointments frame
+        self.canvas.bind("<Enter>", self._bind_mousewheel)
+        self.canvas.bind("<Leave>", self._unbind_mousewheel)
 
         # Grid setup for scrollable frame
         for i in range(3):
@@ -136,11 +134,33 @@ class OscarEformsUI:
 
 
     def _on_mousewheel(self, event):
-        """Mousewheel scrolling"""
-        self.canvas.yview_scroll(-1 * (event.delta // 120), "units")
+        """Controls mousewheel scrolling for patient appointment frame"""
+        # Get current scrollregion
+        _, y1, _, y2 = self.canvas.bbox("all")
+
+        # Height of scrollable content
+        content_height = y2 - y1
+        # Height of visible area
+        visible_height = self.canvas.winfo_height()
+
+        # If content fits, ignore scroll
+        if content_height <= visible_height:
+            return
+
+        # Otherwise scroll normally
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _bind_mousewheel(self, event):
+        """Binds mousewheel for appointment frame scrollability"""
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _unbind_mousewheel(self, event):
+        """Unbinds mousewheel from appointment frame"""
+        self.canvas.unbind_all("<MouseWheel>")
+
 
     def _on_canvas_resize(self, event):
-        """Keep the internal frame stretched to canvas width."""
+        """Keeps the appointment frame stretched to canvas width."""
         self.canvas.itemconfig(self.canvas_window, width=event.width)
 
 
@@ -406,18 +426,21 @@ class OscarEformsUI:
             name = elem.get("Name").split(',', 1)
 
             # Create row
+            # NAME
             ttk.Label(
                 self.appt_frame, 
                 text=elem.get("Name"), 
                 font=('Ariel', 8, 'bold'), 
-                width=18
+                width=25
             ).grid(row=i, column=0, padx=5, pady=5, sticky="nsew")
+            # CHART NUMBER
             ttk.Label(
                 self.appt_frame, 
                 text=chartNo, 
                 font=('Ariel', 8, 'bold'), 
-                width=18
-            ).grid(row=i, column=1, padx=5, pady=5, sticky="nsew")
+                width=12
+            ).grid(row=i, column=1, padx=15, pady=5, sticky="nsew")
+            # LOAD BUTTON
             ttk.Button(
                 self.appt_frame,
                 text="Load",
