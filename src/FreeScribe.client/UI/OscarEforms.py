@@ -1006,6 +1006,24 @@ class OscarEforms:
         self.appts = doc_dict
         return self.appts
 
+    def get_all_patients(self):
+        """
+        Get list of all patients from all appointments across all doctors.
+        Ensures appointments are scanned if needed.
+        
+        Returns:
+            List of appointment dictionaries with patient information.
+            Each dictionary contains: "Demo#", "Name", "Type", "Reason", "Notes", "Time", "Status"
+        """
+        if not self.appts:
+            self.scan_appointments()
+        
+        all_patients = []
+        for doctor, appts in self.appts.items():
+            all_patients.extend(appts)
+        
+        return all_patients
+
     def switch_to_encounter(self):
         """
         Checks if a patient encounter page is opened. 
