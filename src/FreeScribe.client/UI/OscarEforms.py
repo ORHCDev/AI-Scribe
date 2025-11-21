@@ -891,6 +891,7 @@ class OscarEforms:
                 "Reason" : Appointment reason
                 "Notes"  : Appointment notes
                 "Time"   : Appointment start time
+                "Status" : Appointment's status (i.e. booked, cancelled, rescheduled, etc)
 
         """
         # Switch to oscar home window
@@ -951,6 +952,10 @@ class OscarEforms:
 
                         # get appointment details 
                         details = appt.find_element(By.CLASS_NAME, "apptLink").get_attribute("title")
+                        name = ""
+                        appt_type = ""
+                        reason = ""
+                        notes = ""
                         try:
                             split_details = details.split("\n")
                             name =      split_details[0].strip()
@@ -959,10 +964,18 @@ class OscarEforms:
                             notes =     split_details[3].strip()
                         except Exception as e:
                             print(f"Unable to get patient details: {e}")
-                            name = ""
-                            appt_type = ""
-                            reason = ""
-                            notes = ""
+                            
+
+                        # Get appointment status
+                        status = appt.find_element(By.CLASS_NAME, "apptStatus").get_attribute("title").strip()
+                        # List of status' that if the appointment has will be ignored
+                        to_ignore = [
+                            "Cancelled",
+                            "Completed",
+                            "Rescheduled"
+                        ]
+                        if any([ig in status for ig in to_ignore]):
+                            continue
 
                         # Add appointment dictionary to list
                         patient = {
@@ -972,11 +985,11 @@ class OscarEforms:
                             "Reason" : reason,
                             "Notes" : notes,
                             "Time" : appt_time,
+                            "Status" : status,
                         }
                         doc_dict[doctor].append(patient)
 
                 except Exception as e:
-                    print(f"Error")
                     continue
 
         # Print dictionary contents
