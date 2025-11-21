@@ -1077,11 +1077,8 @@ def generate_note(formatted_message):
                     update_gui_with_response(hl7_header + ai_response)
 
                 else:
-                    if prompt_type == "LAB":
-                        ai_response = generate_lab_hl7(formatted_message)
-                    else:
-                        prompt = ai_prompts.get(prompt_type)
-                        ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
+                    prompt = ai_prompts.get(prompt_type)
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
                 return True
