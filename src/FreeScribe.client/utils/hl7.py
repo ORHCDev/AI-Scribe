@@ -172,7 +172,7 @@ def extract_observation_date(text, doc_type):
     valid_dates = [date for date in dates if date <= current_date and date.year >= 2000]
     if valid_dates:
         latest_date = max(valid_dates)
-        return latest_date.strftime('%Y-%m-%d')
+        return latest_date.strftime('%Y%m%d')
 
     return
 
