@@ -197,6 +197,27 @@ def threaded_send_audio_to_server():
     return thread
 
 
+def threaded_folder_reading():
+    def worker():
+        global ocr_text
+        ocr_text = ""
+        pdfs = [file for file in os.listdir(folder_path) if file.lower().endswith(".pdf")]
+        for pdf in pdfs:
+            try:
+                # Read file
+                pdf_path = os.path.join(folder_path, pdf)
+                ocr_text += file_reader(pdf_path)
+            except Exception as e:
+                print(f"Unable to extract text from {pdf}: {e}")
+        
+        # Display read text
+        user_input.scrolled_text.delete("1.0", tk.END)
+        user_input.scrolled_text.insert(tk.END, ocr_text)
+        
+    thread = threading.Thread(target=worker())
+    thread.start()
+    return thread
+
 def threaded_file_reading():
     def worker():
         global ocr_text
@@ -1531,6 +1552,16 @@ def _load_stt_model_thread():
         print("Closing STT loading window.")
 
 
+def read_folder():
+    """Reads all pdfs in a folder and pastes their text in input text box"""
+    global folder_path
+    folder_path = filedialog.askdirectory()
+
+    if folder_path:
+        threaded_folder_reading()
+        pass
+
+
 def read_file_text():
     global file_path
     file_path = filedialog.askopenfilename(
@@ -1643,7 +1674,7 @@ auto_process_tbox = CustomTextBox(root, height=12)
 upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
 upload_file_button.grid(row=1, column=8, pady=5, rowspan=1, sticky='nsew')
 
-download_file_btn = tk.Button(root, text="Download \nResults", command=download_results, height=2, width=11)
+download_file_btn = tk.Button(root, text="Upload \nFolder", command=read_folder, height=2, width=11)
 download_file_btn.grid(row=2, column=8, pady=5, rowspan=1, sticky="nsew")
 
 blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
@@ -1671,6 +1702,10 @@ lab_selection_panel.grid_remove()  # Initially hidden
 # Set up Get Labs button callback (after panel is created)
 # Button always says "Lab Form" and opens/analyzes the panel
 response_display.set_get_labs_callback(get_labs_from_response)
+
+# Set up Download button callback
+# Button will download the LLM response text in as an HL7 or TXT file
+response_display.set_download_callback(download_results)
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
