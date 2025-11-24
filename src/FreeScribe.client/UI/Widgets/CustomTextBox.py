@@ -54,6 +54,10 @@ class CustomTextBox(tk.Frame):
         # Get Labs button (optional, can be set via set_get_labs_callback)
         self.get_labs_button = None
         self.get_labs_callback = None
+
+        # Download button. Set via set_download_callback
+        self.download_button = None
+        self.download_callback = None
     
     def set_get_labs_callback(self, callback):
         """Set the callback function for the Get Labs button."""
@@ -75,6 +79,28 @@ class CustomTextBox(tk.Frame):
         if self.get_labs_callback:
             self.get_labs_callback()
     
+
+    def set_download_callback(self, callback):
+        """Sets the callback function for the download button."""
+        self.download_callback = callback
+        if self.download_callback:
+            if self.download_button is None:
+                self.download_button = tk.Button(
+                    self.scrolled_text,
+                    text="Download",
+                    command=self._download,
+                    relief="raised",
+                    borderwidth=1
+                )
+                # Place next to copy button
+                self.download_button.place(relx=1.0, rely=1.0, x=-162, y=-2, anchor="se")
+
+    def _download(self):
+        """Internal method to call the download callback."""
+        if self.download_callback:
+            self.download_callback()
+
+
     def update_lab_button_text(self, text):
         """Update the lab form button text."""
         if self.get_labs_button:
