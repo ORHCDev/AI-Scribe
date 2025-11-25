@@ -564,6 +564,8 @@ class OscarEformsUI:
         
         if self.doc_cbs: 
             self.document_defaults = [opt for opt, var in self.doc_cbs.items() if var.get()]
+        row = 0
+        col = 0
         for opt in self.document_opts:
             var = tk.BooleanVar()
             self.doc_cbs[opt] = var
@@ -577,8 +579,16 @@ class OscarEformsUI:
                 font=("Arial", 8),
                 justify="left"
             )
-            cb.pack(padx=5, pady=2)
+            
+
+            cb.grid(row=row, column=col, padx=5, pady=2)
             cb.configure(width=20)
+
+            if col == 0:
+                col = 1
+            else:
+                col = 0
+                row += 1
 
         # Setting truth values
         for var in self.doc_cbs.values():
@@ -586,9 +596,6 @@ class OscarEformsUI:
 
         for opt in self.document_defaults:
             self.doc_cbs[opt].set(True)
-
-        #else:
-
 
         return vars
 
