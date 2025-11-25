@@ -2,6 +2,9 @@ import yaml
 import time
 import re
 import os
+import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
@@ -26,7 +29,7 @@ class OscarEforms:
             oscar_report_path: Path to oscarReportmasterXLS.xls (Used for patient chart number searching)
         
         """
-        # Load config file
+        # Config
         self.config_path = config_path
         with open(self.config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
@@ -48,7 +51,8 @@ class OscarEforms:
         url = self.config['url'].rsplit('/', 1)[0]
         self.eform_lib_link = url + "/eform/efmformslistadd.jsp"
         self.eform_link_template = url + "/eform/efmformadd_data.jsp?fid={formID}&demographic_no={chartNo}&appointment=&parentAjaxId=eforms"
-            
+        self.doc_link = url + "/dms/MultiPageDocDisplay.jsp?segmentID={segment_id}&providerNo=130&searchProviderNo=130&status=A" 
+
         # Windows
         self.home_window = None
         self.search_window = None
@@ -87,6 +91,8 @@ class OscarEforms:
 
 
         self.appts = {}
+        self.session = None
+        
 
 
     def run(self):
@@ -98,6 +104,13 @@ class OscarEforms:
             print("Oscar session ready.")
             print("Scanning Appointments")
             self.scan_appointments()
+
+            # Request session
+            self.session = requests.session()
+            cookies = self.driver.get_cookies()
+            for cookie in cookies:
+                self.session.cookies.set(cookie["name"], cookie["value"])
+
         except Exception as e:
             print(f"Error in run(): {e}")
             self.cleanup()
@@ -611,6 +624,19 @@ class OscarEforms:
         return text
         
 
+    
+    def get_doc_type(self, segment_id):
+        """Returns document type for a given documents segment ID."""
+        url = self.doc_link.format(segment_id=segment_id)
+        r = self.session.get(url, verify=False)
+
+        match = re.search(
+            r'<option\s+value="([^"]+)"\s+selected>',
+            r.text,
+            flags=re.IGNORECASE
+        )
+        return match.group(1) if match else None
+
 
     def find_documents(self):
         """
@@ -618,7 +644,7 @@ class OscarEforms:
         the keys are the document name and the value is a list of document ids. Earlier ids in 
         the list are earlier documents.
 
-        Requires patients encouter page to be opened.
+        Requires patient's encouter page to be opened.
 
         Returns
         -------
@@ -658,21 +684,35 @@ class OscarEforms:
                 match = re.search(r"segmentID=(\d+)", onclick_value)
                 if match:
                     segID = match.group(1)
+                    doc_type = None
+                    
+                    try:
+                        doc_type = self.get_doc_type(segID)
+                    except:
+                        pass
+
+                    if doc_type: 
+                        doc_name = doc_type
+                    else:
+                        print(f"No type selected for {doc_name}")
+
                     if not doc_dict.get(doc_name, ""):
                         doc_dict[doc_name] = [segID]
                     else:
                         doc_dict[doc_name].append(segID)
                 else:
-                    print("None")
+                    print(f"No segment ID for {doc_name}")
 
         except Exception as e:
             print(f"Error: {e}")
 
+        # for key, val in doc_dict.items():
+        #    print(f"{key}: {val}")
         return doc_dict
 
 
 
-    def read_document(self, segID):
+    def extract_text_from_document(self, segID):
         """
         Extracts and returns the text from the given document.
         Requires the patients encounter page to be opened and for the given document id to 
@@ -769,6 +809,68 @@ class OscarEforms:
         return text
 
 
+    def read_documents(self, doc_types):
+        """
+        Extracts ...
+
+        Args
+        ----
+            doc_types (list): List of document types to extract text from (i.e. ['DC Summary', 'CATH', ...])
+        
+        Returns
+        -------
+            A concatonation of the text extracated from the documents. Text will be ordered in the same way the
+            document types are given.
+        """
+        # Dictionary to help find document (as names are not always consistent)
+        doc_search_dict = {
+            "DC Summary" : [
+                "dc summary",
+                "discharge",
+                "discharge summary", 
+                "dc information", 
+                "discharge information"
+            ],
+
+            "CATH" : [
+                "angiogram",
+                "catheterization",
+                "pci report",
+                "interventional",
+                "cath report",
+                "pci assessment",
+                "cath",
+            ]
+        }
+        # Dictionary to keep track of which documents have been found (only want first document for each type)
+        doc_found_dict = {d : False for d in doc_types}
+        # Dictionary of document names/types with associated list of segment IDs
+        doc_id_dict = self.find_documents()
+        print(doc_types)
+        
+        # Add doc_types to search dict
+        for d in doc_types:
+            if doc_search_dict.get(d):
+                doc_search_dict[d].append(d)
+            else:
+                doc_search_dict[d] = [d]
+        print(doc_search_dict)
+        # Iterate over document names, find ones that match with given types and use document
+        # segment ID to open, download, and extract text from document.
+        text = ""
+        for doc_name in doc_id_dict.keys():
+            for doc_key in doc_search_dict.keys():
+                if (not doc_found_dict.get(doc_key, True) and 
+                    any([val.lower() in doc_name.lower() for val in doc_search_dict.get(doc_key, [])])):
+                    
+                    print(f"KEY {doc_key}; NAME {doc_name}; ID {doc_id_dict.get(doc_name, [])[0]}")
+                    segIDs = doc_id_dict.get(doc_name)
+                    if segIDs:
+                        text += f"{doc_key.upper()}\n{self.extract_text_from_document(segIDs[0])}\n\n\n" 
+                        doc_found_dict[doc_key] = True
+        
+        return text
+
 
     def read_dcs_and_angiograms(self):
         """
@@ -794,6 +896,7 @@ class OscarEforms:
             "interventional",
             "cath report",
             "pci assessment",
+            "cath",
         ]
 
         # Get all patient documents
@@ -809,21 +912,21 @@ class OscarEforms:
                 print(f"KEY: {key}: {docs.get(key, '')}")
                 segIDs = docs.get(key, "")
                 if segIDs:
-                    text += "DC:\n" + self.read_document(segIDs[0]) + "\n\n\n" 
+                    text += "DC:\n" + self.extract_text_from_document(segIDs[0]) + "\n\n\n" 
                     dc_found = True
 
             elif not ang_found and any([val in key.lower() for val in ANG]):
                 print(f"KEY: {key}: {docs.get(key, '')}")
                 segIDs = docs.get(key, "")
                 if segIDs:
-                    text += "ANGIOGRAM:\n" + self.read_document(segIDs[0]) + "\n\n\n" 
+                    text += "ANGIOGRAM:\n" + self.extract_text_from_document(segIDs[0]) + "\n\n\n" 
                     ang_found = True
 
         return text
 
         
 
-    def read_medical_history(self):
+    def read_medical_history(self, doc_names):
         """
         Extracts and returns the text from the patients most recent 0letter, angiogram and dc files (if exist).
         Requires patient encounter page to be opened.
@@ -833,7 +936,7 @@ class OscarEforms:
         try:
             letter = self.read_0letters(num=1)
             time.sleep(2)
-            docs = self.read_dcs_and_angiograms()
+            docs = self.read_documents(doc_names)
 
             text = "0Letter:\n" + letter + "\n\n\n" + docs
             return text

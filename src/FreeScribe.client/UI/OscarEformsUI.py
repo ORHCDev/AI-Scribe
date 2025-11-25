@@ -16,6 +16,56 @@ class OscarEformsUI:
 
         self.parent = parent
         self.oscar = oscar
+        # Document selection options
+        self.document_opts = [
+            "REFERRAL LETTER",
+            "CLINIC NOTES",
+            "CONSULTANT NOTES",
+            "DC Summary", 
+            "CATH",
+            "OR NOTES",
+            "Rx",
+            "FMD COMMUNICATION",
+            "LAB",
+            "OUTGOING REFERRALS",
+            "ECG",
+            "ECHO",
+            "STRESS",
+            "STRESSECHO",
+            "NUCLEAR STRESS",
+            "HOLTER",
+            "RADIOLOGY",
+            "CTCA",
+            "CARDIAC MRI",
+            "PATHOLOGY",
+            "REPORTS",
+            "OTHERS",
+            "OLDCHART",
+            "PACEMAKER RECORDS",
+            "OUT-PATIENT CLINICS",
+            "clinic notes",
+            "HFCNote",
+            "SMH ER/ClinicRecord",
+            "SLake ER/ClinicRecord",
+            "ER CONSULTATION",
+            "ecg",
+            "CT SCAN",
+            "EP REPORT",
+            "ER REPORTS",
+            "RX2",
+            "ABP Monitor",
+            "Patient Form",
+            "LAB REQN",
+            "Echo_consent",
+            "consentEcho",
+            "mrirequisition",
+        ]
+        # Defaults to select
+        self.document_defaults = [
+            "DC Summary",
+            "CATH",
+        ]
+        self.doc_cbs = {}
 
         # Create popup window
         self.window = tk.Toplevel(parent)
@@ -88,6 +138,10 @@ class OscarEformsUI:
         # Read Medical History 
         self.letter_btn = ttk.Button(self.frame, text="Medical History", command=self.read_medical_history, width=18)
         self.letter_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
+
+        # Opens Document Selector 
+        self.doc_window_btn = ttk.Button(self.frame, text="Doc Selector", command=self.open_doc_selector, width=18)
+        self.doc_window_btn.grid(row=4, column=1, padx=5, pady=5, sticky="nsew")
 
 
         # ---- SCROLLABLE FRAME ----
@@ -373,8 +427,12 @@ class OscarEformsUI:
         # Search for patient
         res = self.search_patient(open_eform_lib=False)
         if not res: return
-        # Read 0letter text
-        text = self.oscar.read_medical_history()
+        # Get selected documents to be scanned
+        checked = [opt for opt, var in self.doc_cbs.items() if var.get()]
+        if not checked: checked = self.document_defaults
+        print(f"Scanning for documents: {checked}")
+        # Read 0letter and documents
+        text = self.oscar.read_medical_history(doc_names=checked)
         if not text: return
         # Paste text in input box
         for widget in self.parent.winfo_children():
@@ -449,5 +507,88 @@ class OscarEformsUI:
             ).grid(row=i, column=2, padx=5, pady=5, sticky="nsew")
                         
                 
-                
         
+    def open_doc_selector(self):
+        """
+        Opens the document selector window which consists of checkboxes that correspond
+        to the different document types in Oscar EMR. Selections are used when loading
+        a patients medical history as the documents selected will be the ones that get 
+        their text extracted and pasted into the input textbox.
+
+        Assigns checkboxes to self.doc_cbs
+        """
+        # Document Window 
+        doc_window = tk.Toplevel(self.window)
+        doc_window.title("Document Selector")
+        doc_window.geometry("400x300")
+
+        # Document Frame
+        doc_frame = tk.Frame(doc_window)
+        doc_frame.pack(fill="x", pady=(0, 2))
+
+        # Scrollable canvas + frame
+        doc_canvas = tk.Canvas(doc_frame, highlightthickness=0)
+        doc_scrollbar = ttk.Scrollbar(doc_frame, orient="vertical", command=doc_canvas.yview)
+
+        # The scollable frame inside the canvas
+        doc_scrollable_frame = tk.Frame(doc_canvas)
+
+        # Update scroll region whenever the inner frame grows
+        doc_scrollable_frame.bind(
+            "<Configure>",
+            lambda e: doc_canvas.configure(scrollregion=doc_canvas.bbox("all"))
+        )
+
+        # Put the scrollable frame inside the canvas
+        doc_canvas.create_window((0, 0), window=doc_scrollable_frame, anchor="nw")
+        doc_canvas.configure(yscrollcommand=doc_scrollbar.set)
+
+        doc_canvas.pack(side="left", fill="both", expand=True)
+        doc_scrollbar.pack(side="right", fill="y")
+
+        # --- Mousewheel handling ---
+        def _on_mousewheel(event):
+            doc_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _bind_mousewheel(event):
+            doc_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        def _unbind_mousewheel(event):
+            doc_canvas.unbind_all("<MouseWheel>")
+
+        doc_frame.bind("<Enter>", _bind_mousewheel)
+        doc_frame.bind("<Leave>", _unbind_mousewheel)
+        
+        # Adding checkboxes
+        #if not self.doc_cbs:
+        
+        if self.doc_cbs: 
+            self.document_defaults = [opt for opt, var in self.doc_cbs.items() if var.get()]
+        for opt in self.document_opts:
+            var = tk.BooleanVar()
+            self.doc_cbs[opt] = var
+
+            cb = tk.Checkbutton(
+                doc_scrollable_frame, 
+                text=opt, 
+                variable=var,
+                anchor="w",
+                wraplength=120,
+                font=("Arial", 8),
+                justify="left"
+            )
+            cb.pack(padx=5, pady=2)
+            cb.configure(width=20)
+
+        # Setting truth values
+        for var in self.doc_cbs.values():
+            var.set(False)
+
+        for opt in self.document_defaults:
+            self.doc_cbs[opt].set(True)
+
+        #else:
+
+
+        return vars
+
