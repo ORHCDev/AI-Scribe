@@ -388,6 +388,7 @@ class OscarEforms:
         return True
 
 
+
     def open_lab_eform_with_checkboxes(self, first_name, last_name, checkbox_names: list[str], plan_text: str = None, chartNo=None):
         """
         Opens 1.2LabCardiacP eform and automatically checks specified checkboxes.
@@ -493,6 +494,7 @@ class OscarEforms:
             return False
 
 
+
     def scan_and_update_eforms(self):
         """
         Opens eForm library in Oscar EMR then scans and saves the all the eForm names
@@ -539,10 +541,22 @@ class OscarEforms:
 
 
 
-    def read_0letters(self, num=1):
+    def find_eforms(self):
         """
-        Will read and return the text from all patient 0letter eForms on the patients encounter page.
-        Requires patients encounter page to be opened.
+        Will read the eforms off a patient's encouter page and return a dictionary where 
+        the keys are the eform name and the value is a list of eform ids. Earlier ids in 
+        the list are earlier eforms.
+
+        Requires patient's encouter page to be opened.
+
+        Returns
+        -------
+            A dictionary formatted like:
+                'Eform Name' : [list of fdids]
+
+            Formatted as such due to duplicate eform names. Each fdid is unique
+            and points to a different eform. If the list contains multiple ids then note
+            that the earlier the id is in the list implies that the eform is newer.
         """
         res = self.switch_to_encounter()
         if not res: return
@@ -564,63 +578,93 @@ class OscarEforms:
             return 
 
 
-        # Get fdids from 0letter eForms
-        fdids = []
-        count = 0
+        # Get fdids from all eforms found
+        eform_fdids = {}
         for eform in eforms:
             try:
-                # eForm name
+                # eform name
                 a = eform.find_element(By.XPATH, "./span[1]/a")
                 eform_name = a.text.strip()
-                print(f"Eform: {eform_name}")
 
-                if "0letter" in eform_name:
-                    # eForm fdIDs
-                    onclick_value = a.get_attribute("onclick")
-                    match = re.search(r"fdid=(\d+)", onclick_value)
-                    if match:
-                        fdids.append(match.group(1))
-                        count += 1
-                        if count >= num: break
+                # eform fdids
+                onclick_value = a.get_attribute("onclick")
+                match = re.search(r"fdid=(\d+)", onclick_value)
+                if match:
+                    fdid = match.group(1)
+
+                    # eform already in dictionary, append id to existing list
+                    if eform_fdids.get(eform_name):
+                        eform_fdids[eform_name].append(fdid)
+
+                    # eform not in dictionary, start new list
+                    else:
+                        eform_fdids[eform_name] = [fdid]
                     
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"Error when getting eform name and id: {e}")
 
-        # Extract text from 0letter eForms
+        # Printing 
+        if False:
+            for key, val in eform_fdids.items():
+                print(f"{key}: {val}")
+
+        return eform_fdids
+
+
+
+    def read_0letter(self):
+        """
+        Will read and return the text from the most recent 0letter eform recorded in the 
+        patient's encounter page.
+
+        Returns
+        -------
+            Extracted text from most recent 0letter eform
+        """
+        # Get dictionary of eforms and their fdids
+        eform_fdids = self.find_eforms()
+
+        # Extract text from 0letter eforms
         text = ""
-        for fdid in fdids:
-            try:
-                # Find eForm by fdid
-                print(f"Eform fdid: {fdid}")
-                xpath = f"//a[contains(@onclick, 'fdid={fdid}')]"
-                a = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
-                
-                # Open 0letter eForm 
-                a.click()
-                self.switch_to_last()
-                
-                # Find and switch to iframe
-                iframe = self.wait.until(
-                    EC.presence_of_element_located((By.XPATH, "//iframe"))
-                )
-                self.driver.switch_to.frame(iframe)
-                
-                # Find and extract text from iframe body (the 0letter text)
-                letter = self.wait.until(
-                    EC.presence_of_element_located((By.XPATH, "/html/body"))
-                )
-                text += letter.text.strip()
-
-                # Switch out of iframe
-                self.driver.switch_to.default_content()
-                
-                # Close 0letter window
-                self.driver.close()
-                self.driver.switch_to.window(self.encounter_window)
+        for eform, fdids in eform_fdids.items():
+            if "0letter" in eform:
+                # fdid of most recent 0letter eform
+                fdid = fdids[0]
+                try:
+                    # Find eform by fdid
+                    print(f"EFORM: {eform} | FDID: {fdid}")
+                    xpath = f"//a[contains(@onclick, 'fdid={fdid}')]"
+                    a = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
                     
-            except Exception as e:
-                print(f"error: {e}")
+                    # Open 0letter eform 
+                    a.click()
+                    self.switch_to_last()
+                    time.sleep(2)
+                    
+                    # Find and switch to iframe
+                    iframe = self.wait.until(
+                        EC.presence_of_element_located((By.XPATH, "//iframe"))
+                    )
+                    self.driver.switch_to.frame(iframe)
+                    
+                    # Find and extract text from iframe body (the 0letter text)
+                    letter = self.wait.until(
+                        EC.presence_of_element_located((By.XPATH, "/html/body"))
+                    )
+                    text += letter.text.strip()
 
+                    # Switch out of iframe
+                    self.driver.switch_to.default_content()
+                    
+                    # Close 0letter window
+                    self.driver.close()
+                    self.driver.switch_to.window(self.encounter_window)
+
+                    # End loop
+                    break
+                except Exception as e:
+                    print(f"error: {e}")
+        
         return text
         
 
@@ -636,6 +680,7 @@ class OscarEforms:
             flags=re.IGNORECASE
         )
         return match.group(1) if match else None
+
 
 
     def find_documents(self):
@@ -809,6 +854,7 @@ class OscarEforms:
         return text
 
 
+
     def read_documents(self, doc_types):
         """
         Extracts ...
@@ -870,6 +916,7 @@ class OscarEforms:
                         doc_found_dict[doc_key] = True
         
         return text
+
 
 
     def read_dcs_and_angiograms(self):
@@ -934,7 +981,7 @@ class OscarEforms:
         res = self.switch_to_encounter()
         if not res: return
         try:
-            letter = self.read_0letters(num=1)
+            letter = self.read_0letter()
             time.sleep(2)
             docs = self.read_documents(doc_names)
 
@@ -1109,6 +1156,8 @@ class OscarEforms:
         self.appts = doc_dict
         return self.appts
 
+
+
     def get_all_patients(self):
         """
         Get list of all patients from all appointments across all doctors.
@@ -1126,6 +1175,8 @@ class OscarEforms:
             all_patients.extend(appts)
         
         return all_patients
+
+
 
     def switch_to_encounter(self):
         """
