@@ -1602,6 +1602,12 @@ def download_results():
         f.write(text)
 
 
+def upload_medical_history():
+    """Upload the LLM response to patients medical history"""
+    text = response_display.scrolled_text.get("1.0", tk.END).strip()
+    oscar.insert_medical_history(text)
+
+
 # Configure grid weights for scalability
 root.grid_columnconfigure(0, weight=1, minsize= 10)
 root.grid_columnconfigure(1, weight=1)
@@ -1706,6 +1712,10 @@ response_display.set_get_labs_callback(get_labs_from_response)
 # Set up Download button callback
 # Button will download the LLM response text in as an HL7 or TXT file
 response_display.set_download_callback(download_results)
+
+# Set up Medical History button callback
+# Button will upload LLM response text into the opened patients medical history
+response_display.set_med_hist_callback(upload_medical_history)
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
