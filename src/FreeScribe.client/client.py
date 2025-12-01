@@ -1579,6 +1579,8 @@ def download_results():
     default_name = ""
     if 'file_path' in globals() and file_path:
         default_name = os.path.basename(file_path)
+        # Remove type ending
+        default_name = default_name.rsplit('.', 1)[0]
 
     # User select file path and type (for now only hl7s and txts)
     download_path = filedialog.asksaveasfilename(
