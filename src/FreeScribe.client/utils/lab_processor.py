@@ -60,14 +60,9 @@ def generate_lab_hl7(text, testing=False):
                     for e in line.split():
                         # Take first float
                         try:
-                            if 'H' in e or 'L' in e:
-                                rem_h = e[:-2]
-                                float(rem_h)
-                                qty = e
-                            else:
-                                e = re.sub(r"[<>:-=]", "", e)  
-                                float(e)
-                                qty = e
+                            e = re.sub(r"[<>:-=HL]", "", e)  
+                            float(e)
+                            qty = e
                             break
                         except:
                             pass
