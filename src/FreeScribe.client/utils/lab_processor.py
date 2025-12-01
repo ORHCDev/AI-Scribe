@@ -64,7 +64,8 @@ def generate_lab_hl7(text, testing=False):
                                 rem_h = e[:-2]
                                 float(rem_h)
                                 qty = e
-                            else:  
+                            else:
+                                e = re.sub(r"[<>:-=]", "", e)  
                                 float(e)
                                 qty = e
                             break
