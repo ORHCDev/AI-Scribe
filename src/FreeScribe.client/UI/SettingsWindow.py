@@ -135,6 +135,8 @@ class SettingsWindow():
             "ReportMasterPath",
             "HL7 Base Folder",
             "Feedback Base Folder",
+            "Default Upload Folder",
+            "Default Download Folder",
         ]
 
         self.adv_whisper_settings = [
@@ -201,6 +203,8 @@ class SettingsWindow():
             "ReportMasterPath" : r'.\oscarReportmasterXLS.xls',
             "HL7 Base Folder" : r'.\hl7',
             "Feedback Base Folder" : r'.\feedback',
+            "Default Upload Folder" : r'.',
+            "Default Download Folder" : r'.',
         }
 
         self.docker_settings = [
