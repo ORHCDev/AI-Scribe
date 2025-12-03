@@ -1564,8 +1564,16 @@ def read_folder():
 
 def read_file_text():
     global file_path
+
+    initialdir = app_settings.editable_settings.get("Default Upload Folder", ".")
+    # Check if exists
+    if not os.path.exists(initialdir):
+        print(f"Default upload folder '{initialdir}' does not exist. Change default folder in settings.")
+        initialdir = '.'
+    
     file_path = filedialog.askopenfilename(
-        filetypes=[("PDF and Text Files", "*.pdf *.txt")]
+        filetypes=[("PDF and Text Files", "*.pdf *.txt")],
+        initialdir=initialdir
     )
     if file_path:
         threaded_file_reading()  # Add this line to process the file immediately
@@ -1582,12 +1590,19 @@ def download_results():
         # Remove type ending
         default_name = default_name.rsplit('.', 1)[0]
 
+    initialdir = app_settings.editable_settings.get("Default Download Folder", ".")
+    # Check if exists
+    if not os.path.exists(initialdir):
+        print(f"Default download folder '{initialdir}' does not exist. Change default folder in settings.")
+        initialdir = '.'    
+    
     # User select file path and type (for now only hl7s and txts)
     download_path = filedialog.asksaveasfilename(
         title="Save Downloaded File As",
         defaultextension=".hl7",
         filetypes=[("HL7 Files", "*.hl7"), ("Text Files", "*.txt")],
-        initialfile=default_name
+        initialfile=default_name,
+        initialdir=initialdir
     )
 
     if download_path:
