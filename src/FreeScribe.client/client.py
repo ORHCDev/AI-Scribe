@@ -864,7 +864,7 @@ def show_response(event):
         response_display.scrolled_text.config(fg='black')
         pyperclip.copy(response_text)
 
-def send_text_to_api(edited_text):
+def send_text_to_api(edited_text, context_length=None):
     headers = {
         "Authorization": f"Bearer {app_settings.OPENAI_API_KEY}",
         "Content-Type": "application/json",
@@ -887,6 +887,9 @@ def send_text_to_api(edited_text):
 
         if app_settings.editable_settings["best_of"]:
             payload["best_of"] = int(app_settings.editable_settings["best_of"])
+
+        if context_length is not None:
+            payload["max_context_length"] = int(context_length)
             
     except ValueError as e:
         payload = {
@@ -903,6 +906,9 @@ def send_text_to_api(edited_text):
 
         if app_settings.editable_settings["best_of"]:
             payload["best_of"] = int(app_settings.editable_settings["best_of"])
+
+        if context_length is not None:
+            payload["max_context_length"] = int(context_length)
 
         print(f"Error parsing settings: {e}. Using default settings.")
 
@@ -965,11 +971,11 @@ def send_text_to_localmodel(edited_text):
     
 
 
-def send_text_to_chatgpt(edited_text):  
+def send_text_to_chatgpt(edited_text, context_length=None):  
     if app_settings.editable_settings["Use Local LLM"]:
         return send_text_to_localmodel(edited_text)
     else:
-        return send_text_to_api(edited_text)
+        return send_text_to_api(edited_text, context_length)
 
 
 def get_labs_from_response():
@@ -1043,12 +1049,6 @@ def generate_note(formatted_message):
                 elif prompt_type == "None":
                     ai_response = send_text_to_chatgpt(formatted_message)
                     update_gui_with_response(ai_response)
-
-                elif prompt_type == "Medical History":
-                    ai_response = send_text_to_chatgpt(formatted_message)
-                    update_gui_with_response(ai_response)
-                    res = oscar.insert_medical_history(ai_response)
-                    if not res: print("Failed to insert medical history")
                 
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
@@ -1056,6 +1056,9 @@ def generate_note(formatted_message):
                         ai_response = send_text_to_chatgpt(f"{prompt}\n{formatted_message}")
                         update_gui_with_response(ai_response)
                         return True
+
+                    # Set max context length to 8192
+                    context_length = 8192
 
                     # Extract document type and patient name from file
                     filename = os.path.basename(file_path)
@@ -1098,12 +1101,12 @@ def generate_note(formatted_message):
                         print("Here")
                         ai_response = generate_lab_hl7(formatted_message)
                     else:
-                        ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
+                        ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}", context_length=context_length)
                     update_gui_with_response(hl7_header + ai_response)
 
                 else:
                     prompt = ai_prompts.get(prompt_type)
-                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}", context_length=context_length)
                     update_gui_with_response(ai_response)
 
                 return True
