@@ -1104,9 +1104,41 @@ def generate_note(formatted_message):
                         ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}", context_length=context_length)
                     update_gui_with_response(hl7_header + ai_response)
 
+                elif prompt_type == "Consult":
+                    prompt = ai_prompts.get(prompt_type)
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
+                    update_gui_with_response(ai_response)
+        
+                    # Extract text from each section
+                    hpi_key = "History of Presenting Illness:"
+                    imp_key = "Impression/Assessment:"
+                    plan_key = "Plan:"
+
+                    # Find starting indices
+                    i_hpi = ai_response.find(hpi_key)
+                    i_imp = ai_response.find(imp_key)
+                    i_plan = ai_response.find(plan_key)
+
+                    if min(i_hpi, i_imp, i_plan) == -1:
+                        return None, None, None  # missing section
+
+                    # Slice each section by using the start of the next section
+                    hpi = ai_response[i_hpi + len(hpi_key) : i_imp].strip()
+                    imp = ai_response[i_imp + len(imp_key) : i_plan].strip()
+                    plan = ai_response[i_plan + len(plan_key) : ].strip()
+
+
+                    if not (oscar.insert_text_into(hpi, "Social")):
+                        print("Unable to insert text, make sure patient encounter page is opened")
+
+                    else:
+                        oscar.insert_text_into(imp, "Concerns")
+                        oscar.insert_text_into(plan, "Reminders")
+
+                
                 else:
                     prompt = ai_prompts.get(prompt_type)
-                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}", context_length=context_length)
+                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
                 return True
@@ -1625,7 +1657,7 @@ def download_results():
 def upload_medical_history():
     """Upload the LLM response to patients medical history"""
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
-    oscar.insert_medical_history(text)
+    oscar.insert_text_into(text, "Medical")
 
 
 # Configure grid weights for scalability

@@ -135,6 +135,10 @@ class OscarEformsUI:
         self.eform_scan = ttk.Button(self.frame, text="eForm Scan", command=self.scan_eforms, width=18)
         self.eform_scan.grid(row=3, column=2, padx=5, pady=5, sticky="nsew")
 
+        # Open encounter page
+        self.encounter_btn = ttk.Button(self.frame, text="Open Encounter", command=lambda: self.search_patient(open_eform_lib=False), width=18)
+        self.encounter_btn.grid(row=4, column=0, padx=5, pady=5, sticky="nsew")
+
         # Read Medical History 
         self.letter_btn = ttk.Button(self.frame, text="Medical History", command=self.read_medical_history, width=18)
         self.letter_btn.grid(row=4, column=2, padx=5, pady=5, sticky="nsew")
