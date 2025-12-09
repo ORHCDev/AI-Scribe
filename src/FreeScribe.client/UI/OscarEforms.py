@@ -993,18 +993,42 @@ class OscarEforms:
 
 
 
-    def insert_medical_history(self, text):
+    def insert_text_into(self, text : str, box : str):
         """
-        Inserts the given text into the patients medical history tab.
-        Requires patient encounter window to be opened.
+        Inserts text into one of the four boxes (Social History, Medical History, Ongoing Concerns, or Reminders).
+
+        Args
+        ----
+        text : str
+            Text to be inserted into the box.
+
+        box : Literal["Social", "Medical", "Concerns", "Reminders"]
+            Box identify to select which box to insert text into.
+
+        Returns
+        -------
+            Returns True if text was successfully inserted, False otherwise.
         """
         res = self.switch_to_encounter()
         if not res: return
 
+        # Maps box name to html div location 
+        box_map = {
+            "Social" : "divR1I1",
+            "Medical" : "divR1I2",
+            "Concerns" : "divR2I1",
+            "Reminders" : "divR2I2"
+        }
+
+        box_div = box_map.get(box)
+        if not box_div: 
+            print(f"Could not find box for {box}. Make sure to use one of: Social, Medical, Concerns, or Reminders for box value.")
+
+
         try:
             # Open medical history tab
             self.wait.until(
-                EC.element_to_be_clickable((By.XPATH, "//*[@id='divR1I2']/div[1]/h3/a"))
+                EC.element_to_be_clickable((By.XPATH, f"//*[@id='{box_div}']/div[1]/h3/a"))
             ).click()
             
             # Insert text
@@ -1022,8 +1046,8 @@ class OscarEforms:
         except Exception as e:
             print(f"Error occurred when inserting and saving medical history: {e}")
             return False
-
-
+        
+        
 
     def scan_appointments(self):
         """
