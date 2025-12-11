@@ -459,6 +459,9 @@ class OscarEformsUI:
         self.last_name_entry.insert(0, last_name)
         self.chartno_entry.insert(0, chartNo)
 
+        # Also open patients encounter page
+        self.search_patient(open_eform_lib=False)
+
 
     def load_appointments(self, event=None):
         """
