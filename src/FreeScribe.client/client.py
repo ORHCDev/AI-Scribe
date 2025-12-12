@@ -1104,30 +1104,42 @@ def generate_note(formatted_message):
                         ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}", context_length=context_length)
                     update_gui_with_response(hl7_header + ai_response)
 
-                elif prompt_type == "Consult":
+                elif prompt_type.lower() == "consult" or prompt_type.lower() == "cardioscribe":
                     prompt = ai_prompts.get(prompt_type)
                     ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
                     update_gui_with_response(ai_response)
         
                     # Extract text from each section
-                    hpi_key = "History of Presenting Illness:"
-                    imp_key = "Impression/Assessment:"
-                    plan_key = "Plan:"
+                    hpi_key = "History of Presenting Illness:as"
+                    imp_key = "Impression/Assessmentsadf:"
+                    plan_key = "Plan:asdf"
 
                     # Find starting indices
                     i_hpi = ai_response.find(hpi_key)
                     i_imp = ai_response.find(imp_key)
                     i_plan = ai_response.find(plan_key)
-
-                    if min(i_hpi, i_imp, i_plan) == -1:
-                        return None, None, None  # missing section
+                    
+                    hpi, imp, plan = None, None, None
 
                     # Slice each section by using the start of the next section
-                    hpi = ai_response[i_hpi + len(hpi_key) : i_imp].strip()
-                    imp = ai_response[i_imp + len(imp_key) : i_plan].strip()
-                    plan = ai_response[i_plan + len(plan_key) : ].strip()
+                    if i_hpi != -1:
+                        hpi = ai_response[i_hpi + len(hpi_key) : i_imp].strip()
+                    if i_imp != -1:
+                        imp = ai_response[i_imp + len(imp_key) : i_plan].strip()
+                    if i_plan != -1:
+                        plan = ai_response[i_plan + len(plan_key) : ].strip()
 
-
+                    # Additional check if hpi, imp, or plan are empty
+                    try:
+                        # Split text into chunks
+                        chuncks = [chunk.strip() for chunk in ai_response.strip().split("\n\n")]
+                        # Assign if missing
+                        if not hpi: hpi = chuncks[0]
+                        if not imp: imp = chuncks[1]
+                        if not plan: plan = chuncks[2]
+                    except Exception as e:
+                        print(f"Error assigning chuncks: {e}")
+                      
                     if not (oscar.insert_text_into(hpi, "Social")):
                         print("Unable to insert text, make sure patient encounter page is opened")
 
