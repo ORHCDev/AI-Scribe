@@ -77,6 +77,7 @@ def generate_lab_hl7(text, testing=False):
                     # Marking key as found and iterateing index
                     i += 1
                     found.append(key)
+                    break
                 else:
                     break
     
