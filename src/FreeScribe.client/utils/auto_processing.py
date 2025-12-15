@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 import shutil
 from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes
-from utils.hl7 import find_details, extract_observation_date, generate_header, loinc_code_detector, extra_loinc_prompt, EXTRA_LOINC_START_IDX
+from utils.hl7 import find_details, extract_observation_date, generate_header, loinc_code_detector, extra_loinc_prompt, lab_detector, EXTRA_LOINC_START_IDX
 from utils.lab_processor import generate_lab_hl7
 import scrubadub
 
@@ -210,17 +210,26 @@ class AutoProcessor:
                 
                 text = file_reader(os.path.join(in_folder, file))
                 doc_type = detect_type(file).upper()
+                if doc_type == "UNKNOWN":
+                    # See if file is lab
+                    is_lab = lab_detector(text)
+                    if is_lab: doc_type = "LAB"
+
                 first_name, last_name, _ = extract_patient_name(file)
                 
                 self.log(f"Document Type: {doc_type}")
                 
+                res = None
                 if first_name and last_name:
                     self.log(f"Extracted Patient: {last_name}, {first_name}")
-                    sex, hin, dob, name, _ = find_details(
+                    res = find_details(
                         self.settings.editable_settings['ReportMasterPath'], 
                         last_name, 
                         first_name
                     )
+
+                if res:
+                    sex, hin, dob, name, _ = res
                     obs_date = extract_observation_date(text, doc_type)
                     hl7_header = generate_header(name, hin, dob, sex, obs_date, obs_date)
                 else:

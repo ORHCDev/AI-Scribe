@@ -18,6 +18,11 @@ EXTRA_LOINC_START_IDX = {
 }
 
 
+def lab_detector(ocr_text): 
+    keywords = ["laboratories", "dynacare", "medhealth", "life labs", "lifelabs", "lyfe", "dyna"]
+    return any(keyword.lower() in ocr_text.lower() for keyword in keywords)
+
+
 def extract_observation_date(text, doc_type):
     """
     Parses all dates from given text, applying ambigous patterns depending on document type. Will return the
