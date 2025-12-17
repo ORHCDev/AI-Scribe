@@ -63,8 +63,16 @@ class OscarEforms:
         self.driver = None
         self.wait = None
         self.patient = None
-        try:
+        self.headless = headless
+        self.initialize_driver()
 
+        self.appts = {}
+        self.session = None
+        
+
+    def initialize_driver(self):
+        """Initializes selenium driver"""
+        try:
             options = FirefoxOptions()
            
             options.set_preference("browser.download.folderList", 2)
@@ -75,7 +83,7 @@ class OscarEforms:
 
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--ignore-ssl-errors')
-            if headless:
+            if self.headless:
                 options.add_argument("--headless")
 
             service = Service(self.config['driver_path'])
@@ -88,11 +96,6 @@ class OscarEforms:
             print(f"Failed to initialize WebDriver: {e}")
             self.cleanup()  # Ensure cleanup if initialization fails
             raise
-
-
-        self.appts = {}
-        self.session = None
-        
 
 
     def run(self):
@@ -165,7 +168,16 @@ class OscarEforms:
             print(f"Error during login: {e}")
 
 
+    def _switch_on_return(func):
+        """Decoratoer to switch driver focus to home window when returning"""
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                self.switch_to_home()
+        return wrapper
 
+    @_switch_on_return
     def search_patient(self, first_name, last_name, chartNo=None, open_encounter=True, open_eform_lib=True):
         """
         Searches for patient using demographic number or name.
@@ -173,6 +185,11 @@ class OscarEforms:
         """
         print(f"Searching for patient: {first_name} {last_name}, chartNo={chartNo}")
         
+        # Check if home window has been closed
+        if not self.is_window_opened(self.home_window):
+            # Restart
+            self.restart()
+
         # Close patient encounter and eform library windows if opened and clear patient
         if self.is_window_opened(self.encounter_window):
             self.close_window(self.encounter_window)
@@ -186,13 +203,17 @@ class OscarEforms:
 
         # Click search button
         if not self.is_window_opened(self.search_window):
-            self.driver.switch_to.window(self.home_window)
-            search_btn = self.driver.find_element(By.XPATH, "//*[@id='search']")
-            search_btn.click()
-            
-            self.search_window = self.driver.window_handles[-1]
-            self.driver.switch_to.window(self.search_window)
-            time.sleep(1)
+            try:
+                self.driver.switch_to.window(self.home_window)
+                search_btn = self.driver.find_element(By.XPATH, "//*[@id='search']")
+                search_btn.click()
+                
+                self.search_window = self.driver.window_handles[-1]
+                self.driver.switch_to.window(self.search_window)
+                time.sleep(1)
+            except Exception as e:
+                print(f"Unable to open search window, restarting oscar home window: {e}")
+                return self.search_patient(first_name, last_name, chartNo, open_encounter, open_eform_lib)
         
         else:
             self.driver.switch_to.window(self.search_window)
@@ -254,7 +275,7 @@ class OscarEforms:
             return False
         
         
-
+    @_switch_on_return
     def open_encounter(self):
         """
         Opens the patient's encounter page. Requires self.patient.
@@ -293,7 +314,7 @@ class OscarEforms:
         return True
 
 
-
+    @_switch_on_return
     def open_eform_library(self):
         """
         Opens eform library window. Requires a patient encounter window to be open
@@ -301,7 +322,9 @@ class OscarEforms:
         if not self.is_window_opened(self.encounter_window):
             print("No encounter window opened, reopening encounter window")
             res = self.open_encounter()
-            if not res: return
+            if not res: 
+                self.switch_to_home()
+                return
         
         print("Opening eForm Library Window")
         try:
@@ -321,7 +344,7 @@ class OscarEforms:
             print(f"An unexpected error occurred when trying to open eForm Library Window: {e}")
 
 
-
+    @_switch_on_return
     def open_new_eform(self, form_type):
         """
         Opens the specified eForm type. Requires self.eform_lib_window to be open
@@ -339,7 +362,7 @@ class OscarEforms:
             print(f"Unable to open eForm, make sure '{form_type}' exists: {e}")
             
 
-
+    @_switch_on_return
     def open_eform_from_search(self, form_type):
         """
         Assumes self.patient has been found and will open encounter, eform library, and eform windows
@@ -353,7 +376,7 @@ class OscarEforms:
         self.open_new_eform(form_type)
 
 
-
+    @_switch_on_return
     def open_eform_from_link(self, first_name, last_name, form_type, chartNo=None):
         """
         Searches for patient in the oscarReportmasterXLS.xls and gets the patients demographic number.
@@ -388,7 +411,7 @@ class OscarEforms:
         return True
 
 
-
+    @_switch_on_return
     def open_lab_eform_with_checkboxes(self, first_name, last_name, checkbox_names: list[str], plan_text: str = None, chartNo=None):
         """
         Opens 1.2LabCardiacP eform and automatically checks specified checkboxes.
@@ -494,7 +517,7 @@ class OscarEforms:
             return False
 
 
-
+    @_switch_on_return
     def scan_and_update_eforms(self):
         """
         Opens eForm library in Oscar EMR then scans and saves the all the eForm names
@@ -540,7 +563,7 @@ class OscarEforms:
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
 
-
+    @_switch_on_return
     def find_eforms(self):
         """
         Will read the eforms off a patient's encouter page and return a dictionary where 
@@ -611,7 +634,7 @@ class OscarEforms:
         return eform_fdids
 
 
-
+    @_switch_on_return
     def read_0letter(self):
         """
         Will read and return the text from the most recent 0letter eform recorded in the 
@@ -668,7 +691,6 @@ class OscarEforms:
         return text
         
 
-    
     def get_doc_type(self, segment_id):
         """Returns document type for a given documents segment ID."""
         url = self.doc_link.format(segment_id=segment_id)
@@ -682,7 +704,7 @@ class OscarEforms:
         return match.group(1) if match else None
 
 
-
+    @_switch_on_return
     def find_documents(self):
         """
         Will read the documents off a patients encouter page and return a dictionary where 
@@ -756,7 +778,7 @@ class OscarEforms:
         return doc_dict
 
 
-
+    @_switch_on_return
     def extract_text_from_document(self, segID):
         """
         Extracts and returns the text from the given document.
@@ -857,7 +879,7 @@ class OscarEforms:
 
     def read_documents(self, doc_types):
         """
-        Extracts ...
+        Extracts text from the first appearance of the given documents from the patient's encounter page.
 
         Args
         ----
@@ -918,7 +940,7 @@ class OscarEforms:
         return text
 
 
-
+    @_switch_on_return
     def read_dcs_and_angiograms(self):
         """
         Extracts the text from a patients DC and Angiogram documents.
@@ -972,7 +994,7 @@ class OscarEforms:
         return text
 
         
-
+    @_switch_on_return
     def read_medical_history(self, doc_names):
         """
         Extracts and returns the text from the patients most recent 0letter, angiogram and dc files (if exist).
@@ -992,7 +1014,7 @@ class OscarEforms:
             return
 
 
-
+    @_switch_on_return
     def insert_text_into(self, text : str, box : str):
         """
         Inserts text into one of the four boxes (Social History, Medical History, Ongoing Concerns, or Reminders).
@@ -1048,7 +1070,7 @@ class OscarEforms:
             return False
         
         
-
+    @_switch_on_return
     def scan_appointments(self):
         """
         Scans the Oscar home page for all patient appointments registered for the day.
@@ -1209,7 +1231,7 @@ class OscarEforms:
 
         Returns
         -------
-            Returns True if able to switch to encounter page, False otherwise.
+        Returns True if able to switch to encounter page, False otherwise.
         """
         # Return if patient's encounter page isn't opened
         if not self.is_window_opened(self.encounter_window):
@@ -1226,6 +1248,28 @@ class OscarEforms:
         return True
 
 
+    def switch_to_home(self):
+        """
+        Checks if Oscar home page is opened.
+        If opened will switch to it, else will restart driver and then try and switch.
+
+        Returns
+        -------
+        Returns True if able to switch to home page, False otherwise        
+        """
+        # Check if opened
+        if self.is_window_opened(self.home_window):
+            self.driver.switch_to.window(self.home_window)
+            return True
+        
+        # Home window is not opened, try restarting driver
+        else:
+            print("Restarting")
+            time.sleep(10)
+            self.restart()
+            self.driver.switch_to.window(self.home_window)
+            return 
+
 
     def is_window_opened(self, window):
         """
@@ -1233,9 +1277,8 @@ class OscarEforms:
         """
         if not window: return False
         
-        cur_window = self.driver.current_window_handle
-        
         try:
+            cur_window = self.driver.current_window_handle
             self.driver.switch_to.window(window)
             self.driver.switch_to.window(cur_window)
             return True
@@ -1280,3 +1323,10 @@ class OscarEforms:
     def switch_to_last(self):
         """Switches driver foces to last window in window handles"""
         self.driver.switch_to.window(self.driver.window_handles[-1])
+
+
+    def restart(self):
+        """Re-initializes driver and re-runs (in case someone accidentally closes home window)"""
+        self.cleanup()
+        self.initialize_driver()
+        self.run()
