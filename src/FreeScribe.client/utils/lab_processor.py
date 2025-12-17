@@ -70,9 +70,9 @@ def generate_lab_hl7(text, testing=False):
 
                     # Appending results in hl7 format
                     if testing:
-                        description += f"{key:<18} OBX|{i}|ST|{results[key][0]}|COCV|{qty}|{results[key][1]}||{results[key][2]}\n"
+                        description += f"{key:<18} OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}||{results[key][2]}\n"
                     else:
-                        description += f"OBX|{i}|ST|{results[key][0]}|COCV|{qty}|{results[key][1]}||{results[key][2]}\n"
+                        description += f"OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}||{results[key][2]}\n"
 
                     # Marking key as found and iterateing index
                     i += 1

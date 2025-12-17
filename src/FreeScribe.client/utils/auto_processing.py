@@ -254,7 +254,7 @@ class AutoProcessor:
                     )
                 
                 
-                if doc_type == "Lab":
+                if doc_type == "LAB":
                     ai_response = generate_lab_hl7(text)
                 else:
                     clean_text = self.scrub_message(text)
