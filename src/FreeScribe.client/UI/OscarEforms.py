@@ -563,7 +563,6 @@ class OscarEforms:
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
 
-    @_switch_on_return
     def find_eforms(self):
         """
         Will read the eforms off a patient's encouter page and return a dictionary where 
@@ -704,7 +703,6 @@ class OscarEforms:
         return match.group(1) if match else None
 
 
-    @_switch_on_return
     def find_documents(self):
         """
         Will read the documents off a patients encouter page and return a dictionary where 
@@ -777,7 +775,6 @@ class OscarEforms:
         #    print(f"{key}: {val}")
         return doc_dict
 
-
     @_switch_on_return
     def extract_text_from_document(self, segID):
         """
@@ -842,10 +839,6 @@ class OscarEforms:
 
             # Close document window
             self.driver.close()
-            try:
-                self.switch_to_encounter()
-            except:
-                self.switch_to_last()
 
             print(f"Old pdfs {old_pdfs}")
             # OCR PDF to extract text and then delete PDF
@@ -874,7 +867,6 @@ class OscarEforms:
 
 
         return text
-
 
 
     def read_documents(self, doc_types):
@@ -940,7 +932,6 @@ class OscarEforms:
         return text
 
 
-    @_switch_on_return
     def read_dcs_and_angiograms(self):
         """
         Extracts the text from a patients DC and Angiogram documents.
@@ -994,7 +985,6 @@ class OscarEforms:
         return text
 
         
-    @_switch_on_return
     def read_medical_history(self, doc_names):
         """
         Extracts and returns the text from the patients most recent 0letter, angiogram and dc files (if exist).
@@ -1265,7 +1255,6 @@ class OscarEforms:
         # Home window is not opened, try restarting driver
         else:
             print("Restarting")
-            time.sleep(10)
             self.restart()
             self.driver.switch_to.window(self.home_window)
             return 
