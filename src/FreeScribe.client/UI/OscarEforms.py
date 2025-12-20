@@ -177,7 +177,7 @@ class OscarEforms:
                 self.switch_to_home()
         return wrapper
 
-    @_switch_on_return
+
     def search_patient(self, first_name, last_name, chartNo=None, open_encounter=True, open_eform_lib=True):
         """
         Searches for patient using demographic number or name.
@@ -275,7 +275,7 @@ class OscarEforms:
             return False
         
         
-    @_switch_on_return
+    
     def open_encounter(self):
         """
         Opens the patient's encounter page. Requires self.patient.
@@ -314,7 +314,7 @@ class OscarEforms:
         return True
 
 
-    @_switch_on_return
+
     def open_eform_library(self):
         """
         Opens eform library window. Requires a patient encounter window to be open
@@ -344,7 +344,7 @@ class OscarEforms:
             print(f"An unexpected error occurred when trying to open eForm Library Window: {e}")
 
 
-    @_switch_on_return
+
     def open_new_eform(self, form_type):
         """
         Opens the specified eForm type. Requires self.eform_lib_window to be open
@@ -362,7 +362,7 @@ class OscarEforms:
             print(f"Unable to open eForm, make sure '{form_type}' exists: {e}")
             
 
-    @_switch_on_return
+
     def open_eform_from_search(self, form_type):
         """
         Assumes self.patient has been found and will open encounter, eform library, and eform windows
@@ -376,7 +376,7 @@ class OscarEforms:
         self.open_new_eform(form_type)
 
 
-    @_switch_on_return
+
     def open_eform_from_link(self, first_name, last_name, form_type, chartNo=None):
         """
         Searches for patient in the oscarReportmasterXLS.xls and gets the patients demographic number.
@@ -411,7 +411,7 @@ class OscarEforms:
         return True
 
 
-    @_switch_on_return
+
     def open_lab_eform_with_checkboxes(self, first_name, last_name, checkbox_names: list[str], plan_text: str = None, chartNo=None):
         """
         Opens 1.2LabCardiacP eform and automatically checks specified checkboxes.
@@ -517,7 +517,7 @@ class OscarEforms:
             return False
 
 
-    @_switch_on_return
+
     def scan_and_update_eforms(self):
         """
         Opens eForm library in Oscar EMR then scans and saves the all the eForm names
@@ -633,7 +633,6 @@ class OscarEforms:
         return eform_fdids
 
 
-    @_switch_on_return
     def read_0letter(self):
         """
         Will read and return the text from the most recent 0letter eform recorded in the 
@@ -680,7 +679,11 @@ class OscarEforms:
                     
                     # Close 0letter window
                     self.driver.close()
-                    self.driver.switch_to.window(self.encounter_window)
+                    try:
+                        self.driver.switch_to.window(self.encounter_window)
+                    except:
+                        self.switch_to_last()
+                
 
                     # End loop
                     break
@@ -775,7 +778,7 @@ class OscarEforms:
         #    print(f"{key}: {val}")
         return doc_dict
 
-    @_switch_on_return
+
     def extract_text_from_document(self, segID):
         """
         Extracts and returns the text from the given document.
@@ -839,6 +842,8 @@ class OscarEforms:
 
             # Close document window
             self.driver.close()
+            self.driver.switch_to.window(self.driver.window_handles[-1])
+           
 
             print(f"Old pdfs {old_pdfs}")
             # OCR PDF to extract text and then delete PDF
@@ -985,6 +990,7 @@ class OscarEforms:
         return text
 
         
+
     def read_medical_history(self, doc_names):
         """
         Extracts and returns the text from the patients most recent 0letter, angiogram and dc files (if exist).
@@ -1004,7 +1010,7 @@ class OscarEforms:
             return
 
 
-    @_switch_on_return
+
     def insert_text_into(self, text : str, box : str):
         """
         Inserts text into one of the four boxes (Social History, Medical History, Ongoing Concerns, or Reminders).
@@ -1060,7 +1066,6 @@ class OscarEforms:
             return False
         
         
-    @_switch_on_return
     def scan_appointments(self):
         """
         Scans the Oscar home page for all patient appointments registered for the day.
@@ -1229,8 +1234,8 @@ class OscarEforms:
             try:
                 res = self.open_encounter()
                 if not res: return False
-            except:
-                print("Unable to open encouter windows")
+            except Exception as e:
+                print(f"Unable to open encouter windows: {e}")
                 return False
         
         # Switch to encounter window
