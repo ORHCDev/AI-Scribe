@@ -661,6 +661,9 @@ class OscarEforms:
                     a.click()
                     self.switch_to_last()
                     time.sleep(2)
+
+                    # Maximize page
+                    self.driver.maximize_window()
                     
                     # Find and switch to iframe
                     iframe = self.wait.until(
@@ -830,6 +833,9 @@ class OscarEforms:
             self.switch_to_last()
             print("Opened Doc")
             time.sleep(1)
+
+            # Maximize page 
+            self.driver.maximize_window()
             
             # Download doc as PDF
             print_btn = self.wait.until(
