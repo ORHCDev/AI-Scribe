@@ -57,22 +57,38 @@ def generate_lab_hl7(text, testing=False):
                     
                     
                     qty = 'N/A'
-                    for e in line.split():
+                    flag = 'N/A'
+                    
+                    line_array = line.split()
+                    index = len(line_array)
+
+                    for e in line_array:
                         # Take first float
                         try:
+                            index = line_array.index(e) 
                             e = re.sub(r"[<>:-=HL]", "", e)  
                             float(e)
                             qty = e
                             break
                         except:
                             pass
+                    
+                    if index < len(line_array) - 1:
+                        # Record flag as the value that proceeds qty
+                        flag = line_array[index+1]
 
+                        # Ensure it is a high or low (H, L, HI, LO)
+                        if flag[0] in ["H", "L"]:
+                            flag = re.sub(r"[^HL]", "", flag)
+                        else:
+                            flag = "N/A"
+                    
 
                     # Appending results in hl7 format
                     if testing:
-                        description += f"{key:<18} OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}||{results[key][2]}\n"
+                        description += f"{key:<18} OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}|{flag}|{results[key][2]}\n"
                     else:
-                        description += f"OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}||{results[key][2]}\n"
+                        description += f"OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}|{flag}|{results[key][2]}\n"
 
                     # Marking key as found and iterateing index
                     i += 1
