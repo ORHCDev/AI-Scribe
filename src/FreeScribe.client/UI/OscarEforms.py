@@ -4,12 +4,14 @@ import re
 import os
 import requests
 import urllib3
+import pyperclip
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -631,6 +633,212 @@ class OscarEforms:
                 print(f"{key}: {val}")
 
         return eform_fdids
+
+
+    def insert_text_into_0letter(self, text):
+        """
+        Will input the given text into the most recent 0letter eform recorded
+        in the patient's encounter page.
+        """
+
+        def focus_cursor_before(indicator):
+            length = len(indicator)
+            """Focus cursor to right before given indicator on 0letter note"""
+            paras = "const paras = Array.from(document.getElementsByTagName('p'));\n"
+            p = f"const p = paras.find(el => el.textContent.includes('{indicator}'));\n"
+
+            script = paras + p + f"""
+                if (!p) return;
+
+                if (!p.firstChild) {{
+                    p.appendChild(document.createTextNode(''));
+                }}
+
+                const range = document.createRange();
+                range.setStart(p.firstChild, p.firstChild.length);
+                range.collapse(true);
+
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            """
+            
+            self.driver.execute_script(script)
+
+        def focus_cursor_after_indicator(indicator):
+            """Focus cursor right after the given indicator in a 0-letter note"""
+            script = f"""
+            const paras = Array.from(document.getElementsByTagName('p'));
+            const p = paras.find(el => el.textContent.includes('{indicator}'));
+            if (!p) return;
+
+            if (!p.firstChild) {{
+                p.appendChild(document.createTextNode(''));
+            }}
+
+            // Find offset after the indicator text
+            const textNode = p.firstChild;
+            const offset = textNode.textContent.indexOf('{indicator}') + '{indicator}'.length;
+
+            const range = document.createRange();
+            range.setStart(textNode, offset);
+            range.collapse(true);
+
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            """
+
+            return script
+
+
+        def focus_curson_at_end():
+            """Focus cursor to end of 0letter note"""
+            self.driver.execute_script("""
+                const body = document.body;
+
+                // Ensure body has something selectable
+                if (!body.lastChild) {
+                    body.appendChild(document.createElement('p'));
+                }
+
+                const range = document.createRange();
+                range.selectNodeContents(body);
+                range.collapse(false); // false = end of document
+
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            """)
+        
+        def toggle_off_bold():
+            # toggle bold off
+            if  self.driver.execute_script("return document.queryCommandState('bold');"):
+                print("Toggled")
+                self.driver.execute_script("""
+                    // Force bold OFF
+                    document.execCommand('bold', false, null);
+
+                    // Normalize font weight at caret
+                    document.execCommand('removeFormat', false, null);
+                """)
+
+        def focus_and_insert(indicator, text):
+            focus_cursor_before(indicator)
+            body.send_keys(Keys.HOME)
+            for i in range(len(indicator) + 1):
+                body.send_keys(Keys.ARROW_RIGHT)
+            body.send_keys(Keys.ENTER)
+            toggle_off_bold()
+            body.send_keys(text)
+            body.send_keys(Keys.ENTER)
+            
+
+
+
+        # Get dictionary of eforms and their fdids
+        eform_fdids = self.find_eforms()
+
+        # Insert text into most recent 0letter eform
+        for eform, fdids in eform_fdids.items():
+            if "0letter" in eform:
+                # fdid of most recent 0letter eform
+                fdid = fdids[0]
+                try:
+
+                    # Extract text from each section
+                    hpi_key = "History of Presenting Illness:"
+                    imp_key = "Impression/Assessment:"
+                    plan_key = "Plan:"
+
+                    # Find starting indices
+                    i_hpi = text.find(hpi_key)
+                    i_imp = text.find(imp_key)
+                    i_plan = text.find(plan_key)
+                    
+                    hpi, imp, plan = None, None, None
+
+                    # Slice each section by using the start of the next section
+                    if i_hpi != -1:
+                        hpi = text[i_hpi + len(hpi_key) : i_imp].strip()
+                    if i_imp != -1:
+                        imp = text[i_imp + len(imp_key) : i_plan].strip()
+                    if i_plan != -1:
+                        plan = text[i_plan + len(plan_key) : ].strip()
+
+                    # Additional check if hpi, imp, or plan are empty
+                    try:
+                        # Split text into chunks
+                        chuncks = [chunk.strip() for chunk in text.strip().split("\n\n")]
+                        # Assign if missing
+                        if not hpi: hpi = chuncks[0]
+                        if not imp: imp = chuncks[1]
+                        if not plan: plan = chuncks[2]
+                    except Exception as e:
+                        print(f"Error assigning chuncks: {e}")
+
+
+                    # Find eform by fdid
+                    print(f"EFORM: {eform} | FDID: {fdid}")
+                    xpath = f"//a[contains(@onclick, 'fdid={fdid}')]"
+                    a = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                    
+                    # Open 0letter eform 
+                    a.click()
+                    self.switch_to_last()
+                    time.sleep(2)
+
+                    # Maximize page
+                    self.driver.maximize_window()
+                    time.sleep(1)
+                   
+                    # Switch to iframe
+                    self.driver.switch_to.frame("edit")
+                    # Focus on 0letter body
+                    body = self.wait.until(
+                        EC.presence_of_element_located((By.XPATH, "//body"))
+                    )
+                    body.click()
+
+
+                    focus_and_insert("HISTORY OF PRESENT ILLNESS", hpi)
+                    focus_and_insert("ASSESSMENT", imp)
+                    focus_and_insert("PLAN", plan)
+
+                    """# Focus cursor and paste History of Present Illness section
+                    focus_cursor("HISTORY OF PRESENT ILLNESS")
+                    body.send_keys(Keys.END)
+                    body.send_keys(Keys.ENTER)
+                    body.send_keys(Keys.ENTER)
+                    toggle_off_bold()
+                    body.send_keys(hpi)
+
+                    # Focus cursor and paste Assessment section
+                    focus_cursor("Assessment")
+                    body.send_keys(Keys.END)
+                    body.send_keys(Keys.ENTER)
+                    body.send_keys(Keys.ENTER)
+                    toggle_off_bold()
+                    body.send_keys(hpi)"""
+
+                    # Switch out of iframe
+                    self.driver.switch_to.default_content()
+
+                    #/html/body/form/div[2]/table/tbody/tr/td/input[2]
+                    # Click submit
+                    submit_btn = self.wait.until(
+                        EC.presence_of_element_located((By.XPATH, "/html/body/form/div[2]/table/tbody/tr/td/input[2]"))
+                    )
+                    submit_btn.click()
+
+                    # Close window and switch to encounter window
+                    self.driver.close()
+                    self.driver.switch_to.window(self.encounter_window)
+                   
+                    return
+                except Exception as e:
+                    print(f"error: {e}")
+                    return
 
 
     def read_0letter(self):
