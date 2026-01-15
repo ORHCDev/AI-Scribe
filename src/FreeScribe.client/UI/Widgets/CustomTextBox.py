@@ -66,6 +66,10 @@ class CustomTextBox(tk.Frame):
         # Consult insert button. Set via set_consult_callback
         self.consult_button = None
         self.consult_callback = None
+
+        # Consult and Medical History insert button. set via set_consult_and_mh_callback
+        self.consult_and_mh_button = None
+        self.consult_and_mh_callback = None
     
     def set_get_labs_callback(self, callback):
         """Set the callback function for the Get Labs button."""
@@ -149,6 +153,27 @@ class CustomTextBox(tk.Frame):
         """Internal method to call the medical history callback."""
         if self.consult_callback:
             self.consult_callback()
+
+
+    def set_consult_and_mh_callback(self, callback):
+        """Sets the callback function for the Medical History button."""
+        self.consult_and_mh_callback = callback
+        if self.consult_and_mh_callback:
+            if self.consult_and_mh_button is None:
+                self.consult_and_mh_button = tk.Button(
+                    self.scrolled_text,
+                    text="Insert Consult & MH",
+                    command=self._consult_and_mh,
+                    relief="raised",
+                    borderwidth=1
+                )
+                # Place next to med hist button
+                self.consult_and_mh_button.place(relx=1.0, rely=1.0, x=-422, y=-2, anchor="se")
+
+    def _consult_and_mh(self):
+        """Internal method to call the medical history callback."""
+        if self.consult_and_mh_callback:
+            self.consult_and_mh_callback()
 
 
     def update_lab_button_text(self, text):

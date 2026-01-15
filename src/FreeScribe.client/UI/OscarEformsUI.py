@@ -2,8 +2,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from UI.Widgets.SearchableSelector import SearchableComboBox
 from datetime import datetime
+from UI.OscarEforms import OscarEforms
 class OscarEformsUI:
-    def __init__(self, parent, oscar):
+    def __init__(self, parent, oscar : OscarEforms):
         """
         Initializes a simple Tkinter window that provides a user interface to interact with the Oscar EMR system for easy eForm creation.
         It includes fields for patient information and buttons for opening eForm windows.
@@ -17,49 +18,7 @@ class OscarEformsUI:
         self.parent = parent
         self.oscar = oscar
         # Document selection options
-        self.document_opts = [
-            "REFERRAL LETTER",
-            "CLINIC NOTES",
-            "CONSULTANT NOTES",
-            "DC Summary", 
-            "CATH",
-            "OR NOTES",
-            "Rx",
-            "FMD COMMUNICATION",
-            "LAB",
-            "OUTGOING REFERRALS",
-            "ECG",
-            "ECHO",
-            "STRESS",
-            "STRESSECHO",
-            "NUCLEAR STRESS",
-            "HOLTER",
-            "RADIOLOGY",
-            "CTCA",
-            "CARDIAC MRI",
-            "PATHOLOGY",
-            "REPORTS",
-            "OTHERS",
-            "OLDCHART",
-            "PACEMAKER RECORDS",
-            "OUT-PATIENT CLINICS",
-            "clinic notes",
-            "HFCNote",
-            "SMH ER/ClinicRecord",
-            "SLake ER/ClinicRecord",
-            "ER CONSULTATION",
-            "ecg",
-            "CT SCAN",
-            "EP REPORT",
-            "ER REPORTS",
-            "RX2",
-            "ABP Monitor",
-            "Patient Form",
-            "LAB REQN",
-            "Echo_consent",
-            "consentEcho",
-            "mrirequisition",
-        ]
+        self.document_opts = self.oscar.document_opts
         # Defaults to select
         self.document_defaults = [
             "DC Summary",
@@ -586,7 +545,7 @@ class OscarEformsUI:
         row = 0
         col = 0
         for opt in self.document_opts:
-            var = tk.BooleanVar()
+            var = tk.BooleanVar(value=opt in self.document_defaults)
             self.doc_cbs[opt] = var
 
             cb = tk.Checkbutton(
@@ -608,13 +567,6 @@ class OscarEformsUI:
             else:
                 col = 0
                 row += 1
-
-        # Setting truth values
-        for var in self.doc_cbs.values():
-            var.set(False)
-
-        for opt in self.document_defaults:
-            self.doc_cbs[opt].set(True)
 
         return vars
 

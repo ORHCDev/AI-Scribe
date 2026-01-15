@@ -1632,6 +1632,83 @@ def upload_consult():
     """Uploads the LLM response to patient consult to most recent 0letter eform"""
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     oscar.insert_text_into_0letter(text)
+
+def upload_consult_and_mh():
+    """
+    Uploads the LLM response to patient consult and response to medical history
+    to patient's most recent 0letter eform.
+    """
+
+    # Save consult text
+    consult = response_display.scrolled_text.get("1.0", tk.END).strip()
+
+    # Prompt User for which documents they want scanned
+    popup = tk.Toplevel(root)
+    popup.title("Select Options")
+    popup.transient(root)
+    popup.grab_set()
+
+    # --- Variables ---
+    prompts = tk.StringVar(value="Med Hist 2")
+
+    # --- UI ---
+    ttk.Label(popup, text="Prompt").pack(pady=(10, 0))
+    ttk.Combobox(
+        popup,
+        textvariable=prompts,
+        values=ai_prompts.list_prompts(),
+        state="readonly"
+    ).pack()
+
+    docs_frame = ttk.Frame(popup)
+    docs_frame.pack(padx=10, pady=5)
+
+    cols = 2
+    defaults = {"DC Summary", "CATH"}
+    doc_cbs = {}
+
+    for i, doc_type in enumerate(oscar.document_opts):
+        var = tk.BooleanVar(value=doc_type in defaults)
+        doc_cbs[doc_type] = var
+
+        ttk.Checkbutton(
+            docs_frame,
+            text=doc_type,
+            variable=var
+        ).grid(
+            row=i // cols,
+            column=i % cols,
+            sticky="w",
+            padx=10,
+            pady=2
+        )
+
+
+    result = {}
+
+    def on_done():
+        result["Prompt"] = prompts.get()
+        result["Docs"] = [s for s, v in doc_cbs.items() if v.get()]
+        popup.destroy()
+
+    ttk.Button(popup, text="Done", command=on_done).pack(pady=15)
+
+    root.wait_window(popup)
+    
+    if not result:
+        return
+
+    # Prompt User for which prompt they want to choose
+    prompt_dropdown.set(result['Prompt'])
+
+    # Read medical history and generate response
+    med_hist_input = oscar.read_medical_history(doc_names=result["Docs"])
+
+    generate_note(med_hist_input)
+    med_hist_resp = response_display.scrolled_text.get("1.0", tk.END).strip()
+
+    # Insert text into 0letter
+    oscar.insert_text_into_0letter(consult, med_hist_resp)
     
 
 
@@ -1741,12 +1818,16 @@ response_display.set_get_labs_callback(get_labs_from_response)
 response_display.set_download_callback(download_results)
 
 # Set up Medical History button callback
-# Button will upload LLM response text into the opened patients medical history
+# Button will upload LLM response text into the opened patient's medical history
 response_display.set_med_hist_callback(upload_medical_history)
 
 # Set up Consult button callback
-# Button will upload LLM response text into the patients most recent 0letter
+# Button will upload LLM response text into the patient's most recent 0letter
 response_display.set_consult_callback(upload_consult)
+
+# Set up Consutl and Med Hist button callback
+# Button will upload consult and med hist into patient's most recent 0letter
+response_display.set_consult_and_mh_callback(upload_consult_and_mh)
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
