@@ -69,8 +69,20 @@ class OscarEformsUI:
 
         # Create popup window
         self.window = tk.Toplevel(parent)
+        self.window.transient(parent)
+
         self.window.title("Oscar eForms")
         self.window.geometry("500x600")
+
+        def _sync_move_parent(event=None):
+            try:
+                x = self.parent.winfo_x()
+                y = self.parent.winfo_y()
+                self.window.geometry(f"+{x + 930}+{y}")
+            except tk.TclError:
+                pass
+
+        self.parent.bind("<Configure>", _sync_move_parent)
 
         # Frame for inputs and button
         self.frame = ttk.Frame(self.window)
