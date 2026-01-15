@@ -108,7 +108,11 @@ def file_reader(file_path):
                 return text
 
         elif file_path.lower().endswith(".pdf"):
-            text = pdf_image_to_text(pdf_path=file_path)
+            filename = os.path.basename(file_path)
+            if detect_type(filename) == "HOLTER":
+                text = pdf_image_to_text(pdf_path=file_path, last_page=2)
+            else:
+                text = pdf_image_to_text(pdf_path=file_path) 
             return text
 
         else:
@@ -305,7 +309,7 @@ def detect_type(filename):
             return "HFC"
         elif keyword in est_keywords:
             return "EST"
-        elif keyword in holter_keywords:
+        elif keyword in [k.lower() for k in holter_keywords]:
             return "HOLTER"
         elif keyword in dc_keywords:
             return "DC"
