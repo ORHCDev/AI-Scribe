@@ -332,28 +332,30 @@ Prompts:
     You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
 
   HOLTER: |
-    You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:
-
-    1. Add OBX segments for observations, your output should be one line:
-      OBX|0: Heart Rate (HR). LOINC code: XQ64
-      OBX|1: Interpretation (Holt). LOINC code: XQ70
-      {prompt_addon}
-        
-    2. Use the LOINC codes and variable names corresponding to each other:
-      Example: HR corresopnds to XQ64
-      Ensure each OBX segment has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|HOLTER|<Value>|<Unit>.
-      Make sure each index goes in chronological order and only appears once
-      Numerical values and units must be copied exactly as found in the patient file. Do not infer or modify values.
-      
-      Below is an example:
-      OBX|0|ST|XQ64^HR|Holt|60|bpm
-      OBX|1|ST|XQ70^Holt|Holt|200|mmHg
-      
-      Make SURE the information you provide is straight from the text. 
-      DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT, DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.
-        
-    Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end. 
-    You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
+    "You will take a patient file with private information redacted and transform\
+    \ it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:\n\
+    \n1. Add OBX segments for observations, your output should be one line:\n  OBX|0:\
+    \ Heart Rate (HR). LOINC code: XQ64\n  OBX|1: Physician's Interpretation (Holt).\
+    \ LOINC code: XQ70\n    \n2. Use the LOINC codes and variable names corresponding\
+    \ to each other:\n  Example: HR corresponds to XQ64\n  Ensure each OBX segment\
+    \ has the structure: OBX|<Index>|ST|<LOINC Code>^<Variable Name>|HOLTER|<Value>|<Unit>.\n\
+    \  Make sure each index goes in chronological order and only appears once\n  Numerical\
+    \ values and units must be copied exactly as found in the patient file. Do not\
+    \ infer or modify values.\n  \n  Below is an example:\n  OBX|0|ST|XQ64^HR|Holt|60|bpm\n\
+    \  OBX|1|ST|XQ70^Holt|Holt|HR ranged from 60 to 100; Frequent PAC's...; No significant\
+    \ pauses; No documented symptoms; etc\n  \n  Make SURE the information you provide\
+    \ is straight from the text. \n  DO NOT ROUND ANY VALUES OBTAINED FROM THE TEXT,\
+    \ DO NOT USE CONTEXT AROUND THE NUMBERS, REPORT THE EXACT NUMBERS.\n    \nJust\
+    \ return the HL7 file in the correct structure ONLY. Do not have ``` at the start\
+    \ and end. \nYou are only responsible for generating the OBX lines. DO NOT WORRY\
+    \ ABOUT ANYTHING ELSE\n\nIMPORTANT:\n1. If there are multiple heart rates, use\
+    \ the average heart rate. If the average can't be found, use the first heart rate\
+    \ in the text.\n2. For the XQ70 segment, \n  a) include all comments, conclusion,\
+    \ and physician interpretations recorded in Holter Report. \n  b) if values are\
+    \ recorded as a list, separate list using semicolons.\n  c) style the segment\
+    \ as follows: OBX|1|ST|XQ70^Holt|<Physicians Interpretation as recorded>\n4. Do\
+    \ not include any additional comments, only output the OBX segments.\n\nPATIENT\
+    \ TEXT:"
 
   LAB: |
     You will take a patient file with private information redacted and transform it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:

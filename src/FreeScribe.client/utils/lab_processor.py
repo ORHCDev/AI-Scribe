@@ -55,7 +55,7 @@ def generate_lab_hl7(text, testing=False):
                     if key == 'CK ' and line[:2] != 'CK':
                         continue # Skip to avoid matching other words with 'ck' in them
                     
-                    
+
                     qty = 'N/A'
                     for e in line.split():
                         # Take first float
@@ -67,12 +67,99 @@ def generate_lab_hl7(text, testing=False):
                         except:
                             pass
 
+                    flag = ''
+                    # Requires the qty to exist and is a float
+                    if qty != 'N/A':
+                        copyQty = float(qty)
+                        # Determine the reference range
+                        # First exclude the key
+                        lineArray = line.split()[1:]
+
+                        # Assume that the characters -, >, >=, <, <= are only used for reference ranges
+                        if '-' in lineArray:
+                            # Case where the OCR identifies reference range tokens and '-' as distinct tokens
+                            # Then the reference range values are on the left and right of the '-' character
+                            try:
+                                indxSplit = lineArray.index('-')
+                                leftRange = float(lineArray[indxSplit-1])
+                                rightRange = float(lineArray[indxSplit+1])
+                                if copyQty < leftRange:
+                                    flag = 'L'
+                                elif copyQty > rightRange:
+                                    flag = 'H'
+                            except:
+                                print("There was an error reading the '-' reference range.")
+                                pass
+                        elif '>' in lineArray or '>=' in lineArray or '<' in lineArray or '<=' in lineArray:
+                            # Case where OCR identifies reference range tokens and one of >, >=, <, <= as distinct tokens
+                            # Then the reference range value is on the right of the >, >=, <, <= character
+                            try:
+                                if '>' in lineArray:
+                                    indxSymb = lineArray.index('>')
+                                    if float(lineArray[indxSymb+1]) >= copyQty:
+                                        flag = 'L'
+                                elif '>=' in lineArray:
+                                    indxSymb = lineArray.index('>=')
+                                    if float(lineArray[indxSymb+1]) > copyQty:
+                                        flag = 'L'
+                                elif '<' in lineArray:
+                                    indxSymb = lineArray.index('<')
+                                    if float(lineArray[indxSymb+1]) <= copyQty:
+                                        flag = 'H'
+                                else:
+                                    indxSymb = lineArray.index('<=')
+                                    if float(lineArray[indxSymb+1]) < copyQty:
+                                        flag = 'H'
+                            except:
+                                print("There was an error reading the >, >=, <, <= reference range.")
+                                pass
+                        else:
+                            # Case where OCR parses the reference range as a single token
+                            # It is also possible for there to be no reference range, which will just pass
+                            for e in lineArray:
+                                try:
+                                    if '>=' in e:
+                                        e = float(re.sub(r"[<>:-=HL]", "", e))
+                                        if e > copyQty:
+                                            flag = 'L'
+                                        break
+                                    elif '>' in e:
+                                        e = float(re.sub(r"[<>:-=HL]", "", e))
+                                        if e >= copyQty:
+                                            flag = 'L'
+                                        break
+                                    elif '<=' in e:
+                                        e = float(re.sub(r"[<>:-=HL]", "", e))
+                                        if e < copyQty:
+                                            flag = 'H'
+                                        break
+                                    elif '<' in e:
+                                        e = float(re.sub(r"[<>:-=HL]", "", e))
+                                        if e <= copyQty:
+                                            flag = 'H'
+                                        break
+                                    elif '-' in e:
+                                        first, second = map(float, e.split('-'))
+                                        if copyQty < first:
+                                            flag = 'L'
+                                        elif copyQty > second:
+                                            flag = 'H'
+                                        break
+                                except:
+                                    continue
+                    # Also check if the flag is on the same line
+                    if flag == '' and len(line) > 0:
+                        # Manually iterate through each token and see if any of them start with an H or L character after cleaning the token
+                        for e in line.split()[1:]:
+                            e = re.sub(r"[<>:-=()]", "", e)
+                            if e and (e[0] == 'H' or e[0] == 'L'):
+                                flag = e[0]
 
                     # Appending results in hl7 format
                     if testing:
-                        description += f"{key:<18} OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}||{results[key][2]}\n"
+                        description += f"{key:<18} OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}|{results[key][2]}|{flag}\n"
                     else:
-                        description += f"OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}||{results[key][2]}\n"
+                        description += f"OBX|{i}|ST|{results[key][0]}|LAB|{qty}|{results[key][1]}|{results[key][2]}|{flag}\n"
 
                     # Marking key as found and iterateing index
                     i += 1
