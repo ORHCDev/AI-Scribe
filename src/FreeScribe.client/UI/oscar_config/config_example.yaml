@@ -5,6 +5,48 @@ oscar_credentials :
 url : "https://oscar_url"
 driver_path :  C:\Path\To\geckodriver.exe
 pdf_folder: C:\path\to\temp\folder\for\pdfs
+document_options : 
+  - REFERRAL LETTER
+  - CLINIC NOTES
+  - CONSULTANT NOTES
+  - DC Summary 
+  - CATH
+  - OR NOTES
+  - Rx
+  - FMD COMMUNICATION
+  - LAB
+  - OUTGOING REFERRALS
+  - ECG
+  - ECHO
+  - STRESS
+  - STRESSECHO
+  - NUCLEAR STRESS
+  - HOLTER
+  - RADIOLOGY
+  - CTCA
+  - CARDIAC MRI
+  - PATHOLOGY
+  - REPORTS
+  - OTHERS
+  - OLDCHART
+  - PACEMAKER RECORDS
+  - OUT-PATIENT CLINICS
+  - clinic notes
+  - HFCNote
+  - SMH ER/ClinicRecord
+  - SLake ER/ClinicRecord
+  - ER CONSULTATION
+  - ecg
+  - CT SCAN
+  - EP REPORT
+  - ER REPORTS
+  - RX2
+  - ABP Monitor
+  - Patient Form
+  - LAB REQN
+  - Echo_consent
+  - consentEcho
+  - mrirequisition
 eForms : 
   0.1Rfx : 725
   1.2LabCardiac : 659

@@ -47,6 +47,12 @@ class OscarEforms:
         except:
             self.eforms = self.default_eforms
     
+        # Document options
+        try:
+            self.document_opts = self.config['document_options']
+        except:
+            self.document_opts = ["DC", "CATH"]
+
         self.oscar_report_path = oscar_report_path
 
         # Links
@@ -635,7 +641,7 @@ class OscarEforms:
         return eform_fdids
 
 
-    def insert_text_into_0letter(self, text):
+    def insert_text_into_0letter(self, consult, med_hist=None):
         """
         Will input the given text into the most recent 0letter eform recorded
         in the patient's encounter page.
@@ -752,24 +758,24 @@ class OscarEforms:
                     plan_key = "Plan:"
 
                     # Find starting indices
-                    i_hpi = text.find(hpi_key)
-                    i_imp = text.find(imp_key)
-                    i_plan = text.find(plan_key)
+                    i_hpi = consult.find(hpi_key)
+                    i_imp = consult.find(imp_key)
+                    i_plan = consult.find(plan_key)
                     
                     hpi, imp, plan = None, None, None
 
                     # Slice each section by using the start of the next section
                     if i_hpi != -1:
-                        hpi = text[i_hpi + len(hpi_key) : i_imp].strip()
+                        hpi = consult[i_hpi + len(hpi_key) : i_imp].strip()
                     if i_imp != -1:
-                        imp = text[i_imp + len(imp_key) : i_plan].strip()
+                        imp = consult[i_imp + len(imp_key) : i_plan].strip()
                     if i_plan != -1:
-                        plan = text[i_plan + len(plan_key) : ].strip()
+                        plan = consult[i_plan + len(plan_key) : ].strip()
 
                     # Additional check if hpi, imp, or plan are empty
                     try:
-                        # Split text into chunks
-                        chuncks = [chunk.strip() for chunk in text.strip().split("\n\n")]
+                        # Split consult into chunks
+                        chuncks = [chunk.strip() for chunk in consult.strip().split("\n\n")]
                         # Assign if missing
                         if not hpi: hpi = chuncks[0]
                         if not imp: imp = chuncks[1]
@@ -804,6 +810,10 @@ class OscarEforms:
                     focus_and_insert("HISTORY OF PRESENT ILLNESS", hpi)
                     focus_and_insert("ASSESSMENT", imp)
                     focus_and_insert("PLAN", plan)
+
+                    # Insert medical history if given
+                    if med_hist:
+                        focus_and_insert("PAST MEDICAL HISTORY", med_hist)
 
                     """# Focus cursor and paste History of Present Illness section
                     focus_cursor("HISTORY OF PRESENT ILLNESS")
