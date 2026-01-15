@@ -331,7 +331,7 @@ Prompts:
     Just return the HL7 file in the correct structure ONLY. Do not have ``` at the start and end
     You are only responsible for generating the OBX lines. DO NOT WORRY ABOUT ANYTHING ELSE
 
-  HOLTER: |
+  HOLTER: 
     "You will take a patient file with private information redacted and transform\
     \ it into an HL7 file. Follow the HL7 2.3 format strictly. Use the following rules:\n\
     \n1. Add OBX segments for observations, your output should be one line:\n  OBX|0:\
