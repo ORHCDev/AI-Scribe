@@ -1708,14 +1708,14 @@ def upload_consult_and_mh():
 
     generate_note(med_hist_input)
     med_hist_resp = response_display.scrolled_text.get("1.0", tk.END).strip()
-    print(med_hist_resp)
+
 
     # Generate consult note with generated medical history
     encounter_convo = "MEDICAL HISTORY:\n" + med_hist_resp + "\n\n" + encounter_convo
     prompt_dropdown.set("Consult")
     generate_note(encounter_convo)
     consult = response_display.scrolled_text.get("1.0", tk.END).strip()
-    print("\n\n\n\n\n" + consult)
+
     # Insert text into 0letter
     oscar.insert_text_into_0letter(consult, med_hist_resp)
     
