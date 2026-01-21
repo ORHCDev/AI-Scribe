@@ -1639,8 +1639,9 @@ def upload_consult_and_mh():
     to patient's most recent 0letter eform.
     """
 
-    # Save consult text
-    consult = response_display.scrolled_text.get("1.0", tk.END).strip()
+    # Save patient-encounter conversation text
+    encounter_convo = user_input.scrolled_text.get("1.0", tk.END).strip()
+
 
     # Prompt User for which documents they want scanned
     popup = tk.Toplevel(root)
@@ -1698,6 +1699,7 @@ def upload_consult_and_mh():
     if not result:
         return
 
+
     # Prompt User for which prompt they want to choose
     prompt_dropdown.set(result['Prompt'])
 
@@ -1706,7 +1708,14 @@ def upload_consult_and_mh():
 
     generate_note(med_hist_input)
     med_hist_resp = response_display.scrolled_text.get("1.0", tk.END).strip()
+    print(med_hist_resp)
 
+    # Generate consult note with generated medical history
+    encounter_convo = "MEDICAL HISTORY:\n" + med_hist_resp + "\n\n" + encounter_convo
+    prompt_dropdown.set("Consult")
+    generate_note(encounter_convo)
+    consult = response_display.scrolled_text.get("1.0", tk.END).strip()
+    print("\n\n\n\n\n" + consult)
     # Insert text into 0letter
     oscar.insert_text_into_0letter(consult, med_hist_resp)
     
