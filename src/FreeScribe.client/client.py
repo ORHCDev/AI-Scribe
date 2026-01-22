@@ -309,7 +309,7 @@ def is_silent(data, threshold=0.01):
     return max_value < threshold
 
 def realtime_text():
-    global frames, is_realtimeactive, audio_queue
+    global frames, is_realtimeactive, audio_queue, is_recording
     # Incase the user starts a new recording while this one the older thread is finishing.
     # This is a local flag to prevent the processing of the current audio chunk 
     # if the global flag is reset on new recording
@@ -349,6 +349,12 @@ def realtime_text():
                                 wf.writeframes(b''.join(frames))
                             frames = []
                         file_to_send = get_resource_path("realtime.wav")
+                        if not os.path.isfile(file_to_send):
+                            print("Realtime audio file not found - skipping transcription.")
+                            if is_recording:
+                                messagebox.showerror("Realtime Audio Error", "Realtime audio file could not be found. Please restart recording.")
+                            cancel_processing()
+                            break
                         with open(file_to_send, 'rb') as f:
                             files = {'audio': f}
 
