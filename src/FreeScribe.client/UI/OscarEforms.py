@@ -813,7 +813,7 @@ class OscarEforms:
 
                     # Insert medical history if given
                     if med_hist:
-                        focus_and_insert("PAST MEDICAL HISTORY", med_hist)
+                        focus_and_insert("PAST CARDIAC HISTORY", med_hist)
 
                     """# Focus cursor and paste History of Present Illness section
                     focus_cursor("HISTORY OF PRESENT ILLNESS")
