@@ -1422,6 +1422,37 @@ class OscarEforms:
         return self.appts
 
 
+    def get_patients_sex(self):
+        """
+        If the patient's encounter page is opened, will scan it and return the patient's sex.
+        """
+
+        res = self.switch_to_encounter()
+        if not res: return
+
+        patient_info_xpath = '//*[@id="encounterHeader"]/table/tbody/tr/td[1]/span[2]'
+        patient_info = self.wait.until(
+            EC.presence_of_element_located((By.XPATH, patient_info_xpath))
+        )
+
+        text = patient_info.text
+        text_list = text.split()
+        try:
+            year_idx = text_list.index("years")
+            sex = text_list[year_idx-2].strip().upper()
+
+            if sex == "F":
+                return "Female"
+            elif sex == "M":
+                return "Male"
+            else:
+                print("Unable to fine patient's sex")
+                return
+            
+        except:
+            print("Unable to find patient's sex")
+        
+
 
     def get_all_patients(self):
         """

@@ -1019,6 +1019,7 @@ def get_labs_from_response():
 def generate_note(formatted_message):
             try:
                 prompt_type = selected_prompt.get()
+                sex = oscar.get_patients_sex()
                 # If note generation is on
                 if prompt_type == "Scribe":
                     # If pre-processing is enabled
@@ -1107,7 +1108,7 @@ def generate_note(formatted_message):
                 
                 else:
                     prompt = ai_prompts.get(prompt_type)
-                    ai_response = send_text_to_chatgpt(f"{prompt}\n\n{formatted_message}")
+                    ai_response = send_text_to_chatgpt(f"{prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
                 return True
