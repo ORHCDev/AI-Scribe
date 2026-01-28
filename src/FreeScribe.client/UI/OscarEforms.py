@@ -1090,14 +1090,15 @@ class OscarEforms:
         
         # Find all appointment columns
         columns = self.wait.until(
-            EC.presence_of_all_elements_located((By.XPATH, "/html/body/table[2]/tbody/tr[2]/td/table/tbody/tr/td"))
-        )
+            EC.presence_of_all_elements_located((By.XPATH, "/html/body/table[3]/tbody/tr[1]/td/table/tbody/tr/td"))
+        ) 
 
         doc_dict = {}
         # For each column get the doctor name and their appointments
         for col in columns:
             try:
-                doctor = col.find_element(By.XPATH, "./table/tbody/tr[1]/td/b/b/a[1]").text.strip()
+                doctor = col.find_element(By.XPATH, "./table/tbody/tr[1]/td/div/b/b/a[1]").text.strip()
+                print(doctor)
             except:
                 print("No doctor, continuing")
                 continue
