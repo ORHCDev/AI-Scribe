@@ -117,7 +117,7 @@ class OscarEformsUI:
 
         # Doctor Name
         vals = list(self.oscar.appts.keys())
-        self.doctor_name = tk.StringVar(value="Maheswaran Srivamadevan")
+        self.doctor_name = tk.StringVar(value="Echo Lab 1")
         self.doctor_selector = ttk.Combobox(self.frame, textvariable=self.doctor_name, values=vals, state="readonly")
         self.doctor_selector.grid(row=5, column=0,  columnspan=3, padx=5, pady=5, sticky="nsew")
         self.doctor_selector.bind("<<ComboboxSelected>>", self.load_appointments)
