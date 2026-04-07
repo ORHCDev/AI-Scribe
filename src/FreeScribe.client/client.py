@@ -51,6 +51,7 @@ from UI.OscarEforms import OscarEforms
 from UI.OscarEformsUI import OscarEformsUI
 from UI.Widgets.CustomTextBox import CustomTextBox
 from UI.Widgets.LabSelectionPanel import LabSelectionPanel
+from UI.Widgets.EformPanel import EformPanel
 from UI.LoadingWindow import LoadingWindow
 from UI.Widgets.MicrophoneSelector import MicrophoneState
 from Model import  ModelManager
@@ -75,7 +76,7 @@ sys.stderr = dual
 # GUI Setup
 root = tk.Tk()
 root.title("AI Medical Scribe")
-
+root.geometry("1400x800")
 
 
 # settings logic
@@ -93,7 +94,7 @@ app_settings.set_main_window(window)
 root.after(100, oscar.run)
 
 # Open eForm Window on Startup
-root.after(100, lambda: OscarEformsUI(root, oscar))
+#root.after(100, lambda: OscarEformsUI(root, oscar))
 
 # Cleanup on window close
 def on_close():
@@ -1214,13 +1215,53 @@ def generate_note_thread(text: str):
 
 def upload_file():
     global uploaded_file_path
-    file_path = filedialog.askopenfilename(filetypes=(("Audio files", "*.wav *.mp3"),))
-    if file_path:
-        uploaded_file_path = file_path
-        threaded_send_audio_to_server()  # Add this line to process the file immediately
-    start_flashing()
+    global file_path
 
+    initialdir = app_settings.editable_settings.get("Default Upload Folder", ".")
+    if not os.path.exists(initialdir):
+        print(f"Default upload folder '{initialdir}' does not exist. Change default folder in settings.")
+        initialdir = '.'
 
+    file_paths = filedialog.askopenfilenames(
+        filetypes=(("PDF and Text Files", "*.pdf *.txt"),
+                   ("Audio files", "*.wav *.mp3"),),
+        initialdir=initialdir
+    )
+
+    for file in file_paths:
+        file_path = file
+        uploaded_file_path = file
+        
+        ftype = file.rsplit(".")[-1]
+
+        if ftype in ["wav", "mp3"]:
+            uploaded_file_path = file_path
+            threaded_send_audio_to_server()
+        elif ftype in ["pdf", "txt"]:
+            threaded_file_reading()
+
+        start_flashing()
+
+    
+
+    # initialdir = app_settings.editable_settings.get("Default Upload Folder", ".")
+    # # Check if exists
+    # if not os.path.exists(initialdir):
+    #     print(f"Default upload folder '{initialdir}' does not exist. Change default folder in settings.")
+    #     initialdir = '.'
+    
+    # file_path = filedialog.askopenfilename(
+    #     filetypes=[("PDF and Text Files", "*.pdf *.txt")],
+    #     initialdir=initialdir
+    # )
+    # if file_path:
+    #     threaded_file_reading()  # Add this line to process the file immediately
+
+    # files = filedialog.askopenfilenames(
+    #     filetypes=(("Audio files", "*.wav *.mp3"),)
+    # )
+
+    # print(files)  # returns a tuple of selected file paths
 
 def start_flashing():
     global is_flashing
@@ -1557,16 +1598,6 @@ def _load_stt_model_thread():
         print("Closing STT loading window.")
 
 
-def read_folder():
-    """Reads all pdfs in a folder and pastes their text in input text box"""
-    global folder_path
-    folder_path = filedialog.askdirectory()
-
-    if folder_path:
-        threaded_folder_reading()
-        pass
-
-
 def read_file_text():
     global file_path
 
@@ -1722,158 +1753,408 @@ def upload_consult_and_mh():
     
 
 
-# Configure grid weights for scalability
-root.grid_columnconfigure(0, weight=1, minsize= 10)
-root.grid_columnconfigure(1, weight=1)
-root.grid_columnconfigure(2, weight=1)
-root.grid_columnconfigure(3, weight=1)
-root.grid_columnconfigure(4, weight=1)
-root.grid_columnconfigure(5, weight=1)
-root.grid_columnconfigure(6, weight=1)
-root.grid_columnconfigure(7, weight=1)
-root.grid_columnconfigure(8, weight=1)
-root.grid_columnconfigure(9, weight=1)
-root.grid_columnconfigure(10, weight=1)
-root.grid_columnconfigure(11, weight=1)
-root.grid_columnconfigure(12, weight=1, minsize=10)
-root.grid_rowconfigure(0, weight=1)
-root.grid_rowconfigure(1, weight=0)
-root.grid_rowconfigure(2, weight=0)
-root.grid_rowconfigure(3, weight=1)
-root.grid_rowconfigure(4, weight=0)
-root.grid_rowconfigure(5, weight=0)
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ROOT GRID
+# ═══════════════════════════════════════════════════════════════════════════════
+# row 0 = mode bar (always visible, fixed height)
+# row 1 = active content frame (expands to fill window)
+root.grid_rowconfigure(0, weight=0)
+root.grid_rowconfigure(1, weight=1)
+root.grid_columnconfigure(0, weight=1)
 
 
-window.load_main_window()
+# ═══════════════════════════════════════════════════════════════════════════════
+#  MODE BAR 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Bar at the top of the window that contains buttons to switch between frames
+mode_bar = tk.Frame(root)
+mode_bar.grid(row=0, column=0, columnspan=14, sticky='ew', padx=0, pady=0)
 
-user_input = CustomTextBox(root, height=12)
-user_input.grid(row=0, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
+scribe_mode_button = tk.Button(
+    mode_bar,
+    text="📋  Scribe",
+    command=lambda: switch_mode("scribe"),
+    height=1,
+    width=12,
+    relief='sunken',    # starts active
+)
+scribe_mode_button.pack(side='left', padx=(10, 2), pady=4)
+
+chatbot_mode_button = tk.Button(
+    mode_bar,
+    text="💬  Chatbot",
+    command=lambda: switch_mode("chatbot"),
+    height=1,
+    width=12,
+    relief='raised',
+)
+chatbot_mode_button.pack(side='left', padx=(2, 2), pady=4)
+
+minimal_mode_button = tk.Button(
+    mode_bar,
+    text="⬡  Minimal",
+    command=lambda: switch_mode("minimal"),
+    height=1,
+    width=12,
+    relief='raised',
+)
+minimal_mode_button.pack(side='left', padx=(2, 10), pady=4)
+
+auto_mode_button = tk.Button(
+    mode_bar,
+    text="@ Auto Process",
+    command=lambda: switch_mode("auto"),
+    height=1,
+    width=12,
+    relief='raised',
+)
+auto_mode_button.pack(side='left', padx=(2, 2), pady=4)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  MODE SWITCH LOGIC
+# ═══════════════════════════════════════════════════════════════════════════════
+_FULL_SIZE   = "1400x800"
+_MINIMAL_SIZE = "750x50"    
+_AUTO_SIZE = "800x600"
+
+def switch_mode(mode: str):
+    """Show the requested frame, hide the others, resize window accordingly."""
+    scribe_frame.grid_remove()
+    chatbot_frame.grid_remove()
+    minimal_frame.grid_remove()
+    auto_process_frame.grid_remove()
+
+    scribe_mode_button.config(relief='raised')
+    chatbot_mode_button.config(relief='raised')
+    minimal_mode_button.config(relief='raised')
+    auto_mode_button.config(relief='raised')
+
+    _hide_minimal_controls()
+
+    if mode == "scribe":
+        scribe_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
+        scribe_mode_button.config(relief='sunken')
+        root.geometry(_FULL_SIZE)
+
+    elif mode == "chatbot":
+        chatbot_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
+        chatbot_mode_button.config(relief='sunken')
+        root.geometry(_FULL_SIZE)
+
+    elif mode == "minimal":
+        minimal_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
+        minimal_mode_button.config(relief='sunken')
+        _show_minimal_controls()
+        # Delay resize slightly so the grid has time to settle
+        root.after(50, lambda: root.geometry(_MINIMAL_SIZE))
+    
+    elif mode == "auto":
+        auto_process_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
+        auto_mode_button.config(relief='sunken')
+        root.geometry(_AUTO_SIZE)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SCRIBE FRAME
+# ═══════════════════════════════════════════════════════════════════════════════
+scribe_frame = tk.Frame(root)
+scribe_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')   # visible at startup
+
+# 14-column spine: cols 0 & 13 = gutters
+for c in range(14):
+    weight  = 0 if c in (0, 13) else 1
+    minsize = 10 if c in (0, 13) else 0
+    scribe_frame.grid_columnconfigure(c, weight=weight, minsize=minsize)
+
+scribe_frame.grid_rowconfigure(0, weight=2)   # transcript
+scribe_frame.grid_rowconfigure(1, weight=0)   # toolbar row 1
+scribe_frame.grid_rowconfigure(2, weight=0)   # toolbar row 2
+scribe_frame.grid_rowconfigure(3, weight=3)   # response
+scribe_frame.grid_rowconfigure(4, weight=1)   # bottom gutter
+
+# ── Transcript input ──────────────────────────────────────────────────────────
+user_input = CustomTextBox(scribe_frame, height=12)
+user_input.grid(row=0, column=1, columnspan=8, padx=(5, 2), pady=(12, 4), sticky='nsew')
 user_input._id = "input_tbox"
 
-# Insert placeholder text
 user_input.scrolled_text.insert("1.0", "Transcript of Conversation")
 user_input.scrolled_text.config(fg='grey')
+user_input.scrolled_text.bind(
+    "<FocusIn>",
+    lambda e: remove_placeholder(e, user_input.scrolled_text, "Transcript of Conversation"),
+)
+user_input.scrolled_text.bind(
+    "<FocusOut>",
+    lambda e: add_placeholder(e, user_input.scrolled_text, "Transcript of Conversation"),
+)
 
-# Bind events to remove or add the placeholder with arguments
-user_input.scrolled_text.bind("<FocusIn>", lambda event: remove_placeholder(event, user_input.scrolled_text, "Transcript of Conversation"))
-user_input.scrolled_text.bind("<FocusOut>", lambda event: add_placeholder(event, user_input.scrolled_text, "Transcript of Conversation"))
+# ── Toolbar row 1 ─────────────────────────────────────────────────────────────
+mic_button = tk.Button(
+    scribe_frame, text="⏺  Record", command=threaded_toggle_recording, height=2, width=10,
+)
+mic_button.grid(row=1, column=1, pady=(6, 2), sticky='nsew')
 
-mic_button = tk.Button(root, text="Start\nRecording", command=lambda: (threaded_toggle_recording()), height=2, width=11)
-mic_button.grid(row=1, column=1, rowspan=2, pady=5, sticky='nsew')
+pause_button = tk.Button(
+    scribe_frame, text="⏸  Pause", command=toggle_pause, height=2, width=10,
+)
+pause_button.grid(row=2, column=1, pady=(6, 2), sticky='nsew')
 
-send_button = tk.Button(root, text="Generate Note", command=send_and_flash, height=2, width=11)
-send_button.grid(row=1, column=3, pady=5, rowspan=2, sticky='nsew')
+send_button = tk.Button(
+    scribe_frame, text="Generate Note", command=send_and_flash, height=2, width=13,
+)
+send_button.grid(row=1, column=2, pady=(6, 2), sticky='nsew')
 
-pause_button = tk.Button(root, text="Pause", command=toggle_pause, height=2, width=11)
-pause_button.grid(row=1, column=2, pady=5, rowspan=2, sticky='nsew')
+clear_button = tk.Button(
+    scribe_frame, text="Clear", command=clear_application_press, height=2, width=8,
+)
+clear_button.grid(row=2, column=2, pady=(6, 2), sticky='nsew')
 
-clear_button = tk.Button(root, text="Clear", command=clear_application_press, height=2, width=11)
-clear_button.grid(row=1, column=4, pady=5, rowspan=2, sticky='nsew')
+upload_button = tk.Button(
+    scribe_frame, text="Upload", command=upload_file, height=2, width=11,
+)
+upload_button.grid(row=1, column=6, pady=(6, 2), sticky='nsew')
 
 
-dropdown_label = tk.Label(root, text="Select Prompt", font=("Arial", 8, "bold"))
-dropdown_label.grid(row=1, column=5, pady=5, sticky='nsew')
+dropdown_label = tk.Label(scribe_frame, text="Select Prompt", font=("Arial", 8, "bold"))
+dropdown_label.grid(row=1, column=4, pady=(8, 0), sticky='sew')
 
 selected_prompt = tk.StringVar(value="Auto")
 values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts()
-prompt_dropdown = ttk.Combobox(root, textvariable=selected_prompt, values=values, state="readonly")
+prompt_dropdown = ttk.Combobox(
+    scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
+)
 prompt_dropdown._id = "prompt_selector"
-prompt_dropdown.grid(row=2, column=5, pady=5, sticky='nsew')
+prompt_dropdown.grid(row=2, column=4, pady=(0, 6), sticky='new')
 
-upload_button = tk.Button(root, text="Upload\nRecording", command=upload_file, height=2, width=11)
-upload_button.grid(row=1, column=6, pady=5, rowspan=2, sticky='nsew')
+# switch_view_button = tk.Button(
+#     scribe_frame, text="Minimize View", command=toggle_minimize_view, height=2, width=12,
+# )
+# switch_view_button.grid(row=1, column=7, pady=(6, 2), sticky='nsew')
 
-switch_view_button = tk.Button(root, text="Minimize View", command=toggle_minimize_view, height=2, width=11)
-switch_view_button.grid(row=1, column=7, pady=5, rowspan=1, sticky='nsew')
+# auto_process_button = tk.Button(
+#     scribe_frame, text="Auto Process", command=toggle_auto_process, height=2, width=12,
+# )
+# auto_process_button.grid(row=2, column=7, pady=(2, 6), sticky='nsew')
 
-auto_process_button = tk.Button(root, text="Auto Process", command=toggle_auto_process, height=2, width=11)
-auto_process_button.grid(row=2, column=7, pady=5, rowspan=1, sticky='nsew')
+blinking_circle_canvas = tk.Canvas(scribe_frame, width=22, height=22, highlightthickness=0)
+blinking_circle_canvas.grid(row=1, column=8, rowspan=2, pady=4, sticky='nsew')
+circle = blinking_circle_canvas.create_oval(4, 4, 18, 18, fill='white', outline='grey')
 
-auto_process_tbox = CustomTextBox(root, height=12)
+# ── Note history sidebar ──────────────────────────────────────────────────────
+timestamp_listbox = tk.Listbox(
+    scribe_frame,
+    height=30,
+    selectmode=tk.SINGLE,
+    activestyle='dotbox',
+    relief='flat',
+    highlightthickness=1,
+)
+timestamp_listbox.grid(
+    row=0, column=9, columnspan=2, rowspan=4, padx=(4, 2), pady=12, sticky='nsew',
+)
+timestamp_listbox.bind('<<ListboxSelect>>', show_response)
+timestamp_listbox.insert(tk.END, "Temporary Note History")
+timestamp_listbox.config(fg='grey')
 
-upload_file_button = tk.Button(root, text="Upload \nFile", command=read_file_text, height=2, width=11)
-upload_file_button.grid(row=1, column=8, pady=5, rowspan=1, sticky='nsew')
-
-download_file_btn = tk.Button(root, text="Upload \nFolder", command=read_folder, height=2, width=11)
-download_file_btn.grid(row=2, column=8, pady=5, rowspan=1, sticky="nsew")
-
-blinking_circle_canvas = tk.Canvas(root, width=20, height=20)
-blinking_circle_canvas.grid(row=1, column=9, rowspan=2, pady=5)
-circle = blinking_circle_canvas.create_oval(5, 5, 15, 15, fill='white')
-
-response_display = CustomTextBox(root, height=13, state="normal")
-response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')  # Full width initially
-
-# Insert placeholder text
+# ── Response display ──────────────────────────────────────────────────────────
+response_display = CustomTextBox(scribe_frame, height=13, state="normal")
+response_display.grid(
+    row=3, column=1, columnspan=8, padx=(5, 2), pady=(4, 12), sticky='nsew',
+)
 response_display.scrolled_text.insert("1.0", "Medical Note")
 response_display.scrolled_text.config(fg='grey')
 
-# Lab selection panel (initially hidden) - positioned next to response display
+# ── Lab selection panel ───────────────────────────────────────────────────────
 def close_lab_panel():
-    """Close the lab panel and expand response display."""
     lab_selection_panel.hide()
-    # Expand response_display to fill the full width
-    response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
+    response_display.grid(
+        row=3, column=1, columnspan=8, padx=(5, 2), pady=(4, 12), sticky='nsew',
+    )
 
-lab_selection_panel = LabSelectionPanel(root, height=8, close_callback=close_lab_panel, oscar=oscar)
-lab_selection_panel.grid(row=3, column=8, columnspan=2, padx=(0, 5), pady=15, sticky='nsew')
-lab_selection_panel.grid_remove()  # Initially hidden
+lab_selection_panel = EformPanel(
+    scribe_frame, height=8, close_callback=close_lab_panel, oscar=oscar,
+)
+lab_selection_panel.grid(row=0, column=11, rowspan=4, padx=(2, 5), pady=12, sticky='nsew')
+lab_selection_panel.grid_remove()
 
-# Set up Get Labs button callback (after panel is created)
-# Button always says "Lab Form" and opens/analyzes the panel
+# ── Response display callbacks ────────────────────────────────────────────────
 response_display.set_get_labs_callback(get_labs_from_response)
-
-# Set up Download button callback
-# Button will download the LLM response text in as an HL7 or TXT file
 response_display.set_download_callback(download_results)
-
-# Set up Medical History button callback
-# Button will upload LLM response text into the opened patient's medical history
 response_display.set_med_hist_callback(upload_medical_history)
-
-# Set up Consult button callback
-# Button will upload LLM response text into the patient's most recent 0letter
 response_display.set_consult_callback(upload_consult)
-
-# Set up Consutl and Med Hist button callback
-# Button will upload consult and med hist into patient's most recent 0letter
 response_display.set_consult_and_mh_callback(upload_consult_and_mh)
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
 
-timestamp_listbox = tk.Listbox(root, height=30)
-timestamp_listbox.grid(row=0, column=10, columnspan=2, rowspan=4, padx=5, pady=15, sticky='nsew')
-timestamp_listbox.bind('<<ListboxSelect>>', show_response)
-timestamp_listbox.insert(tk.END, "Temporary Note History")
-timestamp_listbox.config(fg='grey')
 
-window.update_aiscribe_texts(None)
-# Bind Alt+P to send_and_receive function
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CHATBOT FRAME
+# ═══════════════════════════════════════════════════════════════════════════════
+def chatbot_send_message():
+    print("Message sent")
+
+def chatbot_clear():
+    print("Chatbot cleared")
+
+def chatbot_new_session():
+    print("New session")
+
+def load_chat_history_session(event=None):
+    print("Load chat history")
+
+chatbot_frame = tk.Frame(root)
+# Hidden at startup — switch_mode("chatbot") will show it.
+
+for c in range(14):
+    weight  = 0 if c in (0, 13) else 1
+    minsize = 10 if c in (0, 13) else 0
+    chatbot_frame.grid_columnconfigure(c, weight=weight, minsize=minsize)
+
+chatbot_frame.grid_rowconfigure(0, weight=4)   # chat log
+chatbot_frame.grid_rowconfigure(1, weight=1)   # user input
+chatbot_frame.grid_rowconfigure(2, weight=0)   # buttons
+chatbot_frame.grid_rowconfigure(3, weight=0)   # gutter
+
+# ── Chat log ──────────────────────────────────────────────────────────────────
+chat_log_display = CustomTextBox(chatbot_frame, height=20, state="disabled")
+chat_log_display.grid(
+    row=0, column=1, columnspan=8, padx=(5, 2), pady=(12, 4), sticky='nsew',
+)
+chat_log_display._id = "chat_log_tbox"
+chat_log_display.scrolled_text.config(state='normal')
+chat_log_display.scrolled_text.insert("1.0", "Chat Log")
+chat_log_display.scrolled_text.config(fg='grey', state='disabled')
+
+# ── User input ────────────────────────────────────────────────────────────────
+chat_user_input = CustomTextBox(chatbot_frame, height=5)
+chat_user_input.grid(
+    row=1, column=1, columnspan=8, padx=(5, 2), pady=(4, 4), sticky='nsew',
+)
+chat_user_input._id = "chat_input_tbox"
+chat_user_input.scrolled_text.insert("1.0", "Type a message…")
+chat_user_input.scrolled_text.config(fg='grey')
+chat_user_input.scrolled_text.bind(
+    "<FocusIn>",
+    lambda e: remove_placeholder(e, chat_user_input.scrolled_text, "Type a message…"),
+)
+chat_user_input.scrolled_text.bind(
+    "<FocusOut>",
+    lambda e: add_placeholder(e, chat_user_input.scrolled_text, "Type a message…"),
+)
+chat_user_input.scrolled_text.bind(
+    "<Control-Return>",
+    lambda e: chatbot_send_message(),
+)
+
+# ── Chatbot button row ────────────────────────────────────────────────────────
+chat_send_button = tk.Button(
+    chatbot_frame, text="Send", command=chatbot_send_message, height=2, width=12,
+)
+chat_send_button.grid(row=2, column=1, padx=(5, 2), pady=(2, 10), sticky='nsew')
+
+chat_clear_button = tk.Button(
+    chatbot_frame, text="Clear Chat", command=chatbot_clear, height=2, width=10,
+)
+chat_clear_button.grid(row=2, column=2, padx=(2, 2), pady=(2, 10), sticky='nsew')
+
+chat_new_button = tk.Button(
+    chatbot_frame, text="New Chat", command=chatbot_new_session, height=2, width=10,
+)
+chat_new_button.grid(row=2, column=3, padx=(2, 2), pady=(2, 10), sticky='nsew')
+
+# ── Chat history sidebar ──────────────────────────────────────────────────────
+chat_history_listbox = tk.Listbox(
+    chatbot_frame,
+    height=30,
+    selectmode=tk.SINGLE,
+    activestyle='dotbox',
+    relief='flat',
+    highlightthickness=1,
+)
+chat_history_listbox.grid(
+    row=0, column=9, columnspan=2, rowspan=3, padx=(4, 2), pady=12, sticky='nsew',
+)
+chat_history_listbox.bind('<<ListboxSelect>>', load_chat_history_session)
+chat_history_listbox.insert(tk.END, "Chat History")
+chat_history_listbox.config(fg='grey')
+
+# Chat session state 
+chat_sessions = []
+current_chat_messages = []
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  MINIMAL FRAME
+# ═══════════════════════════════════════════════════════════════════════════════
+# This frame intentionally contains only record and pause buttons
+# along with frame switch toggles
+minimal_frame = tk.Frame(root)
+
+minimal_separator = tk.Label(mode_bar, text=" │ ", fg='grey')
+
+minimal_mic_button = tk.Button(
+    mode_bar,
+    text="⏺  Record",
+    command=threaded_toggle_recording,
+    height=1,
+    width=10,
+)
+
+minimal_pause_button = tk.Button(
+    mode_bar,
+    text="⏸  Pause",
+    command=toggle_pause,
+    height=1,
+    width=10,
+)
+
+# These three widgets start hidden; switch_mode shows/hides them.
+# We keep references so we can pack_forget / pack them cleanly.
+def _show_minimal_controls():
+    minimal_separator.pack(side='left', padx=(4, 0), pady=4)
+    minimal_mic_button.pack(side='left', padx=(2, 2), pady=4)
+    minimal_pause_button.pack(side='left', padx=(2, 10), pady=4)
+
+def _hide_minimal_controls():
+    minimal_mic_button.pack_forget()
+    minimal_pause_button.pack_forget()
+    minimal_separator.pack_forget()
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  AUTO PROCESS FRAME
+# ═══════════════════════════════════════════════════════════════════════════════
+auto_process_frame = tk.Frame(root)
+
+auto_process_tbox = CustomTextBox(auto_process_frame, height=20)
+auto_process_tbox.pack(side="left", padx=(2, 2))
+
+auto_process_tbox.delete("1.0", "end")
+auto_process_tbox.insert("end", "Starting automated processing...\n")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  KEYBINDINGS & STARTUP
+# ═══════════════════════════════════════════════════════════════════════════════
 root.bind('<Alt-p>', lambda event: pause_button.invoke())
-
-# Bind Alt+R to toggle_recording function
 root.bind('<Alt-r>', lambda event: mic_button.invoke())
 
-#set min size
-root.minsize(900, 400)
+root.minsize(320, 60)    # allow the window to shrink to minimal size
 
+window.load_main_window()
+window.update_aiscribe_texts(None)
 
-
-#Wait for the UI root to be intialized then load the model. If using local llm.
 if app_settings.editable_settings["Use Local LLM"]:
-    root.after(100, lambda:(ModelManager.setup_model(app_settings=app_settings, root=root)))  
+    root.after(100, lambda: ModelManager.setup_model(app_settings=app_settings, root=root))
 
 if app_settings.editable_settings[SettingsKeys.LOCAL_WHISPER.value]:
-    # Inform the user that Local Whisper is being used for transcription
     print("Using Local Whisper for transcription.")
-    root.after(100, lambda: (load_stt_model()))
+    root.after(100, load_stt_model)
 
 root.bind("<<LoadSttModel>>", load_stt_model)
 
-# Uncomment to start app in auto process mode rather than client mode
-#toggle_auto_process()
-
 root.mainloop()
-
 p.terminate()
