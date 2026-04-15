@@ -67,11 +67,18 @@ from UI.DebugWindow import DualOutput
 import traceback
 import shutil
 
+from chatbot.OscarChatbot import OscarCB
+from chatbot.SeleniumOscarQuery import SOQ
+from chatbot.AIConnect import AIConnect
+from Oscar import Oscar
+import yaml
 
 dual = DualOutput()
 sys.stdout = dual
 sys.stderr = dual
 
+
+chatbot = OscarCB(config_path=r".\configs\config.yaml")
 
 # GUI Setup
 root = tk.Tk()
@@ -81,10 +88,10 @@ root.geometry("1400x800")
 
 # settings logic
 app_settings = SettingsWindow()
-ai_prompts = PromptsWindow(default_path=r".\UI\prompts\default_prompts.yaml", target_path=r".\UI\prompts\prompts.yaml")
+ai_prompts = PromptsWindow(default_path=r".\prompts\default_prompts.yaml", target_path=r".\prompts\prompts.yaml")
 HL7_PROMPTS = ai_prompts.hl7_prompt_list
 
-oscar = OscarEforms("./UI/oscar_config/config.yaml", oscar_report_path=app_settings.editable_settings["ReportMasterPath"])
+oscar = chatbot.oscar #OscarEforms("./configs/config.yaml", oscar_report_path=app_settings.editable_settings["ReportMasterPath"])
 #  create our ui elements and settings config
 window = MainWindowUI(root, app_settings, ai_prompts, oscar)
 
@@ -99,6 +106,7 @@ root.after(100, oscar.run)
 # Cleanup on window close
 def on_close():
     oscar.cleanup()
+    chatbot.cleanup()
     root.destroy()
 
 root.protocol("WM_DELETE_WINDOW", on_close)
@@ -577,8 +585,8 @@ def clear_all_text_fields():
     response_display.scrolled_text.config(fg='grey')
     
     # Hide and clear lab selection panel
-    lab_selection_panel.hide()
-    lab_selection_panel.clear_all()
+    eform_selection_panel.hide()
+    eform_selection_panel._clear_checkboxes()
 
 """def toggle_aiscribe():
     global use_aiscribe
@@ -828,20 +836,20 @@ def update_gui_with_response(response_text):
                     from utils.lab_analysis import analyze_plan_for_labs
                     suggested_labels = analyze_plan_for_labs(plan_text, send_text_to_chatgpt)
                     # Update panel on main thread - always call set_checkboxes (even if empty) to clear previous selections
-                    root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
-                    root.after(0, lambda: lab_selection_panel.show())
+                    root.after(0, lambda: eform_selection_panel.set_checkboxes(suggested_labels))
+                    root.after(0, lambda: eform_selection_panel.show())
                 except Exception as e:
                     print(f"Error analyzing plan for labs: {e}")
-                    root.after(0, lambda: lab_selection_panel.show())
+                    root.after(0, lambda: eform_selection_panel.show())
             
             threading.Thread(target=analyze_and_update, daemon=True).start()
         else:
             # No PLAN found, hide panel and expand response_display
-            lab_selection_panel.hide()
+            eform_selection_panel.hide()
             response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
     else:
         # Not a Scribe prompt, hide panel and expand response_display
-        lab_selection_panel.hide()
+        eform_selection_panel.hide()
         response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
 
 def show_response(event):
@@ -1000,7 +1008,7 @@ def get_labs_from_response():
     if not plan_text:
         print("No PLAN section found in response text")
         # Show panel anyway so doctor can manually select
-        lab_selection_panel.show()
+        eform_selection_panel.show()
         return
     
     # Analyze plan using LLM in a separate thread
@@ -1008,19 +1016,26 @@ def get_labs_from_response():
         try:
             suggested_labels = analyze_plan_for_labs(plan_text, send_text_to_chatgpt)
             # Update panel on main thread - always call set_checkboxes (even if empty) to clear previous selections
-            root.after(0, lambda: lab_selection_panel.set_checkboxes(suggested_labels))
-            root.after(0, lambda: lab_selection_panel.show())
+            root.after(0, lambda: eform_selection_panel.set_checkboxes(suggested_labels))
+            root.after(0, lambda: eform_selection_panel.show())
         except Exception as e:
             print(f"Error analyzing plan for labs: {e}")
             # Show panel anyway so doctor can manually select
-            root.after(0, lambda: lab_selection_panel.show())
+            root.after(0, lambda: eform_selection_panel.show())
     
     threading.Thread(target=analyze_and_update, daemon=True).start()
 
 def generate_note(formatted_message):
             try:
                 prompt_type = selected_prompt.get()
-                sex = oscar.get_patients_sex()
+                info = eform_selection_panel.get_patient_info()
+                sex = info["sex"].lower().strip()
+                if sex == 'f':
+                    sex = 'Female'
+                elif sex == 'm':
+                    sex = 'Male'
+                else:
+                    sex = ''
                 # If note generation is on
                 if prompt_type == "Scribe":
                     # If pre-processing is enabled
@@ -1243,25 +1258,6 @@ def upload_file():
         start_flashing()
 
     
-
-    # initialdir = app_settings.editable_settings.get("Default Upload Folder", ".")
-    # # Check if exists
-    # if not os.path.exists(initialdir):
-    #     print(f"Default upload folder '{initialdir}' does not exist. Change default folder in settings.")
-    #     initialdir = '.'
-    
-    # file_path = filedialog.askopenfilename(
-    #     filetypes=[("PDF and Text Files", "*.pdf *.txt")],
-    #     initialdir=initialdir
-    # )
-    # if file_path:
-    #     threaded_file_reading()  # Add this line to process the file immediately
-
-    # files = filedialog.askopenfilenames(
-    #     filetypes=(("Audio files", "*.wav *.mp3"),)
-    # )
-
-    # print(files)  # returns a tuple of selected file paths
 
 def start_flashing():
     global is_flashing
@@ -1798,7 +1794,7 @@ minimal_mode_button = tk.Button(
     width=12,
     relief='raised',
 )
-minimal_mode_button.pack(side='left', padx=(2, 10), pady=4)
+minimal_mode_button.pack(side='left', padx=(2, 2), pady=4)
 
 auto_mode_button = tk.Button(
     mode_bar,
@@ -1808,13 +1804,13 @@ auto_mode_button = tk.Button(
     width=12,
     relief='raised',
 )
-auto_mode_button.pack(side='left', padx=(2, 2), pady=4)
+auto_mode_button.pack(side='left', padx=(2, 10), pady=4)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  MODE SWITCH LOGIC
 # ═══════════════════════════════════════════════════════════════════════════════
 _FULL_SIZE   = "1400x800"
-_MINIMAL_SIZE = "750x50"    
+_MINIMAL_SIZE = "650x50"    
 _AUTO_SIZE = "800x600"
 
 def switch_mode(mode: str):
@@ -1858,6 +1854,9 @@ def switch_mode(mode: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 scribe_frame = tk.Frame(root)
 scribe_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')   # visible at startup
+
+def open_oscar():
+    pass
 
 # 14-column spine: cols 0 & 13 = gutters
 for c in range(14):
@@ -1914,6 +1913,11 @@ upload_button = tk.Button(
 upload_button.grid(row=1, column=6, pady=(6, 2), sticky='nsew')
 
 
+open_oscar_button = tk.Button(
+    scribe_frame, text="Open Oscar", command=open_oscar, height=2, width=11,
+)
+open_oscar_button.grid(row=2, column=6, pady=(6, 2), sticky='nsew')
+
 dropdown_label = tk.Label(scribe_frame, text="Select Prompt", font=("Arial", 8, "bold"))
 dropdown_label.grid(row=1, column=4, pady=(8, 0), sticky='sew')
 
@@ -1964,20 +1968,20 @@ response_display.scrolled_text.insert("1.0", "Medical Note")
 response_display.scrolled_text.config(fg='grey')
 
 # ── Lab selection panel ───────────────────────────────────────────────────────
-def close_lab_panel():
-    lab_selection_panel.hide()
+def close_eform_panel():
+    eform_selection_panel.hide()
     response_display.grid(
         row=3, column=1, columnspan=8, padx=(5, 2), pady=(4, 12), sticky='nsew',
     )
 
-lab_selection_panel = EformPanel(
-    scribe_frame, height=8, close_callback=close_lab_panel, oscar=oscar,
+eform_selection_panel = EformPanel(
+    scribe_frame, height=8, close_callback=close_eform_panel, oscar=oscar, db_conn=chatbot.db_conn,
 )
-lab_selection_panel.grid(row=0, column=11, rowspan=4, padx=(2, 5), pady=12, sticky='nsew')
-lab_selection_panel.grid_remove()
+eform_selection_panel.grid(row=0, column=11, rowspan=4, padx=(2, 5), pady=12, sticky='nsew')
+eform_selection_panel.grid_remove()
 
 # ── Response display callbacks ────────────────────────────────────────────────
-response_display.set_get_labs_callback(get_labs_from_response)
+response_display.set_get_eforms_callback(get_labs_from_response)
 response_display.set_download_callback(download_results)
 response_display.set_med_hist_callback(upload_medical_history)
 response_display.set_consult_callback(upload_consult)
@@ -1991,20 +1995,65 @@ if app_settings.editable_settings["Enable Scribe Template"]:
 # ═══════════════════════════════════════════════════════════════════════════════
 #  CHATBOT FRAME
 # ═══════════════════════════════════════════════════════════════════════════════
+chat_history = []
+
 def chatbot_send_message():
+    input = chat_user_input.scrolled_text.get("1.0", tk.END).strip()
+    chat_user_input.scrolled_text.delete("1.0", tk.END)
+    resp = chatbot.run(input)
+    
+    chat_log_display.scrolled_text.config(state='normal')
+    chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
+    chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT:\n{resp}\n\n")
+    chat_log_display.scrolled_text.config(state='disabled')
+
+    # Scroll to the bottom
+    chat_log_display.yview(tk.END)
+
     print("Message sent")
 
 def chatbot_clear():
-    print("Chatbot cleared")
+    print("Cleared Chat")
+    chat_log_display.scrolled_text.config(state='normal')
+    chat_log_display.scrolled_text.delete("1.0", tk.END)
+    chat_log_display.scrolled_text.config(state='disabled')
+
+    
 
 def chatbot_new_session():
-    print("New session")
+    print("Starting New Chat")
+    timestamp = chatbot.new_chat()
+    chat_log_display.scrolled_text.config(state='normal')
+    chat_log_display.scrolled_text.delete("1.0", tk.END)
+    chat_log_display.scrolled_text.config(state='disabled')
+
+    chat_history.append(timestamp)
+
+    # Update the timestamp listbox
+    chat_history_listbox.delete(0, tk.END)
+    for time in chat_history:
+        chat_history_listbox.insert(tk.END, time)
+        
+
+
 
 def load_chat_history_session(event=None):
-    print("Load chat history")
+    if not chat_history: return
+
+    selection = event.widget.curselection()
+    print(selection)
+
+    timestamp = chat_history[selection[0]]
+    text = chatbot.load_chat(timestamp)
+    chat_log_display.scrolled_text.config(state='normal')
+    chat_log_display.scrolled_text.delete("1.0", tk.END)
+    chat_log_display.scrolled_text.insert(tk.END, text)
+    chat_log_display.scrolled_text.config(state='disabled')
+
+
 
 chatbot_frame = tk.Frame(root)
-# Hidden at startup — switch_mode("chatbot") will show it.
+# Hidden at startup. switch_mode("chatbot") will show it.
 
 for c in range(14):
     weight  = 0 if c in (0, 13) else 1
@@ -2054,7 +2103,7 @@ chat_send_button = tk.Button(
 chat_send_button.grid(row=2, column=1, padx=(5, 2), pady=(2, 10), sticky='nsew')
 
 chat_clear_button = tk.Button(
-    chatbot_frame, text="Clear Chat", command=chatbot_clear, height=2, width=10,
+    chatbot_frame, text="Clear", command=chatbot_clear, height=2, width=10,
 )
 chat_clear_button.grid(row=2, column=2, padx=(2, 2), pady=(2, 10), sticky='nsew')
 

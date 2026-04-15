@@ -1,0 +1,38 @@
+OscarLogin : 
+  user : user
+  passw : password
+  pin : pin
+  url : https://ipaddress/oscar/
+  version : 15
+
+
+AIConnection :
+  endpoint : http://ipaddress/v1
+
+Selenium :
+  geckodriver_path : Path\to\geckodriver
+
+# Either 'oscar' or 'ssh'
+query_choice : oscar
+# You will need to be connected to local network, or
+# be connected to VPN to use SSH database querying
+SSH : 
+  ssh_host : host_ip
+  ssh_user : user
+  ssh_passw : password
+  db_user : user
+  db_passw : password
+  db_name : database_name
+
+  # Defaults that you likely don't need to change
+  ssh_port : 22
+  db_host : 127.0.0.1
+  db_port : 3306
+  local_bind_port : 3307
+
+VectorDB:
+  host : host
+  port : port
+  dbname : database_name
+  user : user
+  password : password

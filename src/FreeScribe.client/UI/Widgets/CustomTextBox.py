@@ -51,9 +51,9 @@ class CustomTextBox(tk.Frame):
         )
         self.copy_button.place(relx=1.0, rely=1.0, x=-2, y=-2, anchor="se")
         
-        # Get Labs button (optional, can be set via set_get_labs_callback)
-        self.get_labs_button = None
-        self.get_labs_callback = None
+        # Get eForms button (optional, can be set via set_get_eforms_callback)
+        self.get_eforms_button = None
+        self.get_eform_callback = None
 
         # Download button. Set via set_download_callback
         self.download_button = None
@@ -71,25 +71,25 @@ class CustomTextBox(tk.Frame):
         self.consult_and_mh_button = None
         self.consult_and_mh_callback = None
     
-    def set_get_labs_callback(self, callback):
-        """Set the callback function for the Get Labs button."""
-        self.get_labs_callback = callback
-        if self.get_labs_callback:
-            if self.get_labs_button is None:
-                self.get_labs_button = tk.Button(
+    def set_get_eforms_callback(self, callback):
+        """Set the callback function for the Get eForms button."""
+        self.get_eform_callback = callback
+        if self.get_eform_callback:
+            if self.get_eforms_button is None:
+                self.get_eforms_button = tk.Button(
                     self.scrolled_text,
-                    text="Lab Form",
-                    command=self._get_labs,
+                    text="eForms",
+                    command=self._get_eforms,
                     relief="raised",
                     borderwidth=1
                 )
                 # Place next to copy button
-                self.get_labs_button.place(relx=1.0, rely=1.0, x=-82, y=-2, anchor="se")
+                self.get_eforms_button.place(relx=1.0, rely=1.0, x=-82, y=-2, anchor="se")
     
-    def _get_labs(self):
-        """Internal method to call the Get Labs callback."""
-        if self.get_labs_callback:
-            self.get_labs_callback()
+    def _get_eforms(self):
+        """Internal method to call the Get eForms callback."""
+        if self.get_eform_callback:
+            self.get_eform_callback()
     
 
     def set_download_callback(self, callback):
@@ -176,10 +176,10 @@ class CustomTextBox(tk.Frame):
             self.consult_and_mh_callback()
 
 
-    def update_lab_button_text(self, text):
-        """Update the lab form button text."""
-        if self.get_labs_button:
-            self.get_labs_button.config(text=text)
+    def update_eform_button_text(self, text):
+        """Update the eForm form button text."""
+        if self.get_eforms_button:
+            self.get_eforms_button.config(text=text)
 
     def copy_text(self):
         """
