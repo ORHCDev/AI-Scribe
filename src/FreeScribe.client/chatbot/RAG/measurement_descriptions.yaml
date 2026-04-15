@@ -1,0 +1,64 @@
+CARD: |
+  Cardiology clinical findings and diagnoses related to coronary artery disease, angiography results, cardiac conditions, 
+  and physician cardiology notes. May include references to coronary arteries (LAD, RCA, LCX), stenosis, ischemic heart disease, 
+  or prior angiogram findings.
+
+CONC: |
+  Clinical conclusions or summary statements about cardiac function or cardiovascular status. 
+  Typically summarizes imaging or testing findings such as ventricular size, systolic function, or overall cardiac assessment.
+
+CATH: |
+  Cardiac catheterization or angiography findings including coronary artery disease, ischemia testing, perfusion studies, 
+  PVC findings, and cardiac imaging interpretations. Often contains results from angiograms, stress imaging, or nuclear perfusion studies.
+
+CS: |
+  Comparison statements between current and previous cardiac imaging or tests, indicating whether cardiac structure or function has changed over time.
+
+ECG: |
+  Electrocardiogram (ECG/EKG) findings describing cardiac rhythm, conduction abnormalities, or electrical activity of the heart.
+
+ECHO: |
+  Echocardiogram findings including cardiac structure, ventricular function, valve function, diastolic function, chamber size, and myocardial abnormalities.
+
+EST: | 
+  Exercise stress test results including exercise tolerance, ECG changes during stress, chest pain during exertion, and ischemia evaluation.
+
+FImp: |
+  Functional impairment assessment related to cardiopulmonary exercise testing or functional capacity evaluation. 
+  Describes severity of exercise limitation or reduced cardiopulmonary performance.
+
+HOL: |
+  Holter monitor results describing continuous ambulatory ECG monitoring, heart rhythm variability, arrhythmias, or heart rate trends over time.
+
+HOLT: |
+  Holter monitor test interpretation or summary of ambulatory ECG findings including correlation of symptoms with arrhythmias or ischemic events.
+
+HPI: |
+  History of present illness describing the patient's current symptoms, clinical presentation, timeline of illness, and relevant cardiovascular complaints.
+
+MEDS: |
+  Medications prescribed for cardiovascular conditions including antihypertensives, antiplatelets, beta blockers, statins, and other cardiac drugs.
+
+OTHE: |
+  Other cardiac findings or miscellaneous cardiovascular observations not categorized elsewhere, including structural abnormalities or incidental findings.
+
+PLAN: |
+  Clinical plan or physician management strategy including follow-up testing, medication changes, treatment plans, or referral recommendations.
+
+Risk: |
+  Cardiovascular risk factors and comorbid conditions that increase risk of heart disease.
+
+RV: |
+  Right ventricular structure and function findings from cardiac imaging or echocardiography.
+
+SECHO: |
+  Stress echocardiography findings describing cardiac function during stress testing.
+
+SOCH: |
+  Social history factors affecting cardiovascular health including lifestyle behaviors, smoking, alcohol use, and occupational factors.
+
+THR: |
+  Exercise heart rate measurements including target heart rate, achieved heart rate, and exercise intensity during stress testing.
+
+VA: |
+  Cardiac valve anatomy or pathology including thickening, regurgitation, stenosis, or structural abnormalities of heart valves.
