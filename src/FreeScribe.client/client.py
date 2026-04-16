@@ -1659,7 +1659,8 @@ def upload_medical_history():
 def upload_consult():
     """Uploads the LLM response to patient consult to most recent 0letter eform"""
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
-    oscar.insert_text_into_0letter(text)
+    fdid = eform_selection_panel.get_most_recent_0letter()
+    oscar.insert_text_into_0letter(fdid=fdid, consult=text)
 
 def upload_consult_and_mh():
     """
@@ -1693,10 +1694,10 @@ def upload_consult_and_mh():
     docs_frame.pack(padx=10, pady=5)
 
     cols = 2
-    defaults = {"DC Summary", "CATH"}
+    defaults = {"DC summary", "CATH"}
     doc_cbs = {}
 
-    for i, doc_type in enumerate(oscar.document_opts):
+    for i, doc_type in enumerate(eform_selection_panel.doc_types):
         var = tk.BooleanVar(value=doc_type in defaults)
         doc_cbs[doc_type] = var
 
@@ -1729,23 +1730,31 @@ def upload_consult_and_mh():
 
 
     # Prompt User for which prompt they want to choose
-    prompt_dropdown.set(result['Prompt'])
+    #prompt_dropdown.set(result['Prompt'])
+    print(result)
+    prompt = ai_prompts.get(result["Prompt"])
 
     # Read medical history and generate response
-    med_hist_input = oscar.read_medical_history(doc_names=result["Docs"])
+    med_hist = eform_selection_panel.load_medical_history(doc_names=result["Docs"], display=False)
+    med_hist_resp = chatbot.ai_conn.send_message(content=med_hist, pre_prompt=prompt)
 
-    generate_note(med_hist_input)
-    med_hist_resp = response_display.scrolled_text.get("1.0", tk.END).strip()
+
+    #generate_note(med_hist_input)
+    #med_hist_resp = response_display.scrolled_text.get("1.0", tk.END).strip()
 
 
     # Generate consult note with generated medical history
     encounter_convo = "MEDICAL HISTORY:\n" + med_hist_resp + "\n\n" + encounter_convo
-    prompt_dropdown.set("Consult")
-    generate_note(encounter_convo)
-    consult = response_display.scrolled_text.get("1.0", tk.END).strip()
+    #prompt_dropdown.set("Consult")
+    #generate_note(encounter_convo)
+    
+    prompt = ai_prompts.get("Consult")
+    consult = chatbot.ai_conn.send_message(content=encounter_convo, pre_prompt=prompt)
+    #consult = response_display.scrolled_text.get("1.0", tk.END).strip()
 
     # Insert text into 0letter
-    oscar.insert_text_into_0letter(consult, med_hist_resp)
+    fdid = eform_selection_panel.get_most_recent_0letter()
+    oscar.insert_text_into_0letter(fdid, consult, med_hist_resp)
     
 
 
@@ -1983,7 +1992,7 @@ eform_selection_panel.grid_remove()
 # ── Response display callbacks ────────────────────────────────────────────────
 response_display.set_get_eforms_callback(get_labs_from_response)
 response_display.set_download_callback(download_results)
-response_display.set_med_hist_callback(upload_medical_history)
+#response_display.set_med_hist_callback(upload_medical_history)
 response_display.set_consult_callback(upload_consult)
 response_display.set_consult_and_mh_callback(upload_consult_and_mh)
 
@@ -2008,7 +2017,7 @@ def chatbot_send_message():
     chat_log_display.scrolled_text.config(state='disabled')
 
     # Scroll to the bottom
-    chat_log_display.yview(tk.END)
+    # chat_log_display.yview(tk.END)
 
     print("Message sent")
 

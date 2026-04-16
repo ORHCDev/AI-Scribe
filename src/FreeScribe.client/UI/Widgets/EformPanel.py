@@ -373,7 +373,38 @@ class EformPanel(tk.Frame):
         return vars
 
 
-    def load_medical_history(self):
+    def get_most_recent_0letter(self, demo_no=None):
+        """
+        Returns the fdid of the most recent 0letter for the opened patient.
+        """
+        if demo_no is None:
+            demo_no = self.oscar.get_demographic_no()
+        if demo_no is None:
+            messagebox.showwarning("Missing Patient", "Unable to open eForm. Please open the encouter page of the patient you want to open the eForm for.", parent=self)
+            return
+        
+        # Read most recent 0letter and append that text
+        query = f"""
+        SELECT
+            fdid,
+            fid,
+            form_name,
+            form_date,
+            demographic_no
+        FROM eform_data
+        WHERE demographic_no = {demo_no}
+          AND form_name LIKE '%letter%'
+        ORDER BY form_date DESC
+        LIMIT 1;
+        """
+        res = self.db_conn.query_database(query)
+
+        fdid = res[0]["fdid"]
+        return fdid
+
+
+
+    def load_medical_history(self, doc_names=None, display=True):
         """
         Queries Oscar EMR database to find most recent 0letter eForm and the most recent documents
         for the documents the User selected. Then extracts and concats the text from 0letter and documents before
@@ -400,7 +431,10 @@ class EformPanel(tk.Frame):
         res = self.db_conn.query_database(query)
         
         # Get selected documents
-        selected_docs = [opt for opt, var in self.doc_cbs.items() if var.get()]
+        if doc_names is None:
+            selected_docs = [opt for opt, var in self.doc_cbs.items() if var.get()]
+        else:
+            selected_docs = doc_names
         print(selected_docs)
 
         # Filter documents to get most recent
@@ -436,7 +470,6 @@ class EformPanel(tk.Frame):
             except Exception as e:
                 print(f"Error when reading text from {doc_no}: {e}")
 
-        print(f"DOCUMENT TEXT: {text}")
         
         # Read most recent 0letter and append that text
         query = f"""
@@ -460,13 +493,15 @@ class EformPanel(tk.Frame):
         letter_text = self.oscar.get_0letter_text(fdid)
         text += f"LETTER\nLETTER DATE: {date}\n{letter_text}"
 
-        #print(text)
 
-        for widget in self.parent.winfo_children():
-            # Display extracted text in input textbox
-            if getattr(widget, "_id", None) == "input_tbox":
-                widget.scrolled_text.delete("1.0", tk.END)
-                widget.scrolled_text.insert(tk.END, text)
+        if display:
+            for widget in self.parent.winfo_children():
+                # Display extracted text in input textbox
+                if getattr(widget, "_id", None) == "input_tbox":
+                    widget.scrolled_text.delete("1.0", tk.END)
+                    widget.scrolled_text.insert(tk.END, text)
+        
+        return text
 
 
     def get_patient_info(self):
