@@ -175,7 +175,6 @@ class OscarCB:
             return True
         except Exception as e:
             logging.error(f"Failed to initialize connection to vector database: {e}")
-            vec_db.cleanup()
             self.vec_search = None
             return False
 

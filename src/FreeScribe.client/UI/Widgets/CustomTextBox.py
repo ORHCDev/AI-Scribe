@@ -84,7 +84,7 @@ class CustomTextBox(tk.Frame):
                     borderwidth=1
                 )
                 # Place next to copy button
-                self.get_eforms_button.place(relx=1.0, rely=1.0, x=-82, y=-2, anchor="se")
+                self.get_eforms_button.place(relx=1.0, rely=1.0, x=-92, y=-2, anchor="se")
     
     def _get_eforms(self):
         """Internal method to call the Get eForms callback."""
