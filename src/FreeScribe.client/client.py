@@ -120,7 +120,7 @@ NOTE_CREATION = "Note Creation...Please Wait"
 
 user_message = []
 response_history = []
-current_view = "full"
+current_view = "scribe"
 username = "user"
 botname = "Assistant"
 num_lines_to_keep = 20
@@ -1391,7 +1391,6 @@ def set_minimal_view():
     - current_view: Tracks the current interface state ('full' or 'minimal').
     - last_full_position: Saves the geometry of the window when switching from full view.
     """
-    global current_view, last_full_position
 
     # Remove all non-essential UI components
     user_input.grid_remove()
@@ -1774,7 +1773,7 @@ root.grid_columnconfigure(0, weight=1)
 # Bar at the top of the window that contains buttons to switch between frames
 mode_bar = tk.Frame(root)
 mode_bar.grid(row=0, column=0, columnspan=14, sticky='ew', padx=0, pady=0)
-
+current_view = "scribe"
 scribe_mode_button = tk.Button(
     mode_bar,
     text="📋  Scribe",
@@ -1805,6 +1804,7 @@ minimal_mode_button = tk.Button(
 )
 minimal_mode_button.pack(side='left', padx=(2, 2), pady=4)
 
+
 auto_mode_button = tk.Button(
     mode_bar,
     text="@ Auto Process",
@@ -1822,8 +1822,12 @@ _FULL_SIZE   = "1400x800"
 _MINIMAL_SIZE = "650x50"    
 _AUTO_SIZE = "800x600"
 
+stop_auto_processing = False
+
+
 def switch_mode(mode: str):
     """Show the requested frame, hide the others, resize window accordingly."""
+    global current_view
     scribe_frame.grid_remove()
     chatbot_frame.grid_remove()
     minimal_frame.grid_remove()
@@ -1836,15 +1840,24 @@ def switch_mode(mode: str):
 
     _hide_minimal_controls()
 
+    if current_view == "auto":
+        if auto_processor:
+            auto_processor.stop()
+        # Wait for thread to finish gracefully
+        if auto_process_thread and auto_process_thread.is_alive():
+            auto_process_thread.join(timeout=10)
+
     if mode == "scribe":
         scribe_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
         scribe_mode_button.config(relief='sunken')
         root.geometry(_FULL_SIZE)
+        current_view = "scribe"
 
     elif mode == "chatbot":
         chatbot_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
         chatbot_mode_button.config(relief='sunken')
         root.geometry(_FULL_SIZE)
+        current_view = "chatbot"
 
     elif mode == "minimal":
         minimal_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
@@ -1852,11 +1865,17 @@ def switch_mode(mode: str):
         _show_minimal_controls()
         # Delay resize slightly so the grid has time to settle
         root.after(50, lambda: root.geometry(_MINIMAL_SIZE))
+        current_view = "minimal"
     
     elif mode == "auto":
         auto_process_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
         auto_mode_button.config(relief='sunken')
         root.geometry(_AUTO_SIZE)
+        current_view = "auto"
+        start_auto_processing_thread()
+
+
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  SCRIBE FRAME
