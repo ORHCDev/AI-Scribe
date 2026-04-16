@@ -19,7 +19,7 @@ import pyperclip
 import wave
 import threading
 import numpy as np
-import base64
+
 import json
 import pyaudio
 import tkinter.messagebox as messagebox
@@ -43,12 +43,10 @@ except ImportError:
     SR_AVAILABLE = False
 import time
 import queue
-import atexit
+
 from UI.MainWindowUI import MainWindowUI
 from UI.SettingsWindow import SettingsWindow, SettingsKeys
 from UI.PromptsWindow import PromptsWindow
-from UI.OscarEforms import OscarEforms
-from UI.OscarEformsUI import OscarEformsUI
 from UI.Widgets.CustomTextBox import CustomTextBox
 from UI.Widgets.LabSelectionPanel import LabSelectionPanel
 from UI.Widgets.EformPanel import EformPanel
@@ -64,14 +62,10 @@ from utils.auto_processing import AutoProcessor
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
-import traceback
-import shutil
+
 
 from chatbot.OscarChatbot import OscarCB
-from chatbot.SeleniumOscarQuery import SOQ
-from chatbot.AIConnect import AIConnect
-from Oscar import Oscar
-import yaml
+
 
 dual = DualOutput()
 sys.stdout = dual
@@ -1280,249 +1274,6 @@ def send_and_flash():
     start_flashing()
     send_and_receive()
 
-# Initialize variables to store window geometry for switching between views
-last_full_position = None
-last_minimal_position = None
-
-def toggle_minimize_view():
-    """
-    Toggles the user interface between a full view and a minimal view.
-
-    Full view includes all UI components, while minimal view limits the interface
-    to essential controls, reducing screen space usage. The function also manages
-    window properties, button states, and binds/unbinds hover events for transparency.
-    """
-    
-    if current_view == "full":  # Transition to minimal view
-        set_minimal_view()
-    
-    else:  # Transition back to full view
-        set_full_view()
-
-def set_full_view():
-    """
-    Configures the application to display the full view interface.
-
-    Actions performed:
-    - Reconfigure button dimensions and text.
-    - Show all hidden UI components.
-    - Reset window attributes such as size, transparency, and 'always on top' behavior.
-    - Create the Docker status bar.
-    - Restore the last known full view geometry if available.
-
-    Global Variables:
-    - current_view: Tracks the current interface state ('full' or 'minimal').
-    - last_minimal_position: Saves the geometry of the window when switching from minimal view.
-    """
-    global current_view, last_minimal_position
-
-    # Reset button sizes and placements for full view
-    mic_button.config(width=11, height=2)
-    pause_button.config(width=11, height=2)
-    switch_view_button.config(width=11, height=2, text="Minimize View")
-    auto_process_button.config(text="Auto Process", height=2, width=11)
-
-    # Show all UI components
-    user_input.grid()
-    send_button.grid()
-    clear_button.grid()
-    #toggle_button.grid()
-    dropdown_label.grid()
-    prompt_dropdown.grid()
-    upload_file_button.grid()
-    download_file_btn.grid()
-    upload_button.grid()
-    response_display.grid()
-    timestamp_listbox.grid()
-    mic_button.grid(row=1, column=1, rowspan=2, pady=5, padx=0, sticky='nsew')
-    pause_button.grid(row=1, column=2, rowspan=2, pady=5, padx=0, sticky='nsew')
-    switch_view_button.grid(row=1, column=7, pady=5, padx=0, sticky='nsew')
-    auto_process_button.grid(row=2, column=7, pady=5, padx=0, sticky='nsew')
-    auto_process_tbox.grid_remove()
-    blinking_circle_canvas.grid(row=1, column=9, padx=0,pady=5)
-
-
-    window.toggle_menu_bar(enable=True)
-
-    # Reconfigure button styles and text
-    mic_button.config(bg="red" if is_recording else DEFAULT_BUTTON_COLOUR,
-                      text="Stop\nRecording" if is_recording else "Start\nRecording")
-    pause_button.config(bg="red" if is_paused else DEFAULT_BUTTON_COLOUR,
-                        text="Resume" if is_paused else "Pause")
-
-    # Unbind transparency events and reset window properties
-    root.unbind('<Enter>')
-    root.unbind('<Leave>')
-    root.attributes('-alpha', 1.0)
-    root.attributes('-topmost', False)
-    root.minsize(1200, 600)
-    current_view = "full"
-
-    # create docker_status bar if enabled
-    if app_settings.editable_settings["Use Docker Status Bar"]:
-        window.create_docker_status_bar()
-
-    if app_settings.editable_settings["Enable Scribe Template"]:
-        window.destroy_scribe_template()
-        window.create_scribe_template()
-
-    # Save minimal view geometry and restore last full view geometry
-    last_minimal_position = root.geometry()
-    if last_full_position is not None:
-        root.geometry(last_full_position)
-
-    # Disable to make the window an app(show taskbar icon)
-    # root.attributes('-toolwindow', False)
-
-
-def set_minimal_view():
-
-    """
-    Configures the application to display the minimal view interface.
-
-    Actions performed:
-    - Reconfigure button dimensions and text.
-    - Hide non-essential UI components.
-    - Bind transparency hover events for better focus.
-    - Adjust window attributes such as size, transparency, and 'always on top' behavior.
-    - Destroy and optionally recreate specific components like the Scribe template.
-
-    Global Variables:
-    - current_view: Tracks the current interface state ('full' or 'minimal').
-    - last_full_position: Saves the geometry of the window when switching from full view.
-    """
-
-    # Remove all non-essential UI components
-    user_input.grid_remove()
-    send_button.grid_remove()
-    clear_button.grid_remove()
-    #toggle_button.grid_remove()
-    dropdown_label.grid_remove()
-    prompt_dropdown.grid_remove()
-    upload_file_button.grid_remove()
-    download_file_btn.grid_remove()
-    auto_process_button.grid_remove()
-    auto_process_tbox.grid_remove()
-    upload_button.grid_remove()
-    response_display.grid_remove()
-    timestamp_listbox.grid_remove()
-    blinking_circle_canvas.grid_remove()
-
-    # Configure minimal view button sizes and placements
-    mic_button.config(width=2, height=1)
-    pause_button.config(width=2, height=1)
-    switch_view_button.config(width=2, height=1)
-
-    mic_button.grid(row=0, column=0, pady=2, padx=2)
-    pause_button.grid(row=0, column=1, pady=2, padx=2)
-    switch_view_button.grid(row=0, column=2, pady=2, padx=2)
-
-    # Update button text based on recording and pause states
-    mic_button.config(text="⏹️" if is_recording else "🎤")
-    pause_button.config(text="▶️" if is_paused else "⏸️")
-    switch_view_button.config(text="⬆️")  # Minimal view indicator
-
-    blinking_circle_canvas.grid(row=0, column=3, pady=2, padx=2)
-
-    window.toggle_menu_bar(enable=False)
-
-    # Update window properties for minimal view
-    root.attributes('-topmost', True)
-    root.minsize(125, 50)  # Smaller minimum size for minimal view
-    current_view = "minimal"
-
-    # Set hover transparency events
-    def on_enter(e):
-        if e.widget == root:  # Ensure the event is from the root window
-            root.attributes('-alpha', 1.0)
-
-    def on_leave(e):
-        if e.widget == root:  # Ensure the event is from the root window
-            root.attributes('-alpha', 0.70)
-
-    root.bind('<Enter>', on_enter)
-    root.bind('<Leave>', on_leave)
-
-    # Destroy and re-create components as needed
-    window.destroy_docker_status_bar()
-    if app_settings.editable_settings["Enable Scribe Template"]:
-        window.destroy_scribe_template()
-        window.create_scribe_template(row=1, column=0, columnspan=3, pady=5)
-
-    # Save full view geometry and restore last minimal view geometry
-    last_full_position = root.geometry()
-    if last_minimal_position:
-        root.geometry(last_minimal_position)
-
-    # Enable to make the window a tool window (no taskbar icon)
-    # root.attributes('-toolwindow', True)
-
-
-
-
-def toggle_auto_process():
-    """
-    Toggles the user interface between full view and auto view.
-
-    Full view contains all UI components, while auto view only contains
-    a textbox and the pause/toggle button. Auto view runs automated processing
-    on a background thread, logging progress to the textbox.
-    """
-    global stop_auto_processing, auto_processor
-
-    if current_view == "auto":
-        # Stop auto processing after current file completes
-        stop_auto_processing = True
-        if auto_processor:
-            auto_processor.stop()
-        # Wait for thread to finish gracefully
-        if auto_process_thread and auto_process_thread.is_alive():
-            auto_process_thread.join(timeout=10)
-        set_full_view()
-        return
-
-    # Otherwise, start auto mode
-    stop_auto_processing = False
-    set_auto_view()
-
-    # Start auto processing in background
-    start_auto_processing_thread()
-
-
-def set_auto_view():
-    """
-    Configures the application to display the auto-processing view.
-
-    Actions:
-    - Removes all non-essential UI elements.
-    - Displays the auto-processing log box and toggle button.
-    - Sets current_view to "auto".
-    """
-    global current_view, last_full_position
-
-    # Hide all other UI elements
-    for widget in [
-        user_input, send_button, clear_button, dropdown_label, prompt_dropdown,
-        upload_file_button, download_file_btn, upload_button, response_display, timestamp_listbox,
-        blinking_circle_canvas, mic_button, pause_button, switch_view_button
-    ]:
-        widget.grid_remove()
-
-    # Configure and place the auto-process components
-    auto_process_button.config(text="Stop Auto", width=10, height=2)
-    auto_process_button.grid(row=0, column=0, pady=5, padx=5, sticky='nsew')
-
-    auto_process_tbox.grid(row=0, column=1, rowspan=10, columnspan=12, sticky='nsew', pady=5, padx=5)
-    auto_process_tbox.delete("1.0", "end")
-    auto_process_tbox.insert("end", "Starting automated processing...\n")
-
-    # Keep a smaller window
-    root.attributes('-topmost', False)
-    root.minsize(800, 500)
-    current_view = "auto"
-
-    # Save the current full geometry to restore later
-    last_full_position = root.geometry()
 
 
 def start_auto_processing_thread():
@@ -1609,6 +1360,7 @@ def read_file_text():
     if file_path:
         threaded_file_reading()  # Add this line to process the file immediately
 
+
 def download_results():
     """
     Downloads AI outputted text as either a .txt file or .hl7 file.
@@ -1650,10 +1402,6 @@ def download_results():
         f.write(text)
 
 
-def upload_medical_history():
-    """Upload the LLM response to patients medical history"""
-    text = response_display.scrolled_text.get("1.0", tk.END).strip()
-    oscar.insert_text_into(text, "Medical")
 
 def upload_consult():
     """Uploads the LLM response to patient consult to most recent 0letter eform"""

@@ -1,18 +1,13 @@
-import tkinter as tk
-from tkinter import scrolledtext
 
 import logging
-#from utils.dailylogger import setup_daily_logger
 import yaml
 import requests
-import pandas as pd
 import json
 from datetime import datetime, timedelta, timezone
 
 from chatbot.SeleniumOscarQuery import SOQ
 from chatbot.SSHTunnel import OscarDB
 from Oscar import Oscar
-from UI.OscarEforms import OscarEforms
 from chatbot.Tools.Tool import ToolRegistry, TOOL_REGISTRY, ToolEmbeddings
 from chatbot.AIConnect import AIConnect
 from chatbot.RAG.VectorSearch import VectorSearch, VectorDB
