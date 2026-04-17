@@ -504,14 +504,15 @@ class EformPanel(tk.Frame):
         return text
 
 
-    def get_patient_info(self):
+    def get_patient_info(self, mute_popup=False):
         """
         Queries Oscar EMR database to retrieve information for opened patient
         """
         demo_no = self.oscar.get_demographic_no()
         if demo_no is None:
-            messagebox.showwarning("Missing Patient", "Unable to open eForm. Please open the encouter page of the patient you want to open the eForm for.", parent=self)
-            return
+            if not mute_popup:
+                messagebox.showwarning("Missing Patient", "Unable to open eForm. Please open the encouter page of the patient you want to open the eForm for.", parent=self)
+            return False
         
         query = f"""
         SELECT *
