@@ -1022,14 +1022,15 @@ def get_labs_from_response():
 def generate_note(formatted_message):
             try:
                 prompt_type = selected_prompt.get()
-                info = eform_selection_panel.get_patient_info()
-                sex = info["sex"].lower().strip()
-                if sex == 'f':
-                    sex = 'Female'
-                elif sex == 'm':
-                    sex = 'Male'
-                else:
-                    sex = ''
+                info = eform_selection_panel.get_patient_info(mute_popup=True)
+                sex = ""
+                if info:
+                    sex = info["sex"].lower().strip()
+                    if sex == 'f':
+                        sex = 'Female'
+                    elif sex == 'm':
+                        sex = 'Male'
+
                 # If note generation is on
                 if prompt_type == "Scribe":
                     # If pre-processing is enabled
