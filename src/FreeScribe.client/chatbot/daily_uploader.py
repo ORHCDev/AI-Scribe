@@ -1,4 +1,4 @@
-from RAG.RagSearch import VectorDB
+from RAG.VectorSearch import VectorDB
 from RAG.embedder import EmbeddingEngine
 from AIConnect import AIConnect
 from SeleniumOscarQuery import SOQ
@@ -10,9 +10,17 @@ from Oscar import Oscar
 import yaml
 import requests
 
+# Compared date
 DATE = datetime.now().strftime("%Y-%m-%d")
+# Date operator for comparison
+# '=' : will upload documents with same date as above
+# '>' : will upload documents that have entry date > date above. '>=' for inclusive.
+# '<' : will upload documents that have entry daet < date above. '<=' for inclusive.
 DATE_OP = "="
+# Delay between each uploaded chunk (in seconds).
 DELAY = 5
+# Vectorization batch size. How much of the chunk is vectorized at once. 
+# Default for embedding model is 32. 
 BATCH_SIZE = 8
 
 def initialize_oscardb(config) -> SOQ | OscarDB:
