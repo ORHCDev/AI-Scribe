@@ -1,4 +1,4 @@
-from RAG.RagSearch import VectorDB
+from RAG.VectorSearch import VectorDB
 from RAG.embedder import EmbeddingEngine
 from AIConnect import AIConnect
 from SeleniumOscarQuery import SOQ
@@ -10,8 +10,12 @@ from Oscar import Oscar
 import yaml
 import requests
 
-PATIENT_ID = "4"
+# Patient ID's / demographic numbers to upsert documents and measurements for.
+PATIENT_IDS = ["4"]
+# Delay between each uploaded chunk (in seconds).
 DELAY = 5
+# Vectorization batch size. How much of the chunk is vectorized at once. 
+# Default for embedding model is 32. 
 BATCH_SIZE = 4
 
 def initialize_oscardb(config) -> SOQ | OscarDB:
@@ -118,13 +122,13 @@ if __name__ == "__main__":
 
         embedder = EmbeddingEngine(oscar_db, vector_db, ai_conn, batch_size=BATCH_SIZE)
 
-        
-        print(f"Upserting Documents for {PATIENT_ID}")
-        embedder.upsert_documents(patient_id=PATIENT_ID, delay=DELAY, skip_exists=True, summarize=False)
+        for patient_id in PATIENT_IDS:
+            print(f"Upserting Documents for {patient_id}")
+            embedder.upsert_documents(patient_id=patient_id, delay=DELAY, skip_exists=True, summarize=False)
 
-        time.sleep(10)
-        print(f"Upserting measurements for {PATIENT_ID}")
-        embedder.upsert_measurements(patient_id=PATIENT_ID, delay=DELAY, skip_exists=True)
+            time.sleep(10)
+            print(f"Upserting measurements for {patient_id}")
+            embedder.upsert_measurements(patient_id=patient_id, delay=DELAY, skip_exists=True)
 
 
     finally:

@@ -1,8 +1,8 @@
-from RAG.RagSearch import VectorDB
+from RAG.VectorSearch import VectorDB
 import yaml
 
 # Load credential info
-with open("./configs/config.yaml", "r") as f:
+with open(r"..\configs\config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 vdb_creds = config["VectorDB"]

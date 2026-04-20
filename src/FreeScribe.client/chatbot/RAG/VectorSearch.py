@@ -361,7 +361,7 @@ class VectorDB:
             -- Identity
             id BIGSERIAL PRIMARY KEY,
 
-            demographic_no BIGINT NOT NULL,            -- demographic / MRN surrogate
+            demographic_no BIGINT NOT NULL,            -- patient id
             document_id BIGINT NOT NULL,               -- EMR document identifier
             document_type TEXT,                        -- document type (i.e. HOLTER, EST, ...)
             chunk_index INTEGER NOT NULL,              -- position within document
