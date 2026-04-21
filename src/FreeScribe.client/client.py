@@ -193,16 +193,17 @@ def threaded_send_audio_to_server():
     return thread
 
 
-def threaded_folder_reading():
+def threaded_folder_reading(pdfs):
     def worker():
         global ocr_text
         ocr_text = ""
-        pdfs = [file for file in os.listdir(folder_path) if file.lower().endswith(".pdf")]
+        #pdfs = [file for file in os.listdir(folder_path) if file.lower().endswith(".pdf")]
         for pdf in pdfs:
+            print(pdf)
             try:
                 # Read file
-                pdf_path = os.path.join(folder_path, pdf)
-                ocr_text += file_reader(pdf_path)
+                #pdf_path = os.path.join(folder_path, pdf)
+                ocr_text += file_reader(pdf)
             except Exception as e:
                 print(f"Unable to extract text from {pdf}: {e}")
         
@@ -1231,11 +1232,15 @@ def upload_file():
         initialdir=initialdir
     )
 
-    for file in file_paths:
-        file_path = file
-        uploaded_file_path = file
+    if len(file_paths) > 1:
+        threaded_folder_reading(file_paths)
+
+    else:
+
+        file_path = file_paths[0]
+        uploaded_file_path = file_paths[0]
         
-        ftype = file.rsplit(".")[-1]
+        ftype = file_path.rsplit(".")[-1]
 
         if ftype in ["wav", "mp3"]:
             uploaded_file_path = file_path
