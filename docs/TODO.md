@@ -5,6 +5,7 @@
 - [ ] Combine config settings with original settings.
 - [ ] Remove dependency on Oscar Report Master when generating HL7 header. Instead query information directly from the database. 
 - [ ] Improve Chatbot memory. The chatbot memory is limited and currently we are storing the whole conversation + retrieved results and feeding this into it as memory which isn't very effective. Could possibly look to storing key information in a json which gets passed to the chatbot instead of the whole conversation history. Could also look into sending more smaller queries to the chatbot, chunking them so they don't go over the context limit and then combining the final result.
+- [ ] Improve Chatbot workflow. The current workflow is mainly designed to find and retrieve certain patient information and isn't the best when answering questions that don't necessarily require patient context. For example, if you asked the chatbot what 2+2 is it would still do a vector search even when completely unnecessary. So should make multiple workflows for different scenarios and inquire the chatbot or do some input recognition to select the best workflow to use. 
 - [ ] (Optional) Upgrade python version.
 - [ ] (Optional) Add loading pop-ups to make it more clear things are being processed.
 - [ ] (Optional) Add caching for eForm and checkbox scanning so it doesn't have to happen every time app is launched or when eForm is selected.

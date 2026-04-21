@@ -21,3 +21,5 @@ The process from querying the chatbot to getting a response flows like:
  8. LLM returns finally response which gets added to the chatbot log. 
 
 
+## Usage
+To use the chatbot feature, make sure you are connected to the vector database and that the encounter page of the patient you want to ask about is opened in the oscar session. Then, simply input your question and click send (or CTRL + ENTER) to query the chatbot.
