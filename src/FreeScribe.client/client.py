@@ -85,21 +85,14 @@ app_settings = SettingsWindow()
 ai_prompts = PromptsWindow(default_path=r".\prompts\default_prompts.yaml", target_path=r".\prompts\prompts.yaml")
 HL7_PROMPTS = ai_prompts.hl7_prompt_list
 
-oscar = chatbot.oscar #OscarEforms("./configs/config.yaml", oscar_report_path=app_settings.editable_settings["ReportMasterPath"])
+oscar = chatbot.oscar 
 #  create our ui elements and settings config
-window = MainWindowUI(root, app_settings, ai_prompts, oscar)
+window = MainWindowUI(root, app_settings, ai_prompts)
 
 app_settings.set_main_window(window)
 
-# Login to oscar
-root.after(100, oscar.run)
-
-# Open eForm Window on Startup
-#root.after(100, lambda: OscarEformsUI(root, oscar))
-
 # Cleanup on window close
 def on_close():
-    oscar.cleanup()
     chatbot.cleanup()
     root.destroy()
 
@@ -1633,7 +1626,12 @@ scribe_frame = tk.Frame(root)
 scribe_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')   # visible at startup
 
 def open_oscar():
-    pass
+    """
+    Closes and reopens Selenium Oscar session.
+    """
+    chatbot.oscar.cleanup()
+    chatbot._initialize_oscar()
+    eform_selection_panel.oscar = chatbot.oscar
 
 # 14-column spine: cols 0 & 13 = gutters
 for c in range(14):

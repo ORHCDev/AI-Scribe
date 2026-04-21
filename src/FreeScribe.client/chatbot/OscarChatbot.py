@@ -211,7 +211,10 @@ class OscarCB:
 
 
     def cleanup(self):
-        """Closes opened connections"""
+        """
+        Closes opened connections.
+        Closes oscar, oscar database, and vector database connections.
+        """
         if self.oscar:
             self.oscar.cleanup()
 
@@ -220,6 +223,10 @@ class OscarCB:
 
         if self.vec_search:
             self.vec_search.cleanup()
+
+        self.oscar = None
+        self.db_conn = None
+        self.vec_search = None
 
 
     def _generate_rag_string(self, user_input : str):

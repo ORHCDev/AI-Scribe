@@ -20,7 +20,7 @@ class MainWindowUI:
     :param settings: The application settings passed to control the containers' behavior.
     """
     
-    def __init__(self, root, settings, prompts, oscar):
+    def __init__(self, root, settings, prompts):
         """
         Initialize the MainWindowUI class.
 
@@ -32,7 +32,6 @@ class MainWindowUI:
         self.is_status_bar_enabled = False  # Flag to indicate if the Docker status bar is enabled
         self.app_settings = settings  # Application settings
         self.prompts = prompts # AI prompts 
-        self.oscar = oscar # Oscar window for getting eforms
         self.logic = mw.MainWindow(self.app_settings)  # Logic to control the container behavior
         self.scribe_template = None
         self.setting_window = SettingsWindowUI(self.app_settings, self, self.root)  # Settings window
