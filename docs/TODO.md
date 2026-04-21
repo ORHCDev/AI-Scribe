@@ -1,7 +1,6 @@
 # TODO
 - [ ] Auto selection for eForm checkboxes. Use patient-doctor conversation and maybe the most recent eForm to detect which eForms to open and which checkboxes to autofill.
 - [ ] Add document and measurement sources for chunks selected. This will give traceability for which documents and measurements are being used as context. Ideally have '(sources)' at the end of the chatbot response, and on hover it should list documents and measurements used.
-- [ ] The PDF upload multiselect doesn't work, will only keep the last PDF selected (switch to use the PDF folder function that already exists if multiple PDFs are selected)
 - [ ] Combine config settings with original settings.
 - [ ] Remove dependency on Oscar Report Master when generating HL7 header. Instead query information directly from the database. 
 - [ ] Improve Chatbot memory. The chatbot memory is limited and currently we are storing the whole conversation + retrieved results and feeding this into it as memory which isn't very effective. Could possibly look to storing key information in a json which gets passed to the chatbot instead of the whole conversation history. Could also look into sending more smaller queries to the chatbot, chunking them so they don't go over the context limit and then combining the final result.
