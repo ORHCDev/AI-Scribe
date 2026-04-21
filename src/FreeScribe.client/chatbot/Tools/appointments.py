@@ -119,7 +119,7 @@ def get_appointments_by_provider(db_conn, provider_id : str):
     )
 
 
-@tool(
+"""@tool(
     category="appointments",
     description=(
         "Returns a list of active patients who have not completed a valid appointment "
@@ -136,7 +136,7 @@ def get_appointments_by_provider(db_conn, provider_id : str):
             "(e.g., '6m' for six months)."
         )
     }
-)
+)"""
 def patients_not_seen(db_conn, period : str = "2y") -> list[dict]:
     """
     Queries and returns a list of dictionaries of patient's that have not been seen for X days/months/years.
@@ -210,7 +210,7 @@ def patients_not_seen(db_conn, period : str = "2y") -> list[dict]:
     )
 
 
-@tool(
+"""@tool(
     category="appointments",
     description=(
         "Returns a list of active patients who have never had an appointment recorded "
@@ -222,7 +222,7 @@ def patients_not_seen(db_conn, period : str = "2y") -> list[dict]:
     ),
     context="Here are the patient's who haven't had appointments:",
     parameters={}
-)
+)"""
 def patients_with_no_appointments(db_conn) -> list[dict]:
     """
     Queries and returns a list of dictionaries of patient's that have not had any appointments scheduled.
@@ -260,7 +260,7 @@ def patients_with_no_appointments(db_conn) -> list[dict]:
     )
 
 
-@tool(
+"""@tool(
     category="appointments",
     description=(
         "Returns patients who have missed one or more appointments within a specified time period "
@@ -273,7 +273,7 @@ def patients_with_no_appointments(db_conn) -> list[dict]:
     parameters={
         "period": "An integer followed by 'd', 'm', or 'y' (e.g., '6m' for six months)."
     }
-)
+)"""
 def missed_appointments(db_conn, period : str = "6m") -> list[dict]:
     """
     Queries and returns a list of dictionaries of patient's that have had missed appointments and new appointments

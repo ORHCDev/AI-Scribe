@@ -244,8 +244,20 @@ class OscarCB:
 
     def run(self, user_input):
         """
-        
+        Chains multiple LLM calls together augmenting original user input with patient context.
+
+        Workflow
+        --------
+        1. Gets LLM to generate keyword string that will be used for vector search from user input.
+        2. Does a vector search to retrieve closest matching documents, measurements, and tools.
+        3. Organizes returned chunks and re-ranks.
+        4. If any tools are selected, execute tool(s) and save returned results.
+        5. Iterate over documents and measurements, appending chunks until maximum context is reached.
+        6. Send follow up to LLM to answer User's input with the attached context. 
+        7. Return LLM response to follow up.
         """
+
+        if not user_input.strip(): return
 
         today = datetime.now()
 
@@ -298,7 +310,8 @@ class OscarCB:
                 query=rag_str,
                 patient_id=demo_no,
                 top_k=10,
-                date=date
+                date=date,
+                to_dict=True
             )
         
         tool_embds = embeddings["tools"]
@@ -339,7 +352,7 @@ class OscarCB:
             }
             chunks.append(data)
 
-        # Re-rank and take top 5 results
+        # Re-rank and take top results
         if date_rank:
             reranked = self.vec_search.date_rank(rstr, chunks, text_key="text", date_key="obs_date", recency_method=date, batch_size=8)
         else:
@@ -423,13 +436,6 @@ class OscarCB:
 
         return resp
 
-
-    def send_message(self, message):
-        """
-        Sends given message to LLM and returns response
-        """
-
-        if message.strip() == "": return
 
 
     def load_chat(self, timestamp : str):

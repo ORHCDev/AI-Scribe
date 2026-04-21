@@ -1,36 +1,3 @@
-* Scribe
- - patient-doctor transcription
- - HL7 generation
- - Prompt manager
- - PDF upload
- - Medical history generation
- - Insert consult & medical history
- - eForm opening and checkbox selector
- - Note history
- - Auto processing
- - Settings
-
-* Chatbot
- - RAG workflow
- - config settings
-
-* Oscar EMR Interaction
- - Opening patient encounter pages
- - Inserting text into eForm
- 
-* Databases
- - Vector database
- - Oscar EMR database
-
-* LLM
- - kobold setup
- - endpoint in settings
-
-* Whisper
- - whisper server setup
- - whisper server common issues (maybe include setting up daily restart)
-
-
 # AI-Scribe
 
 ## Introduction
@@ -46,14 +13,14 @@ The scribe has 4 modes: Scribe, Chatbot, Minimal, and Auto Processing.
 ### Scribe
 The scribe mode is the default mode that is used to record and transcribe patient-doctor encounters and then generate notes. This is also where the PDF upload and manual HL7 generation is done. 
 
-See ... for all the scribe mode functionalities.
+See [scribe](Scribe/scribe.md) for all the scribe mode functionalities.
 
 ### Chatbot
 The chatbot mode gives access to a chatbot that is setup to assist the doctor in retrieving specific information for the patient. The Chatbot uses a Retrieval Augmented Generation (RAG) architecture along with a vector database to quickly search through document and measurement chunks to provide relevant context about the patient to the LLM to generate a proper response to the User's input. 
 
-See ... for the breakdown of the chatbot architecture.
-See ... for creating the vector database.
-See ... for uploading document and measurements to the vector database.
+See [chatbot](Chatbot/chatbot.md) for the breakdown of the chatbot architecture. \
+See [vector-database](Databases/vector-database.md) for creating the vector database and upserting documents and measurements. \
+See [tools](Chatbot/tools.md) for creating chatbot tools.
 
 ### Minimal
 The minimal mode is the scribe mode but with a minimalistic view that only includes the records and pause buttons for conversation transcription only.
@@ -69,11 +36,11 @@ The auto processing mode is for automatically processing HL7 files. It is set to
 * Within the AI-Scribe directory, create a virtual environment for your python packages: `python -m venv venv` 
 * Run `.\venv\scripts\activate` to activate your virtual environment.
 * Run `pip install -r requirements.txt` to install all required dependencies.
-* Install and setup Selenium for Oscar EMR interaction: (link to selenium setup documentation)
-* Install and setup Tesseract and Poppler for PDF OCRing capabilities: (link to Tesseract and Poppler Setup)
+* Install and setup Selenium for Oscar EMR interaction: [selenium-setup](Dependencies/selenium-setup.md)
+* Install and setup Tesseract and Poppler for PDF OCRing capabilities: [tesseract-setup](Dependencies/tesseract-setup.md)
 * Copy and rename `config_example.yaml` in `..\AI-Scribe\src\FreeScribe.client\configs` to `config.yaml` and fill in the required information.
- - Note1: The SSH credentials are only needed if you plan to SSH to access the Oscar EMR database. If you are fine using Selenium to access the "Query By Example" page and do database quering there, then these do not need to be filled in (just make sure `query_choice` is set to `oscar`). See ... for more information on the Oscar EMR database.
- - Note2: The VectorDB credentials are only needed if you want Chatbot capabilities. The scribe funcationalities will work, but you won't have access to the Chatbot unless it is connected to a vector database and has the respective tables. See ... for more information on the Chatbot.
+ - Note1: The SSH credentials are only needed if you plan to SSH to access the Oscar EMR database. If you are fine using Selenium to access the "Query By Example" page and do database quering there, then these do not need to be filled in (just make sure `query_choice` is set to `oscar`). See [oscar-database](Databases/oscar-database.md) for more information on the Oscar EMR database.
+ - Note2: The VectorDB credentials are only needed if you want Chatbot capabilities. The scribe funcationalities will work, but you won't have access to the Chatbot unless it is connected to a vector database and has the respective tables. See [chatbot](Chatbot/chatbot.md) for more information on the Chatbot.
 * Then, you will need to install software to convert the audio file to be processed. Run this in powershell:
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser

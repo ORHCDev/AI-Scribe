@@ -85,7 +85,7 @@ def get_recent_documents(db_conn, demo_no : str, limit = 5):
 
 
 
-@tool(
+"""@tool(
     category="documents",
     description=(
         "Retrieves OCR-extracted text from a specific patient document based on document type "
@@ -105,7 +105,7 @@ def get_recent_documents(db_conn, demo_no : str, limit = 5):
             "Only include if the user specifies a date."
         )
     }
-)
+)"""
 def get_specific_document(db_conn, demo_no : str, doc_type : str, date : str = ""):
     """
     Fetches and returns the scanned text from a specified document.

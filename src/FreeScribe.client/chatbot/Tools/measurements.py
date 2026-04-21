@@ -170,7 +170,7 @@ def get_measurement_history(db_conn, demo_no : str, test_names : list[str], plot
     )
 
 
-@tool(
+"""@tool(
     category="measurements",
     description=(
         "Returns a cohort of active patients whose most recent LDL cholesterol values fall within "
@@ -186,7 +186,7 @@ def get_measurement_history(db_conn, demo_no : str, test_names : list[str], plot
         "LDL_upper": "Upper bound for LDL cholesterol value",
         "month": "Number of months in the past to search for LDL measurements"
     }
-)
+)"""
 def LDL_lookup(db_conn, LDL_lower : float, LDL_upper : float, month : int):
     """
     Fetches and returns all patients that have an LDL level between LDL_lower and LDL_upper in the last n months.
@@ -222,7 +222,7 @@ LIMIT 10;
 
 
 
-@tool(
+"""@tool(
     category="measurements",
     description=(
         "Returns the most recent Holter monitor measurement results for a patient, grouped by metric. "
@@ -234,7 +234,7 @@ LIMIT 10;
     parameters={
         "demo_no": "Patient's demographic number"
     }
-)
+)"""
 def get_recent_holter_results(db_conn, demo_no : str):
     query = f"""
     SELECT
@@ -291,7 +291,7 @@ def get_recent_holter_results(db_conn, demo_no : str):
 
 
 
-@tool(
+"""@tool(
     category="measurements",
     description=(
         "Returns the most recent echocardiographic measurement values for a patient, such as chamber sizes, "
@@ -304,7 +304,7 @@ def get_recent_holter_results(db_conn, demo_no : str):
     parameters={
         "demo_no": "Patient's demographic number"
     }
-)
+)"""
 def get_recent_echo_results(db_conn, demo_no : str):
     query = f"""
     SELECT
@@ -360,7 +360,7 @@ def get_recent_echo_results(db_conn, demo_no : str):
     )
 
 
-@tool(
+"""@tool(
     category="measurements",
     description=(
         "Returns the most recent electrocardiogram (ECG) measurement data for a patient, including "
@@ -372,7 +372,7 @@ def get_recent_echo_results(db_conn, demo_no : str):
     parameters={
         "demo_no": "Patient's demographic number"
     }
-)
+)"""
 def get_recent_ecg_results(db_conn, demo_no : str):
     query = f"""
     SELECT
@@ -428,7 +428,7 @@ def get_recent_ecg_results(db_conn, demo_no : str):
     )
 
 
-@tool(
+"""@tool(
     category="measurements",
     description=(
         "Returns the most recent electrocardiogram (ECG) measurement data for a patient, including "
@@ -440,7 +440,7 @@ def get_recent_ecg_results(db_conn, demo_no : str):
     parameters={
         "demo_no": "Patient's demographic number"
     }
-)
+)"""
 def get_recent_est_results(db_conn, demo_no : str):
     query = f"""
     SELECT
@@ -782,7 +782,7 @@ def vitals_overview(db_conn, demo_no : str):
     )
 
 
-@tool(
+"""@tool(
     category="measurements",
     description=(
         "Generates a population-level report of active patients matching a specified clinical category "
@@ -801,7 +801,7 @@ def vitals_overview(db_conn, demo_no : str):
         "period": "Time window for inclusion (e.g., '6m' for six months)",
         "export": "Whether to export the report as an Excel file"
     }
-)
+)"""
 def lookup(db_conn, lookup_type : str, flags : list[str], period : str = "6m", export : bool = True):
     """
     Queries and returns a report of patients with history relevant to the provided cardiac_flags.
@@ -926,7 +926,7 @@ def lookup(db_conn, lookup_type : str, flags : list[str], period : str = "6m", e
     )
 
 
-@tool(
+"""@tool(
     category="measurements",
     description=(
         "Returns a report of active patients with laboratory investigations that appear incomplete or outstanding "
@@ -941,7 +941,7 @@ def lookup(db_conn, lookup_type : str, flags : list[str], period : str = "6m", e
         "period": "Time window to evaluate for outstanding labs (e.g., '6m')",
         "export": "Whether to export the results as an Excel file"
     }
-)
+)"""
 def labs_outstanding(db_conn, period : str = "6m", export : bool = False):
     """
     Queries and returns a report of patients with labs outstanding.
