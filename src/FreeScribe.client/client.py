@@ -1786,11 +1786,12 @@ chat_history = []
 def chatbot_send_message():
     input = chat_user_input.scrolled_text.get("1.0", tk.END).strip()
     chat_user_input.scrolled_text.delete("1.0", tk.END)
-    resp = chatbot.run(input)
-    
+    workflow_type, resp = chatbot.run(input)
+    workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
+
     chat_log_display.scrolled_text.config(state='normal')
     chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
-    chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT:\n{resp}\n\n")
+    chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n\n")
     chat_log_display.scrolled_text.config(state='disabled')
 
     # Scroll to the bottom
