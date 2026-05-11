@@ -356,7 +356,7 @@ class OscarCB:
         if date_rank:
             reranked = self.vec_search.date_rank(rstr, chunks, text_key="text", date_key="obs_date", recency_method=date, batch_size=8)
         else:
-            reranked = self.vec_search.rank(rstr, chunks, batch_size=8)
+            reranked = self.vec_search.rank(rstr, chunks, key="text", batch_size=8)
         top_k = reranked[:10]
         logging.info(f"Top results{top_k}")
         # Extract tools and prompt LLM
