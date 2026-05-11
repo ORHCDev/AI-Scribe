@@ -12,6 +12,8 @@ from chatbot.Tools.Tool import ToolRegistry, TOOL_REGISTRY, ToolEmbeddings
 from chatbot.AIConnect import AIConnect
 from chatbot.RAG.VectorSearch import VectorSearch, VectorDB
 from chatbot.utils.dailylogger import setup_daily_logger
+from chatbot.Workflows.Workflow import WorkflowRegistry, WorkflowContext
+import chatbot.Workflows
 
 setup_daily_logger(r".\chatbot\logs", 'chatbot.log')
 
@@ -42,6 +44,7 @@ class OscarCB:
         self.current_conversation = {}
         self.message_no = 0
         self.tools = ToolRegistry(TOOL_REGISTRY)
+        self.workflows = WorkflowRegistry.instantiate_all()
     
 
     def _initialize_oscar(self):
@@ -242,48 +245,22 @@ class OscarCB:
 
 
 
+    def _build_context(self) -> WorkflowContext:
+        return WorkflowContext(
+            ai_conn=self.ai_conn,
+            db_conn=self.db_conn,
+            oscar=self.oscar,
+            vec_search=self.vec_search,
+            tools=self.tools,
+            conversation_history=self.conversation_history,
+            curr_demo=self.curr_demo,
+            prompts=self.prompts,
+        )
+
     def run(self, user_input):
-        """
-        Chains multiple LLM calls together augmenting original user input with patient context.
-
-        Workflow
-        --------
-        1. Gets LLM to generate keyword string that will be used for vector search from user input.
-        2. Does a vector search to retrieve closest matching documents, measurements, and tools.
-        3. Organizes returned chunks and re-ranks.
-        4. If any tools are selected, execute tool(s) and save returned results.
-        5. Iterate over documents and measurements, appending chunks until maximum context is reached.
-        6. Send follow up to LLM to answer User's input with the attached context. 
-        7. Return LLM response to follow up.
-        """
-
         if not user_input.strip(): return
 
-        today = datetime.now()
-
-        # Get AI to generate RAG search string
-        rag_prompt = self.prompts.get("date_rag_prompt").format(
-            resp_format=self.prompts.get("resp_format"),
-            year=today.year,
-            month=today.month,
-            today=today.date(),
-            yesterday=(today - timedelta(days=1)).date(),
-            last_week=(today - timedelta(weeks=1)).date(),
-            last_month=(today - timedelta(days=30)).date(),
-            last_year=(datetime(year=(today.year - 1), month=today.month, day=1)).date(),
-            user_input=user_input
-        )
-        rag_str = self.ai_conn.send_message(rag_prompt)
-        rag_str = rag_str.replace("```json", "").replace("```", "").replace("**JSON only**", "").strip()
-        rag_json = json.loads(rag_str)
-
-        rstr = rag_json["RAG"]
-        date = rag_json["date"]
-
-        #self._write_out(rag_prompt, "#")
-        #self._write_out(rag_str, "$")
-
-        
+        # Detect patient switch and start new chat if needed
         demo_no = self.oscar.get_demographic_no()
         if self.curr_demo is None:
             self.curr_demo = demo_no
@@ -295,146 +272,17 @@ class OscarCB:
                 self.curr_demo = demo_no
                 self.new_chat()
 
-        # Perform RAG search on tool embeddings and documents
-        date_rank = False
-        if date == 'old' or date == 'recent':
-            date_rank = True
-            embeddings = self.vec_search.search(
-                query=rag_str,
-                patient_id=demo_no,
-                top_k=10,
-                to_dict=True
-            )
-        else:
-            embeddings = self.vec_search.search(
-                query=rag_str,
-                patient_id=demo_no,
-                top_k=10,
-                date=date,
-                to_dict=True
-            )
-        
-        tool_embds = embeddings["tools"]
-        doc_embds = embeddings["documents"]
-        msr_embds = embeddings["measurements"]
+        context = self._build_context()
+        # classify workflow
+        workflow_type = WorkflowRegistry.classify(user_input, context)
+        # dispatch run call to respective workflow
+        resp = self.workflows[workflow_type].run(user_input, context)
 
-
-        # Combine for reranking
-        chunks = []
-        
-        for t in tool_embds:
-            data = {
-                "tool_name" : t["tool_name"],
-                "text" : t["description"],
-                "obs_date" : datetime.now(timezone.utc),
-                "args" : t["metadata"]["params"],
-                "is_tool" : True
-            }
-            chunks.append(data)
-
-        for d in doc_embds:
-            data = {
-                "id" : d["document_id"],
-                "type" : d["document_type"],
-                "obs_date" : d["observation_date"],
-                "text" : d["chunk_text"],
-                "is_tool" : False
-            }
-            chunks.append(data)
-
-        for m in msr_embds:
-            data = {
-                "id" : m["measurement_ids"],
-                "type" : m["measurement_type"],
-                "obs_date" : m["observation_date"],
-                "text" : m["chunk_text"],
-                "is_tool" : False
-            }
-            chunks.append(data)
-
-        # Re-rank and take top results
-        if date_rank:
-            reranked = self.vec_search.date_rank(rstr, chunks, text_key="text", date_key="obs_date", recency_method=date, batch_size=8)
-        else:
-            reranked = self.vec_search.rank(rstr, chunks, key="text", batch_size=8)
-        top_k = reranked[:10]
-        logging.info(f"Top results{top_k}")
-        # Extract tools and prompt LLM
-        tools = [elem[1] for elem in top_k if elem[1]["is_tool"]]
-        
-        tool_context = ""
-        if tools:
-            tool_str = ""
-            for t in tools:
-                tool_str += f"{t}\n" 
-            tool_prompt = self.prompts.get("rag_tool_prompt").format(
-                tool_protocol=self.prompts.get("rag_tool_protocol"),
-                demo_no=demo_no,
-                user_input=user_input,
-                tools=tool_str,
-            )
-        
-            tool_resp = self.ai_conn.send_message(tool_prompt)
-            
-            #self._write_out(tool_prompt, "#")
-            #self._write_out(tool_resp, "$")
-
-            # Execute any tools the AI selected and append results as context
-            tool_select = tool_resp.replace("```json", "").replace("```", "").replace("**JSON only**", "").strip()
-            if tool_select.startswith("["):
-                # Load tool
-                tool_call = json.loads(tool_select)
-                for tool in tool_call:
-                    logging.info(f"Calling tool: {tool}")
-                    name = tool.get("tool_name")
-                    args = tool.get("args")
-                    args["db_conn"] = self.db_conn
-                    res = self.tools.execute_tool(name, **args)
-                    tool_context += f"Tool: {name}\nResults: {res}\n\n"
-
-        MAX_LEN = 15000
-        cur_len = len(self.prompts.get("followup")) + len(tool_context)
-
-        # Generate context string
-        doc_context = ""
-        for elem in top_k:
-            if not elem[1]["is_tool"]:
-                doc_context += f"Date Observed: {elem[1]['obs_date'].strftime('%Y-%m-%d')}\nDocument ID: {elem[1]['id']}\nContent:{elem[1]['text']}\n\n"
-                if len(doc_context) + cur_len > MAX_LEN:
-                    break
-
-
-        # Combine tool and document
-        if not tool_context:
-            context = f"Document Context:\n{doc_context}"
-            logging.info("No tools selected")
-        else:
-            context = f"Document Context:\n{doc_context}\n\nTool Context:\n{tool_context}"
-
-        #print(f"{'$'*50}\nDOCUMENT CONTEXT:{doc_context}\n{'$'*50}")
-        #print(f"{'&'*50}\nTOOL CONTEXT: {tool_context}\n{'&'*50}")
-
-        # Get AI followup response for User question with provided context
-        if self.conversation_history:
-            history = '\n'.join(self.conversation_history)
-            convo_history = f"Conversation History:{history}\nInput:{user_input}\n"
-        else:
-            convo_history = user_input
-
-        followup_prompt = self.prompts.get("followup").format(
-            user_input=convo_history,
-            context=context
-        )
-        logging.info(f"Followup: {followup_prompt}")
-        resp = self.ai_conn.send_message(followup_prompt) 
-        # self._write_out(followup_prompt, "#")
-        # self._write_out(resp, "$")
-
-        # Store current conversation
+        # Store conversation
         self.current_conversation[self.message_no] = (user_input, resp)
         self.message_no += 1
 
-        return resp
+        return workflow_type, resp
 
 
 
