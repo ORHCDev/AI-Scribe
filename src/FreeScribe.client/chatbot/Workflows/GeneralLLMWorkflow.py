@@ -15,5 +15,5 @@ class GeneralLLMWorkflow(Workflow):
             history=history,
             user_input=user_input
         )
-        print(f"{'='*50}\nGENERAL LLM PROMPT:\n{prompt}\n{'='*50}")
+        #print(f"{'='*50}\nGENERAL LLM PROMPT:\n{prompt}\n{'='*50}")
         return context.ai_conn.send_message(prompt)
