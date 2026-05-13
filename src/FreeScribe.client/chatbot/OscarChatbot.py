@@ -13,6 +13,7 @@ from chatbot.AIConnect import AIConnect
 from chatbot.RAG.VectorSearch import VectorSearch, VectorDB
 from chatbot.utils.dailylogger import setup_daily_logger
 from chatbot.Workflows.Workflow import WorkflowRegistry, WorkflowContext
+from chatbot.ChatSession import ChatSession
 import chatbot.Workflows
 
 setup_daily_logger(r".\chatbot\logs", 'chatbot.log')
@@ -39,10 +40,13 @@ class OscarCB:
 
 
         self.curr_demo = None
+        # used to feed the LLM context
         self.conversation_history = []
-        self.past_chats = {}
+        # used to show the UI
         self.current_conversation = {}
         self.message_no = 0
+        self.past_chats: dict[str, ChatSession] = {}
+        self.active_chat_id: str | None = None
         self.tools = ToolRegistry(TOOL_REGISTRY)
         self.workflows = WorkflowRegistry.instantiate_all()
     
@@ -258,10 +262,10 @@ class OscarCB:
         )
 
     def run(self, user_input):
-        if not user_input.strip(): return
+        if not user_input.strip(): return None, None, None
 
-        # Detect patient switch and start new chat if needed
         demo_no = self.oscar.get_demographic_no()
+        new_chat_result = None
         if self.curr_demo is None:
             self.curr_demo = demo_no
         elif demo_no != self.curr_demo:
@@ -269,8 +273,8 @@ class OscarCB:
                 demo_no = self.curr_demo
             else:
                 logging.info(f"Prev: {self.curr_demo} | New: {demo_no}")
+                new_chat_result = self.new_chat()
                 self.curr_demo = demo_no
-                self.new_chat()
 
         context = self._build_context()
         # classify workflow
@@ -280,20 +284,30 @@ class OscarCB:
 
         # Store conversation
         self.current_conversation[self.message_no] = (user_input, resp)
+        self.conversation_history.append(f"User: {user_input}\nChatbot: {resp}")
         self.message_no += 1
 
-        return workflow_type, resp
+        return workflow_type, resp, new_chat_result
 
 
 
-    def load_chat(self, timestamp : str):
+    def get_chat_label(self, chat_id : str):
         """
-        Loads an existing chat that has been saved using the given timestamp key.
+        Returns the display label of a saved chat session by id.
         """
-        past_chat = self.past_chats[timestamp]
-        self.current_conversation = past_chat["chat"]
-        self.conversation_history = past_chat["full_history"]
-        self.curr_demo = past_chat["demo_no"]
+        return self.past_chats[chat_id].label
+
+
+    def load_chat(self, chat_id : str):
+        """
+        Loads an existing chat session into the working state, keyed by chat id.
+        """
+        session = self.past_chats[chat_id]
+        self.current_conversation = dict(session.conversation)
+        self.conversation_history = list(session.history)
+        self.curr_demo = session.demo_no
+        self.active_chat_id = chat_id
+        self.message_no = len(self.current_conversation)
 
         return self._append_current_conversation()
 
@@ -302,37 +316,44 @@ class OscarCB:
         Appends the current conversation into one string.
         """
         convo = ""
-        for msg_no, msg in self.current_conversation.items():
-            for user, ai in msg:
-                convo += f"USER:\n{user}\n\nCHATBOT:\n{ai}\n"
+        for msg_no, (user, ai) in self.current_conversation.items():
+            convo += f"USER:\n{user}\n\nCHATBOT:\n{ai}\n"
 
         return convo
     
 
-    def _store_chat(self, timestamp : str):
+    def save_chat(self):
         """
-        Stores current chat in dictionary where the key is the given timestamp. 
+        Stores/Saves the current chat session in past_chats, keyed by the chat id.
+        Returns the saved chat id, or None if there was nothing to save.
         """
-        self.past_chats[timestamp] = {
-            "chat" : self.current_conversation,
-            "full_history" : self.conversation_history,
-            "demo_no" : self.curr_demo
-        }
+        # if no messages, nothing to save
+        if not self.conversation_history:
+            return None
+
+        # update the current chat session
+        if self.active_chat_id and self.active_chat_id in self.past_chats:
+            self.past_chats[self.active_chat_id].update(
+                self.curr_demo,
+                self.current_conversation,
+                self.conversation_history
+            )
+            return self.active_chat_id
+
+        # create a new chat session
+        session = ChatSession(self.curr_demo, self.current_conversation, self.conversation_history)
+        self.past_chats[session.id] = session
+
+        return session.id
 
     def new_chat(self):
         """
-        Clears current converstaion history and stores chat. 
+        Saves the current chat, returns the chat_id
         """
-        # Store current chat
-        timestamp = datetime.now().time().strftime("%H:%M:%S")
-        self._store_chat(timestamp)
+        result = self.save_chat()
+        self.clear()
 
-        # Clear current conversation, stored history, and demo_no
-        self.conversation_history.clear()
-        self.current_conversation.clear()
-        self.curr_demo = None
-
-        return timestamp
+        return result
 
 
     def clear(self):
@@ -342,4 +363,6 @@ class OscarCB:
         self.conversation_history.clear()
         self.current_conversation.clear()
         self.curr_demo = None
+        self.active_chat_id = None
+        self.message_no = 0
 

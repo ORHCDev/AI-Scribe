@@ -1783,10 +1783,27 @@ if app_settings.editable_settings["Enable Scribe Template"]:
 # ═══════════════════════════════════════════════════════════════════════════════
 chat_history = []
 
+def _show_saved_chat(saved_id):
+    if saved_id is None or saved_id in chat_history:
+        return
+    chat_history.append(saved_id)
+    chat_history_listbox.insert(tk.END, chatbot.get_chat_label(saved_id))
+
 def chatbot_send_message():
     input = chat_user_input.scrolled_text.get("1.0", tk.END).strip()
     chat_user_input.scrolled_text.delete("1.0", tk.END)
-    workflow_type, resp = chatbot.run(input)
+    workflow_type, resp, saved_id = chatbot.run(input)
+
+    if workflow_type is None:
+        return
+
+    if saved_id is not None:
+        chat_log_display.scrolled_text.config(state='normal')
+        chat_log_display.scrolled_text.delete("1.0", tk.END)
+        chat_log_display.scrolled_text.config(state='disabled')
+        _show_saved_chat(saved_id)
+        chat_history_listbox.selection_clear(0, tk.END)
+
     workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
 
     chat_log_display.scrolled_text.config(state='normal')
@@ -1794,33 +1811,34 @@ def chatbot_send_message():
     chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n\n")
     chat_log_display.scrolled_text.config(state='disabled')
 
+
     # Scroll to the bottom
     # chat_log_display.yview(tk.END)
+    chat_log_display.scrolled_text.see(tk.END)
 
     print("Message sent")
 
 def chatbot_clear():
     print("Cleared Chat")
+    chatbot.clear()
     chat_log_display.scrolled_text.config(state='normal')
     chat_log_display.scrolled_text.delete("1.0", tk.END)
     chat_log_display.scrolled_text.config(state='disabled')
+    chat_history_listbox.selection_clear(0, tk.END)
 
     
 
 def chatbot_new_session():
+    if not chatbot.current_conversation:
+        return
     print("Starting New Chat")
-    timestamp = chatbot.new_chat()
+    saved_id = chatbot.new_chat()
     chat_log_display.scrolled_text.config(state='normal')
     chat_log_display.scrolled_text.delete("1.0", tk.END)
     chat_log_display.scrolled_text.config(state='disabled')
 
-    chat_history.append(timestamp)
-
-    # Update the timestamp listbox
-    chat_history_listbox.delete(0, tk.END)
-    for time in chat_history:
-        chat_history_listbox.insert(tk.END, time)
-        
+    _show_saved_chat(saved_id)
+    chat_history_listbox.selection_clear(0, tk.END)
 
 
 
@@ -1828,10 +1846,19 @@ def load_chat_history_session(event=None):
     if not chat_history: return
 
     selection = event.widget.curselection()
-    print(selection)
+    if not selection: return
 
-    timestamp = chat_history[selection[0]]
-    text = chatbot.load_chat(timestamp)
+    # consider chat history label
+    if selection[0] - 1 < 0:
+        return
+
+    selected_id = chat_history[selection[0] - 1]
+
+    if chatbot.current_conversation:
+        saved_id = chatbot.new_chat()
+        _show_saved_chat(saved_id)
+
+    text = chatbot.load_chat(selected_id)
     chat_log_display.scrolled_text.config(state='normal')
     chat_log_display.scrolled_text.delete("1.0", tk.END)
     chat_log_display.scrolled_text.insert(tk.END, text)
