@@ -1782,6 +1782,8 @@ if app_settings.editable_settings["Enable Scribe Template"]:
 #  CHATBOT FRAME
 # ═══════════════════════════════════════════════════════════════════════════════
 chat_history = []
+chat_workflow_choices = ["Auto"] + [name.replace('_', ' ').title() for name in chatbot.workflows]
+chat_workflow_index = [0]
 
 def _show_saved_chat(saved_id):
     if saved_id is None or saved_id in chat_history:
@@ -1792,7 +1794,12 @@ def _show_saved_chat(saved_id):
 def chatbot_send_message():
     input = chat_user_input.scrolled_text.get("1.0", tk.END).strip()
     chat_user_input.scrolled_text.delete("1.0", tk.END)
-    workflow_type, resp, saved_id = chatbot.run(input)
+
+    workflow_select = chat_workflow_button.cget("text")
+    # this assumes that the only transformation is removal of spaces and title format
+    selected_workflow = None if workflow_select == "Auto" else workflow_select.lower().replace(' ', '_')
+
+    workflow_type, resp, saved_id = chatbot.run(input, selected_workflow)
 
     if workflow_type is None:
         return
@@ -1840,7 +1847,11 @@ def chatbot_new_session():
     _show_saved_chat(saved_id)
     chat_history_listbox.selection_clear(0, tk.END)
 
-
+def chatbot_workflow_toggle():
+    # toggle between workflow options
+    # update to the next workflow name
+    chat_workflow_index[0] = (chat_workflow_index[0] + 1) % len(chat_workflow_choices)
+    chat_workflow_button.configure(text=chat_workflow_choices[chat_workflow_index[0]])
 
 def load_chat_history_session(event=None):
     if not chat_history: return
@@ -1925,6 +1936,11 @@ chat_new_button = tk.Button(
     chatbot_frame, text="New Chat", command=chatbot_new_session, height=2, width=10,
 )
 chat_new_button.grid(row=2, column=3, padx=(2, 2), pady=(2, 10), sticky='nsew')
+
+chat_workflow_button = tk.Button(
+    chatbot_frame, text="Auto", command=chatbot_workflow_toggle, height=2, width=10,
+)
+chat_workflow_button.grid(row=2, column=4, padx=(2, 2), pady=(2, 10), sticky='nsew')
 
 # ── Chat history sidebar ──────────────────────────────────────────────────────
 chat_history_listbox = tk.Listbox(
