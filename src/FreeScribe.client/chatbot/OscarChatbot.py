@@ -261,7 +261,7 @@ class OscarCB:
             prompts=self.prompts,
         )
 
-    def run(self, user_input):
+    def run(self, user_input, selected_workflow: str | None = None):
         if not user_input.strip(): return None, None, None
 
         demo_no = self.oscar.get_demographic_no()
@@ -277,13 +277,18 @@ class OscarCB:
                 self.curr_demo = demo_no
 
         context = self._build_context()
-        # classify workflow
-        workflow_type = WorkflowRegistry.classify(user_input, context)
+        # if a forced workflow, no need to run classify
+        if selected_workflow and selected_workflow in self.workflows:
+            workflow_type = selected_workflow
+        else:
+            # classify workflow
+            workflow_type = WorkflowRegistry.classify(user_input, context)
+
         # dispatch run call to respective workflow
         resp = self.workflows[workflow_type].run(user_input, context)
 
         # Store conversation
-        self.current_conversation[self.message_no] = (user_input, resp)
+        self.current_conversation[self.message_no] = (user_input, resp, workflow_type)
         self.conversation_history.append(f"User: {user_input}\nChatbot: {resp}")
         self.message_no += 1
 
@@ -316,8 +321,9 @@ class OscarCB:
         Appends the current conversation into one string.
         """
         convo = ""
-        for msg_no, (user, ai) in self.current_conversation.items():
-            convo += f"USER:\n{user}\n\nCHATBOT:\n{ai}\n"
+        for msg_no, (user, ai, workflow_type) in self.current_conversation.items():
+            workflow_label = f" [{workflow_type.replace('_', ' ').title()}]" if workflow_type else ""
+            convo += f"USER:\n{user}\n\nCHATBOT{workflow_label}:\n{ai}\n\n"
 
         return convo
     
