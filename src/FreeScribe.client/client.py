@@ -51,6 +51,7 @@ from UI.Widgets.CustomTextBox import CustomTextBox
 from UI.Widgets.LabSelectionPanel import LabSelectionPanel
 from UI.Widgets.EformPanel import EformPanel
 from UI.LoadingWindow import LoadingWindow
+from UI.BackgroundTask import BackgroundTask
 from UI.Widgets.MicrophoneSelector import MicrophoneState
 from Model import  ModelManager
 from utils.ip_utils import is_private_ip
@@ -1784,6 +1785,7 @@ if app_settings.editable_settings["Enable Scribe Template"]:
 chat_history = []
 chat_workflow_choices = ["Auto"] + [name.replace('_', ' ').title() for name in chatbot.workflows]
 chat_workflow_index = [0]
+chat_current_task = [None]
 
 def _show_saved_chat(saved_id):
     if saved_id is None or saved_id in chat_history:
@@ -1791,46 +1793,89 @@ def _show_saved_chat(saved_id):
     chat_history.append(saved_id)
     chat_history_listbox.insert(tk.END, chatbot.get_chat_label(saved_id))
 
+def _reset_chat_log():
+    chat_log_display.scrolled_text.config(state='normal')
+    chat_log_display.scrolled_text.delete("1.0", tk.END)
+    chat_log_display.scrolled_text.insert("1.0", "Chat Log\n\n")
+    chat_log_display.scrolled_text.config(fg='grey', state='disabled')
+
 def chatbot_send_message():
+    # ongoing task catch
+    if chat_current_task[0] is not None and chat_current_task[0].is_running():
+        return
     input = chat_user_input.scrolled_text.get("1.0", tk.END).strip()
+    if not input or input == "Type a message…":
+        return
     chat_user_input.scrolled_text.delete("1.0", tk.END)
 
+    # display user's input message
+    chat_log_display.scrolled_text.config(state='normal')
+    chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
+    chat_log_display.scrolled_text.config(state='disabled')
+    chat_log_display.scrolled_text.see(tk.END)
+
+    # disable the input box and add placeholder text
+    chat_user_input.scrolled_text.insert("1.0", "Chatbot is thinking…")
+    chat_user_input.scrolled_text.config(fg='grey', state='disabled')
+    chat_send_button.config(state='disabled')
+
+    # get worklow selections
     workflow_select = chat_workflow_button.cget("text")
     # this assumes that the only transformation is removal of spaces and title format
     selected_workflow = None if workflow_select == "Auto" else workflow_select.lower().replace(' ', '_')
 
-    workflow_type, resp, saved_id = chatbot.run(input, selected_workflow)
+    def handle_return(result, error):
+        # restore the chat input box
+        chat_user_input.scrolled_text.config(fg='black', state='normal')
+        chat_user_input.scrolled_text.delete("1.0", tk.END)
+        chat_send_button.config(state='normal')
+        chat_user_input.scrolled_text.focus_set()
+        chat_current_task[0] = None
 
-    if workflow_type is None:
-        return
+        if error is not None:
+            print(f"Chatbot error: {error}")
+            messagebox.showerror("Chatbot Error", str(error))
+            return
+        workflow_type, resp, saved_id = result
 
-    if saved_id is not None:
+        if workflow_type is None:
+            return
+
+        if saved_id is not None:
+            chat_log_display.scrolled_text.config(state='normal')
+            chat_log_display.scrolled_text.delete("1.0", tk.END)
+            chat_log_display.scrolled_text.config(state='disabled')
+            _show_saved_chat(saved_id)
+            chat_history_listbox.selection_clear(0, tk.END)
+            chat_log_display.scrolled_text.config(state='normal')
+            chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
+            chat_log_display.scrolled_text.config(state='disabled')
+
+        workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
+
         chat_log_display.scrolled_text.config(state='normal')
-        chat_log_display.scrolled_text.delete("1.0", tk.END)
+        chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n\n")
         chat_log_display.scrolled_text.config(state='disabled')
-        _show_saved_chat(saved_id)
-        chat_history_listbox.selection_clear(0, tk.END)
-
-    workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
-
-    chat_log_display.scrolled_text.config(state='normal')
-    chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
-    chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n\n")
-    chat_log_display.scrolled_text.config(state='disabled')
 
 
-    # Scroll to the bottom
-    # chat_log_display.yview(tk.END)
-    chat_log_display.scrolled_text.see(tk.END)
+        # Scroll to the bottom
+        # chat_log_display.yview(tk.END)
+        chat_log_display.scrolled_text.see(tk.END)
 
-    print("Message sent")
+        print("Message sent")
+    task = BackgroundTask(
+        root, 
+        func=chatbot.run, 
+        args=(input, selected_workflow),
+        on_done = handle_return
+    )
+    chat_current_task[0] = task
+    task.start()
 
 def chatbot_clear():
     print("Cleared Chat")
     chatbot.clear()
-    chat_log_display.scrolled_text.config(state='normal')
-    chat_log_display.scrolled_text.delete("1.0", tk.END)
-    chat_log_display.scrolled_text.config(state='disabled')
+    _reset_chat_log()
     chat_history_listbox.selection_clear(0, tk.END)
 
     
@@ -1840,10 +1885,7 @@ def chatbot_new_session():
         return
     print("Starting New Chat")
     saved_id = chatbot.new_chat()
-    chat_log_display.scrolled_text.config(state='normal')
-    chat_log_display.scrolled_text.delete("1.0", tk.END)
-    chat_log_display.scrolled_text.config(state='disabled')
-
+    _reset_chat_log()
     _show_saved_chat(saved_id)
     chat_history_listbox.selection_clear(0, tk.END)
 
@@ -1896,9 +1938,7 @@ chat_log_display.grid(
     row=0, column=1, columnspan=8, padx=(5, 2), pady=(12, 4), sticky='nsew',
 )
 chat_log_display._id = "chat_log_tbox"
-chat_log_display.scrolled_text.config(state='normal')
-chat_log_display.scrolled_text.insert("1.0", "Chat Log")
-chat_log_display.scrolled_text.config(fg='grey', state='disabled')
+_reset_chat_log()
 
 # ── User input ────────────────────────────────────────────────────────────────
 chat_user_input = CustomTextBox(chatbot_frame, height=5)

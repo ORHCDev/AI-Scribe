@@ -275,7 +275,6 @@ class OscarCB:
                 logging.info(f"Prev: {self.curr_demo} | New: {demo_no}")
                 new_chat_result = self.new_chat()
                 self.curr_demo = demo_no
-
         context = self._build_context()
         # if a forced workflow, no need to run classify
         if selected_workflow and selected_workflow in self.workflows:
