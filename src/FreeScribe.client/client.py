@@ -1836,7 +1836,10 @@ def chatbot_send_message():
             print(f"Chatbot error: {error}")
             messagebox.showerror("Chatbot Error", str(error))
             return
-        workflow_type, resp, saved_id = result
+        workflow_type, result, saved_id = result
+        # result is WorkflowResult type
+        resp = result.response
+        sources = result.sources
 
         if workflow_type is None:
             return

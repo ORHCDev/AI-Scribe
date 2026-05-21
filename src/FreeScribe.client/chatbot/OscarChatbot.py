@@ -12,7 +12,7 @@ from chatbot.Tools.Tool import ToolRegistry, TOOL_REGISTRY, ToolEmbeddings
 from chatbot.AIConnect import AIConnect
 from chatbot.RAG.VectorSearch import VectorSearch, VectorDB
 from chatbot.utils.dailylogger import setup_daily_logger
-from chatbot.Workflows.Workflow import WorkflowRegistry, WorkflowContext
+from chatbot.Workflows.Workflow import WorkflowRegistry, WorkflowContext, WorkflowResult
 from chatbot.ChatSession import ChatSession
 import chatbot.Workflows
 
@@ -284,14 +284,14 @@ class OscarCB:
             workflow_type = WorkflowRegistry.classify(user_input, context)
 
         # dispatch run call to respective workflow
-        resp = self.workflows[workflow_type].run(user_input, context)
+        result = self.workflows[workflow_type].run(user_input, context)
 
         # Store conversation
-        self.current_conversation[self.message_no] = (user_input, resp, workflow_type)
-        self.conversation_history.append(f"User: {user_input}\nChatbot: {resp}")
+        self.current_conversation[self.message_no] = (user_input, result.response, workflow_type, result.sources)
+        self.conversation_history.append(f"User: {user_input}\nChatbot: {result.response}")
         self.message_no += 1
 
-        return workflow_type, resp, new_chat_result
+        return workflow_type, result, new_chat_result
 
 
 
@@ -320,7 +320,7 @@ class OscarCB:
         Appends the current conversation into one string.
         """
         convo = ""
-        for msg_no, (user, ai, workflow_type) in self.current_conversation.items():
+        for msg_no, (user, ai, workflow_type, sources) in self.current_conversation.items():
             workflow_label = f" [{workflow_type.replace('_', ' ').title()}]" if workflow_type else ""
             convo += f"USER:\n{user}\n\nCHATBOT{workflow_label}:\n{ai}\n\n"
 

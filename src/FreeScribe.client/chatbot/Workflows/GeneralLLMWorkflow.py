@@ -1,12 +1,13 @@
-from chatbot.Workflows.Workflow import Workflow, WorkflowContext, workflow
+from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult, workflow
 
 @workflow(
     name="general_llm",
-    description="General medical knowledge questions that do not require patient-specific data"
+    description="General medical knowledge questions that do not require patient-specific data",
+    keywords=["explain", "summarize", "define"]
 )
 class GeneralLLMWorkflow(Workflow):
 
-    def run(self, user_input: str, context: WorkflowContext) -> str:
+    def run(self, user_input: str, context: WorkflowContext) -> WorkflowResult:
         """
         Single LLM call with conversation history. No patient context or tools.
         """
@@ -16,4 +17,5 @@ class GeneralLLMWorkflow(Workflow):
             user_input=user_input
         )
         #print(f"{'='*50}\nGENERAL LLM PROMPT:\n{prompt}\n{'='*50}")
-        return context.ai_conn.send_message(prompt)
+        resp = context.ai_conn.send_message(prompt)
+        return WorkflowResult(response=resp)

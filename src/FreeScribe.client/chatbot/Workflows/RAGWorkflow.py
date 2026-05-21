@@ -2,16 +2,17 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from chatbot.Workflows.Workflow import Workflow, WorkflowContext, workflow
+from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult, workflow
 
 
 @workflow(
     name="rag_search",
-    description="Patient-specific clinical queries requiring search of documents, labs, measurements, or clinical history"
+    description="Patient-specific clinical queries requiring search of documents, labs, measurements, or clinical history",
+    keywords=["search", "query", "find", "lab values", "lab results", "lab documents", "documents"]
 )
 class RAGWorkflow(Workflow):
 
-    def run(self, user_input: str, context: WorkflowContext) -> str:
+    def run(self, user_input: str, context: WorkflowContext) -> WorkflowResult:
         """
         Chains multiple LLM calls together augmenting original user input with patient context.
 
@@ -26,7 +27,7 @@ class RAGWorkflow(Workflow):
         7. Return LLM response to follow up.
         """
 
-        if not user_input.strip(): return
+        if not user_input.strip(): return WorkflowResult(response="")
 
         today = datetime.now()
 
@@ -98,7 +99,8 @@ class RAGWorkflow(Workflow):
                 "type" : d["document_type"],
                 "obs_date" : d["observation_date"],
                 "text" : d["chunk_text"],
-                "is_tool" : False
+                "is_tool" : False,
+                "source_type" : "document"
             }
             chunks.append(data)
 
@@ -108,7 +110,8 @@ class RAGWorkflow(Workflow):
                 "type" : m["measurement_type"],
                 "obs_date" : m["observation_date"],
                 "text" : m["chunk_text"],
-                "is_tool" : False
+                "is_tool" : False,
+                "source_type" : "measurement"
             }
             chunks.append(data)
 
@@ -122,6 +125,9 @@ class RAGWorkflow(Workflow):
         #
         # Extract tools and prompt LLM
         tools = [elem[1] for elem in top_k if elem[1]["is_tool"]]
+
+        # Generating sources array
+        sources = []
 
         tool_context = ""
         if tools:
@@ -153,14 +159,31 @@ class RAGWorkflow(Workflow):
                     res = context.tools.execute_tool(name, **args)
                     tool_context += f"Tool: {name}\nResults: {res}\n\n"
 
+                    sources.append({
+                        "source_type": "tool",
+                        "id": name, # the tool name
+                        "data_type": None,
+                        "obs_date": None,
+                        "score": None
+                    })
+
         MAX_LEN = 15000
         cur_len = len(context.prompts.get("followup")) + len(tool_context)
 
         # Generate context string
         doc_context = ""
         for elem in top_k:
-            if not elem[1]["is_tool"]:
-                doc_context += f"Date Observed: {elem[1]['obs_date'].strftime('%Y-%m-%d')}\nDocument ID: {elem[1]['id']}\nContent:{elem[1]['text']}\n\n"
+            chunk = elem[1]
+            if not chunk["is_tool"]:
+                sources.append({
+                    "source_type": chunk["source_type"],
+                    "id": chunk["id"],
+                    "data_type": chunk["type"],
+                    "obs_date": chunk["obs_date"],
+                    "score": float(elem[0])
+                })
+
+                doc_context += f"Date Observed: {chunk['obs_date'].strftime('%Y-%m-%d')}\nDocument ID: {chunk['id']}\nContent:{chunk['text']}\n\n"
                 if len(doc_context) + cur_len > MAX_LEN:
                     break
 
@@ -191,4 +214,4 @@ class RAGWorkflow(Workflow):
         # self._write_out(followup_prompt, "#")
         # self._write_out(resp, "$")
 
-        return resp
+        return WorkflowResult(response=resp, sources=sources)
