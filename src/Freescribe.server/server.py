@@ -7,9 +7,15 @@ import cgi
 import json
 import os
 import tempfile
+import yaml
 
 # Initialize Whisper model
 model = whisper.load_model("medium")
+
+with open(r".\configs\config.yaml", "r", encoding="utf-8") as f:
+    config = yaml.safe_load(f)
+
+WHISPER_API_KEY = config.get("WHISPER_API_KEY")
 
 class RequestHandler(BaseHTTPRequestHandler):
     def handle_one_request(self):
@@ -23,6 +29,10 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             if self.path == '/whisperaudio':
+                auth = self.headers.get('Authorization', '')
+                if WHISPER_API_KEY and auth != f"Bearer {WHISPER_API_KEY}":
+                    self.send_error(401, "Unauthorized")
+                    return
                 ctype, pdict = cgi.parse_header(self.headers.get('content-type'))
                 if ctype == 'multipart/form-data':
                     pdict['boundary'] = bytes(pdict['boundary'], "utf-8")
