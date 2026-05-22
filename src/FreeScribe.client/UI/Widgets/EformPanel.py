@@ -466,7 +466,7 @@ class EformPanel(tk.Frame):
                 doc_text = pdf_image_to_text(pdf_bytes=pdf_bytes, last_page=3)
                 data = doc_data[doc_no]
 
-                text = f"DOCUMENT TYPE: {data[0]}\nOBSERVATION DATE: {data[1]}\n{doc_text}"
+                text += f"DOCUMENT TYPE: {data[0]}\nOBSERVATION DATE: {data[1]}\n{doc_text}"
             except Exception as e:
                 print(f"Error when reading text from {doc_no}: {e}")
 
