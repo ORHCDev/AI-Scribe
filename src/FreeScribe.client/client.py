@@ -66,6 +66,7 @@ from UI.DebugWindow import DualOutput
 
 
 from chatbot.OscarChatbot import OscarCB
+from UI.Widgets.SourcesWindow import SourcesWindow
 
 
 dual = DualOutput()
@@ -1857,7 +1858,20 @@ def chatbot_send_message():
         workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
 
         chat_log_display.scrolled_text.config(state='normal')
-        chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n\n")
+        chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n")
+
+        if sources:
+            src_label = tk.Label(
+                chat_log_display.scrolled_text,
+                text=f"Sources [{len(sources)}]",
+                fg="blue",
+                cursor="hand2",
+                background=chat_log_display.scrolled_text.cget("background")
+            )
+            chat_log_display.scrolled_text.window_create(tk.END, window=src_label)
+            SourcesWindow(root, src_label, sources, chatbot.oscar.open_doc)
+
+        chat_log_display.scrolled_text.insert(tk.END, "\n\n")
         chat_log_display.scrolled_text.config(state='disabled')
 
 
