@@ -188,9 +188,10 @@ class OscarCB:
         try:
             # AI Connection endpoint
             endpoint = self.config["AIConnection"]["endpoint"]
+            api_key = self.config["AIConnection"]["api_key"]
             
             # Initialize AI Connection
-            self.ai_conn = AIConnect(endpoint, top_p=0.25, top_k=20)
+            self.ai_conn = AIConnect(endpoint, api_key=api_key, top_p=0.25, top_k=20)
             logging.info("Successfully Initialized AI Connection")
             return True
         except Exception as e:

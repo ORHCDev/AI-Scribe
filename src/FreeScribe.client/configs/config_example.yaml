@@ -8,6 +8,7 @@ OscarLogin :
 
 AIConnection :
   endpoint : http://ipaddress/v1
+  api_key : api_key
 
 Selenium :
   geckodriver_path : Path\to\geckodriver
