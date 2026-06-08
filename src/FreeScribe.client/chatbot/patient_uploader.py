@@ -27,7 +27,7 @@ def initialize_oscardb(config) -> SOQ | OscarDB:
     user = oscar_login["user"]
     passw = oscar_login["passw"]
     pin = oscar_login["pin"]
-    oscar_url = oscar_login["ip_addr"]
+    oscar_url = oscar_login["url"]
     oscar_version = oscar_login["version"]
 
     # Driver path

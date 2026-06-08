@@ -140,7 +140,7 @@ Follow this to setup a local Postgres database with the pgvector extension on Do
  * Can verify it has been installed using `docker --version` in command prompt.
 2. Start PostgreSQL + pgvector container.
 ```bash
-docker run -d --name pgvector -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=emr -p 5432:5432 ankane/pgvector
+docker run -d --name pgvector -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=emr -p 5432:5432 -v pgvector_data:/var/lib/postgresql/data ankane/pgvector
 ```
  * You can change the user, password, database name, and port by changing the values above or just leave it as is.
  * This image will run PostgreSQL, has pgvector pre-installed, and is production-grade.
