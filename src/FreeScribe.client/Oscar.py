@@ -220,28 +220,43 @@ class Oscar:
             demo_no=demo_no
         )
         self.driver.execute_script(f"window.open('{link}', '_blank', 'width=800,height=600');")
-        
         if checkboxes:
             # Switch to new window
             self.driver.switch_to.window(self.driver.window_handles[-1])
             # Wait for checkboxes to load
             self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, f'input[name="{checkboxes[0]}"]'))
+                EC.presence_of_element_located((By.CSS_SELECTOR, f'input[name="{checkboxes[0]["name"]}"]'))
             )
 
             # Build and execute JS to check all specified boxes
             js_checks = []
-            for field_name in checkboxes:
-                js_checks.append(f"""
-                    var cb = document.querySelector('input[name="{field_name}"]');
-                    if (cb) {{
-                        cb.checked = true;
-                        if (cb.onclick) cb.onclick();  // fires the add() calls too
-                    }}
-                """)
+            for field in checkboxes:
+                field_name = field["name"]
+                field_type = field["type"]
+                field_value = field["value"]
+                if field_type == "checkbox":
+                    js_checks.append(f"""
+                        var cb = document.querySelector('input[name="{field_name}"]');
+                        if (cb) {{
+                            cb.checked = true;
+                            if (cb.onclick) {{ try {{ cb.onclick(); }} catch(e) {{}} }}  // fires the add() calls too
+                        }}
+                    """)
+                elif field_type == "text":
+                    js_checks.append(f"""
+                        var cb = document.querySelector('input[id="{field_name}"]');
+                        if (cb) {{
+                            cb.value = "{field_value}";
+                        }}
+                    """)
+                    print(f"""
+                        var cb = document.querySelector('input[id="{field_name}"]');
+                        if (cb) {{
+                            cb.value = "{field_value}";
+                        }}
+                    """)
             # Execute JS
             self.driver.execute_script("\n".join(js_checks))
-
         self.driver.switch_to.window(self.home_window)
 
         return True
@@ -302,16 +317,21 @@ class Oscar:
 
         # Get HTML
         html = self._get_filled_eform_html(fdid)
-
         # Organize HTML
         soup = BeautifulSoup(html, "lxml")
-        
         # Search for text area
         textarea = soup.find("textarea", {"name" : "sbx"})
 
-        # Return text
-        return textarea.text.strip()
+        if textarea:
+            return textarea.text.strip()
 
+        textarea = soup.find("textarea", {"id": "Letter"})
+
+        # Return text if textarea exists
+        if not textarea:
+            return None
+
+        return textarea.text.strip()
 
     def insert_text_into_0letter(self, fdid, consult, med_hist=None):
         """
@@ -519,6 +539,7 @@ class Oscar:
                 name = i.get("name")
                 # Add to list
                 checkboxes.append({
+                    "type"      : "checkbox",
                     "id"        : cid or name,
                     "name"      : name or cid,
                     "full_name" : full_name or name,

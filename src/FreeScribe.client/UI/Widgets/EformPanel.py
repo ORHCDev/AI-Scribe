@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from UI.Widgets.SearchableSelector import SearchableComboBox
 from utils.read_files import pdf_image_to_text
+from utils.referral_form_processor import labels_to_ids
 
 class EformPanel(tk.Frame):
     """
@@ -116,14 +117,16 @@ class EformPanel(tk.Frame):
         self.med_hist.grid(row=1, column=1, padx=2, pady=2, sticky="nsew")
 
         
-
+        self.checkbox_data = None
+        self.referral_data = None
         self.eforms = self._load_eforms()
         self.doc_types = self._load_document_types()
         self.document_defaults = [
             "DC summary",
             "CATH",
         ]
-        self.doc_cbs = {}
+        # Add document defaults
+        self.doc_cbs = {opt: tk.BooleanVar(value=opt in self.document_defaults) for opt in self.doc_types}
 
         # Dropdown
         self.eform_var = tk.StringVar(value=list(self.eforms.keys())[0])
@@ -221,7 +224,7 @@ class EformPanel(tk.Frame):
         print(f"Loading checkboxes for {form_name}")
 
         checkboxes = self.oscar.get_eform_checkboxes(fid)
-
+        self.checkbox_data = checkboxes
         self.checkbox_vars.clear()
 
         for row, checkbox in enumerate(checkboxes):
@@ -260,7 +263,14 @@ class EformPanel(tk.Frame):
         form_name = self.eform_var.get()
         fid = self.eforms[form_name]
         # Get selected checkboxes
-        checkboxes = [k for k, v in self.checkbox_vars.items() if v.get()]        
+        
+        data_lookup = {cb["name"]: cb for cb in self.checkbox_data} if self.checkbox_data else {}
+        checkboxes = [data_lookup[k] for k, v in self.checkbox_vars.items() if v.get() and k in data_lookup]
+
+        if form_name == "0.5orhcreqd2" and self.referral_data:
+            # Adds the Requisition form data
+            checkboxes.extend(self.referral_data)
+
         # Open eForm
         res = self.oscar.open_new_eform(fid, checkboxes)
 
@@ -402,7 +412,9 @@ class EformPanel(tk.Frame):
         fdid = res[0]["fdid"]
         return fdid
 
-
+    def set_referral_data(self, data):
+        print(data)
+        self.referral_data = labels_to_ids(data)
 
     def load_medical_history(self, doc_names=None, display=True):
         """
@@ -435,6 +447,14 @@ class EformPanel(tk.Frame):
             selected_docs = [opt for opt, var in self.doc_cbs.items() if var.get()]
         else:
             selected_docs = doc_names
+
+
+        # Custom Doc Selection
+        # Replace this for a better pattern eventually
+        eform_selection = self.eform_var.get()
+        if eform_selection == "0.5orhcreqd2":
+            selected_docs.append("Referral Letter")
+
         print(selected_docs)
 
         # Filter documents to get most recent
@@ -487,12 +507,11 @@ class EformPanel(tk.Frame):
         """
         res = self.db_conn.query_database(query)
 
-        fdid = res[0]["fdid"]
-        date = res[0]["form_date"]
-
-        letter_text = self.oscar.get_0letter_text(fdid)
-        text += f"LETTER\nLETTER DATE: {date}\n{letter_text}"
-
+        if res:
+            fdid = res[0]["fdid"]
+            date = res[0]["form_date"]
+            letter_text = self.oscar.get_0letter_text(fdid)
+            text += f"LETTER\nLETTER DATE: {date}\n{letter_text}"
 
         if display:
             for widget in self.parent.winfo_children():
