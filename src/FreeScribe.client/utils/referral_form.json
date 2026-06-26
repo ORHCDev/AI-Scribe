@@ -1,0 +1,760 @@
+{
+  "cardiology consultation": {
+    "id": "consult"
+
+  },
+  "electrocardiogram": {
+    "id": "ecg",
+    "indications": {
+      "id": "ecg-input",
+      "options": [
+        {
+          "id": "Cor Health Ind. # 1.1. Chest pain of suspected cardiac origin.",
+          "label": "Chest pain of suspected cardiac origin."
+        },
+        {
+          "id": "Cor Health Ind. # 1.2 exertional fatigue.   ",
+          "label": "exertional fatigue"
+        },
+        {
+          "id": "exercise intolerance.   Cor Health Ind. # 1.2",
+          "label": "exercise intolerance"
+        },
+        {
+          "id": "dyspnea.    Cor Health Ind. # 1.2",
+          "label": "dyspnea"
+        },
+        {
+          "id": "chest discomfort.    Cor Health Ind. # 1.2",
+          "label": "chest discomfort"
+        },
+        {
+          "id": "orthopnea.    Cor Health Ind. # 1.2",
+          "label": "orthopnea"
+        },
+        {
+          "id": "PND. Cor Health Ind. # 1.2",
+          "label": "PND"
+        },
+        {
+          "id": "peripheral edema.  Cor Health Ind. # 1.2",
+          "label": "peripheral edema."
+        },
+        {
+          "id": "syncope.  Cor Health Ind. # 1.3",
+          "label": "syncope"
+        },
+        {
+          "id": "palpitation. Cor Health Ind. # 1.3",
+          "label": "Palpitation"
+        },
+        {
+          "id": "pre-syncope. Cor Health Ind. # 1.3",
+          "label": "pre-syncope"
+        },
+        {
+          "id": "Clinical signs suggestive of cardiac disease. Cor Health Ind. # 1.4",
+          "label": "Clinical signs suggestive of cardiac disease"
+        },
+        {
+          "id": "To  follow up coronary artery disease. Cor Health Ind. #  2.1",
+          "label": "coronary artery disease"
+        },
+        {
+          "id": "To  follow up ventricular hypertrophy. Cor Health Ind. #  2.1",
+          "label": "ventricular hypertrophy"
+        },
+        {
+          "id": "To follow up cardiomyopathy.  Cor Health Ind. #2.1",
+          "label": "cardiomyopathy"
+        },
+        {
+          "id": "(yearly)  patients with structural heart disease. Cor Health Ind. #  2.2",
+          "label": "structural heart disease"
+        },
+        {
+          "id": "(yearly)  atrial arrhythmia. Cor Health Ind. #  2.3",
+          "label": "atrial arrhythmia"
+        },
+        {
+          "id": "(yearly)  ventricular arrhythmia. Cor Health Ind. #  2.3",
+          "label": "ventricular arrhythmia"
+        },
+        {
+          "id": "(yearly)  premature ventricular contraction. Cor Health Ind. #  2.3",
+          "label": "premature ventricular contraction"
+        },
+        {
+          "id": "(yearly) conduction disease Cor Health Ind. #  2.3",
+          "label": "conduction disease"
+        },
+        {
+          "id": "(yearly)  ventricular pre-excitation Cor Health Ind. #  2.3",
+          "label": "ventricular pre-excitationt"
+        },
+        {
+          "id": "(yearly) supraventricular arrhythmia. Cor Health Ind. #  2.3",
+          "label": "SVT"
+        },
+        {
+          "id": "change in symptoms. Cor Health Ind. #  2.4",
+          "label": "change in symptoms"
+        },
+        {
+          "id": "annual routine clinical follow-up. Cor Health Ind. #  2.5",
+          "label": "annual routine clinical follow-up"
+        },
+        {
+          "id": "To follow up pacemaker.  Cor Health Ind. #2.6",
+          "label": "pacemaker"
+        },
+        {
+          "id": "To follow up ICD.  Cor Health Ind. #2.6",
+          "label": "ICD"
+        },
+        {
+          "id": "To follow up CRT.  Cor Health Ind. #2.6",
+          "label": "CRT"
+        },
+        {
+          "id": "To follow up long QT syndrome.  Cor Health Ind. #2.7",
+          "label": "long QT"
+        },
+        {
+          "id": "To follow up Brugada ECG/syndrome.  Cor Health Ind. #2.7",
+          "label": "Bruguda ECG"
+        },
+        {
+          "id": "To follow up CPVT.  Cor Health Ind. #2.7",
+          "label": "CPVT"
+        },
+        {
+          "id": "To follow up ARVC.  Cor Health Ind. #2.7",
+          "label": "ARVC"
+        },
+        {
+          "id": "peripheral artery disease. Cor Health Ind. #  2.8",
+          "label": "peripheral artery disease"
+        },
+        {
+          "id": "cerebrovascular disease. Cor Health Ind. #  2.8",
+          "label": "cerebrovascular disease"
+        },
+        {
+          "id": "arterial aneurysmal disease. Cor Health Ind. #  2.8",
+          "label": "arterial aneurysmal disease"
+        },
+        {
+          "id": "initiate cardiac rehabilitation. Cor Health Ind. #  2.9",
+          "label": "initiate cardiac rehabilitation"
+        },
+        {
+          "id": "Sarcoid, Amyloid, or Rheumatoid arthritis. Cor Health Ind. #  2.10",
+          "label": "Sarcoid, Amyloid, or Rheumatoid arthritis"
+        },
+        {
+          "id": "Diabetes. Cor Health Ind. #  3.1",
+          "label": "Diabetes"
+        },
+        {
+          "id": "smoking history. Cor Health Ind. #  3.1",
+          "label": "smoking history"
+        },
+        {
+          "id": "Initial evaluation in hyperlipidemia. Cor Health Ind. #  3.1",
+          "label": "hyperlipidemia"
+        },
+        {
+          "id": "Initial evaluation in hypertension. Cor Health Ind. #  3.1",
+          "label": "hypertension"
+        },
+        {
+          "id": "family history of premature coronary artery disease. Cor Health Ind. #  3.1",
+          "label": "family history of premature coronary artery disease"
+        },
+        {
+          "id": "evaluation of patients who want to initiate an exercise program. Cor Health Ind. #  3.2",
+          "label": "evaluation of patients who want to intiiate an exercise program"
+        },
+        {
+          "id": "Pre-operative assessment of patients considered to be at increased risk for perioperative cardiovascular morbidity. Cor Health Ind. #  3.3",
+          "label": "Pre-operative assessment of patients considered to be at increased risk for perioperative cardiovascular morbidity"
+        },
+        {
+          "id": "Pre-operative assessment of patients undergoing surgeries with moderate (1-5%) or high (>5%) risk for cardiovascular morbidity. Cor Health Ind. #  3.4",
+          "label": "Pre-operative assessment of patients undergoing surgeries with moderate (1-5%) or high (>5%) risk for cardiovascular morbidity"
+        },
+        {
+          "id": "Pre-operative assessment of obese patients (defined as Body Mass Index ≥ 30/m2) with at least one (1) cardiac risk factor. Cor Health Ind. #  3.5",
+          "label": "Pre-operative assessment of obese patients (defined as Body Mass Index ≥ 30/m2) with at least one (1) cardiac risk factor"
+        },
+        {
+          "id": " patients at elevated risk of vascular disease. Cor Health Ind. #  3.6",
+          "label": "patients at elevated risk of vascular disease"
+        },
+        {
+          "id": "patients with pulmonary disease. Cor Health Ind. #  3.7",
+          "label": "patients with pulmonary disease"
+        },
+        {
+          "id": "f/u medications which are known to cause electrocardiographic changes. Cor Health Ind. #  4.1",
+          "label": "medications which are known to cause electrocardiographic changes"
+        },
+        {
+          "id": "f/u assessment of electrocardiographic changes due to initiation or dose adjustment of medications. Cor Health Ind. #  4.2",
+          "label": "Follow-up assessment of electrocardiographic changes due to initiation or dose adjustment of medications"
+        },
+        {
+          "id": "Before medications which are known to cause non-arrhythmic cardiac side effects. Cor Health Ind. #  4.3",
+          "label": "medications which are known to cause non-arrhythmic cardiac side effects"
+        }
+      ]
+    }
+  },
+  "echo doppler": {
+    "id": "echo",
+    "options": [
+      {
+        "id": "contrastecho",
+        "label": "Contrast Echocardiogram (recommended for patients with elevated BMI > 30)"
+      }
+    ],
+    "indications": {
+      "id": "echo-input",
+      "options": [
+        {
+          "id": "status post CABG to re-assess LV function. Cor Health Ind. #  12.6. ", 
+          "label": "status post CABG to re-assess LV function. Cor Health Ind. # 12.6."
+        },
+        {
+          "id": "status post PCI to re-assess LV function. Cor Health Ind. #  12.6. ", 
+          "label": "status post PCI to re-assess LV function. Cor Health Ind. # 12.6."
+        },
+        {
+          "id": "unexplained murmur.    Cor Health Ind. # 1.1",
+          "label": "unexplained murmur."
+        },
+        {
+          "id": "follow up asymptomatic severe AS.   Cor Health Ind. # 2.6", 
+          "label": "follow up asymptomatic severe aortic stenosis"
+        },
+        {
+          "id": "follow up asymptomatic moderate AS.   Cor Health Ind. # 2.5", 
+          "label": "follow up asymptomatic moderate aortic stenosis"
+        },
+        {
+          "id": "follow up asymptomatic severe AR.    Cor Health Ind. # 3.4", 
+          "label": "follow up asymptomatic severe aortic regurgitation"
+        },
+        {
+          "id": "follow up asymptomatic moderate AR.    Cor Health Ind. # 3.3", 
+          "label": "follow up asymptomatic moderate aortic regurgitation"
+        },
+        {
+          "id": "follow up asymptomatic mild AR.    Cor Health Ind. # 3.1", 
+          "label": "follow up asymptomatic mild aortic regurgitation"
+        },
+        {
+          "id": "shortness of breath. Cor Health Ind. # 13", 
+          "label": "shortness of breath"
+        },
+        {
+          "id": "atrial fibrillation.  Cor Health Ind. # 17.2", 
+          "label": "atrial fibrillation"
+        },
+        {
+          "id": "syncope.  Cor Health Ind. # 17.3", 
+          "label": "syncope"
+        },
+        {
+          "id": "Post-MI patient with LV dysfunction. Cor Health Ind. # 12.7", 
+          "label": "Post-MI patient with LV dysfunction"
+        },
+        {
+          "id": "CHF. Cor Health Ind. # 13.1", 
+          "label": "CHF"
+        },
+        {
+          "id": "hypertension. Cor Health Ind. # 14", 
+          "label": "hypertension"
+        },
+        {
+          "id": "hypertrophic cardiomyopathy. Cor Health Ind. # 14.2", 
+          "label": "hypertrophic cardiomyopathy"
+        },
+        {
+          "id": "To  follow up asymptomatic severe mitral regurgitation. Cor Health Ind. #  3.4", 
+          "label": "To follow up asymptomatic severe mitral regurgitation"
+        },
+        {
+          "id": "To  follow up asymptomatic moderate mitral regurgitation. Cor Health Ind. #  3.3", 
+          "label": "To follow up asymptomatic moderate mitral regurgitation"
+        },
+        {
+          "id": "suspected angina", 
+          "label": "suspected angina. Cor Health Ind. # 12.3"
+        },
+        {
+          "id": "Evaluation of patient with chest pain. Cor Health Ind. #  12.3", 
+          "label": "Evaluation of patient with chest pain"
+        },
+        {
+          "id": "For evaluation of mitral valve prolapse. Cor Health Ind. #  4.3", 
+          "label": "For evaluation of mitral valve prolapse"
+        },
+        {
+          "id": "Patient post mitral valve repair. Cor Health Ind. #  5.3", 
+          "label": "Patient post mitral valve repair"
+        },
+        {
+          "id": "For suspected prosthetic  mitral valve dysfunction. Cor Health Ind. #  6.3", 
+          "label": "For suspected prosthetic mitral valve dysfunction"
+        },
+        {
+          "id": "For suspected prosthetic  aortic valve dysfunction. Cor Health Ind. #  6.3", 
+          "label": "For suspected prosthetic aortic valve dysfunction"
+        },
+        {
+          "id": "Patient post mitral valve replacement. Cor Health Ind. #  6.2", 
+          "label": "Patient post mitral valve replacement"
+        },
+        {
+          "id": "Patient post aortic valve replacement. Cor Health Ind. #  6.2", 
+          "label": "Patient post aortic valve replacement"
+        },
+        {
+          "id": "Patient with shunt. Cor Health Ind. #  5.2", 
+          "label": "Patient shunt"
+        }
+      ]
+    }
+  },
+  "stress echocardiogram": {
+    "id": "stecho",
+    "options": [
+      {
+        "id": "contrast",
+        "label": "Contrast Stress Echocardiogram (recommended for patients with elevated BMI > 25)"
+      }
+    ],
+    "indications": {
+      "id": "stecho-input",
+      "options": [
+        { 
+          "id": "  Typical or atypical chest pain or ischemic equivalent syndrome.    Cor Health Ind. #21.1",
+          "label": "Typical or atypical chest pain or ischemic equivalent syndrome. Cor Health Ind.# 21.1."
+        },
+        { 
+          "id": "   suspected stable CAD, intermediate pretest probability and preserved ejection fraction.   ASE 2020: class 1",  
+          "label": "suspected stable CAD, intermediate pretest probability and preserved ejection fraction. ASE 2020: class 1." 
+        },
+        { 
+          "id": "  without typical angina, with pretest probability high or if LVEF is reduced.   ASE 2020: class 1",
+          "label": "without typical angina, with pretest probability high or if LVEF is reduced. ASE 2020: class 1." 
+        },
+        { 
+          "id": "  suspected CAD and with resting ECG abnormalities.   ASE 2020: class 1",
+          "label": "suspected CAD and with resting ECG abnormalities. ASE 2020: class 1."
+        },
+        { 
+          "id": "  inconclusive exercise ECG.   ASE 2020: class 1",
+          "label": "inconclusive exercise ECG. ASE 2020: class 1."
+        },
+        { 
+          "id": "  known stable CAD and a deterioration in symptoms.   ASE 2020: class 1",
+          "label": "known stable CAD and a deterioration in symptoms. ASE 2020: class 1."
+        },
+        { 
+          "id": "  LBBB and symptoms consistent with IHD.   ASE 2020: class 1",
+          "label": "LBBB and symptoms consistent with IHD. ASE 2020: class 1."
+        },
+        { 
+          "id": " female with known or suspected CAD.   ASE 2020: class 1",
+          "label": "female with known or suspected CAD. ASE 2020: class 1."
+        },
+        { 
+          "id": "  exertional dyspnea of uncertain etiology.   ASE 2020: class 1",
+          "label": "exertional dyspnea of uncertain etiology. ASE 2020: class 1."
+        },
+        { 
+          "id": "  suspected CAD and with resting ECG abnormalities.   ASE 2020: class 1",
+          "label": "suspected CAD and with resting ECG abnormalities. ASE 2020: class 1."
+        },
+        { 
+          "id": "  known CAD with recurrent or new symptoms.   ASE 2020: class 1",
+          "label": "known CAD with recurrent or new symptoms. ASE 2020: class 1."
+        },
+        { 
+          "id": "  suspected CAD and with resting ECG abnormalities.   ASE 2020: class 1",
+          "label": "suspected CAD and with resting ECG abnormalities. ASE 2020: class 1."
+        },
+        { 
+          "id": " prior coronary artery revascularization (PCI or CABG) and new cardiac symptoms.   ASE 2020: class IIa",
+          "label": "prior coronary artery revascularization (PCI or CABG) and new cardiac symptoms. ASE 2020: class IIa"
+        },
+        { 
+          "id": " assess the functional severity of intermediate lesions on coronary arteriography.   ASE 2020: class IIa",
+          "label": "assess the functional severity of intermediate lesions on coronary arteriography. ASE 2020: class IIa."
+        },
+        { 
+          "id": " diabetes, peripheral vascular disease, or a strong family history of CAD.   ASE 2020: class IIb",
+          "label": "diabetes, peripheral vascular disease, or a strong family history of CAD. ASE 2020: class IIb."
+        },
+        { 
+          "id": " asymptomatic patient with stable CAD.   ASE 2020: class IIb",
+          "label": "asymptomatic patient with stable CAD. ASE 2020: class IIb."
+        },
+        { 
+          "id": " diabetes, peripheral vascular disease, or a strong family history of CAD.   ASE 2020: class IIb",
+          "label": "diabetes, peripheral vascular disease, or a strong family history of CAD. ASE 2020: class IIb."
+        },
+        { 
+          "id": " Possible ACS with non diagnostic ECG changes and negative or borderline significant troponin levels.  Cor Health Ind. #21.2",
+          "label": "Possible ACS with non diagnostic ECG changes and negative or borderline significant troponin levels."
+        },
+        { 
+          "id": "History of Congestive Heart Failure.   Cor Health Ind. #21.3",
+          "label": "History of Congestive Heart Failure."
+        },
+        { 
+          "id": "Known LV systolic dysfunction of unclear etiology.     Cor Health Ind. #21.4",
+          "label": "Known LV systolic dysfunction of unclear etiology."
+        },
+        { 
+          "id": "Significant ventricular arrhythmia.     Cor Health Ind. #21.5",
+          "label": "Significant ventricular arrhythmia."
+        },
+        { 
+          "id": "Syncope of unclear etiology.  Cor Health Ind. #21.6",
+          "label": "Syncope of unclear etiology."
+        },
+        { 
+          "id": "Borderline or high troponin levels in a setting other than ACS.   Cor Health Ind. #21.7",
+          "label": "Borderline or high troponin levels in a setting other than ACS."
+        },
+        { 
+          "id": " Significant cerebrovascular or peripheral atherosclerosis. Cor Health Ind. #21.8",
+          "label": "Significant cerebrovascular or peripheral atherosclerosis."
+        },
+        { 
+          "id": "  Re-evaluation (>or equal 1 yr) in patients with significant cerebrovascular or peripheral atherosclerosis.  Cor Health Ind. #21.9",
+          "label": "Re-evaluation (>or equal 1 yr) in patients with significant cerebrovascular or peripheral atherosclerosis."
+        },
+        { 
+          "id": "  Equivocal or non-diagnostic results from other stress modalities..  Cor Health Ind. #21.10",
+          "label": "Equivocal or non-diagnostic results from other stress modalities."
+        },
+        { 
+          "id": " Initial evaluation of patients at intermediate or high global CAD risk. Cor Health Ind. #21.11",
+          "label": "Initial evaluation of patients at intermediate or high global CAD risk."
+        },
+        { 
+          "id": " Periodic (>or equal 2 yrs) re-evaluation of patients with intermediate or high global CAD risk. Cor Health Ind. #21.12",
+          "label": "Periodic (>or equal 2 yrs) re-evaluation of patients with intermediate or high global CAD risk."
+        },
+        { 
+          "id": "New chest pain.  Cor Health Ind. #21.13",
+          "label": "New chest pain."
+        },
+        { 
+          "id": " Post MI or ACS for risk stratification (within 3 months). Cor Health Ind. #21.14",
+          "label": "Post MI or ACS for risk stratification (within 3 months)."
+        },
+        { 
+          "id": " Viability in patients with known significant LV dysfunction post re-vascularization.  Cor Health Ind. #21.15",
+          "label": "Viability in patients with known significant LV dysfunction post re-vascularization."
+        },
+        { 
+          "id": " Periodic (>or equal 1 yr) re-evaluation of stable patients with known CAD (previous coronary angiography, CTA EBCT, MI, ACS or abnormal stress imaging).Cor Health Ind. #21.16",
+          "label": "Periodic (>or equal 1 yr) re-evaluation of stable patients with known CAD (previous coronary angiography, CTA EBCT, MI, ACS or abnormal stress imaging)."
+        },
+        { 
+          "id": "For physiologic assessment and/or symptom correlation in patients with moderate or severe Aortic Stenosis, Mitral Stenosis, Mitral Regurgitation, Aortic Regurgitation, Hypertrophic Cardiomyopathy. Cor Health Ind. #21.17",
+          "label": "For physiologic assessment and/or symptom correlation in patients with moderate or severe Aortic Stenosis, Mitral Stenosis, Mitral Regurgitation, Aortic Regurgitation, Hypertrophic Cardiomyopathy."
+        },
+        { 
+          "id": "Assessment of established or latent pulmonary hypertension. #21.18",
+          "label": "Assessment of established or latent pulmonary hypertension."
+        }
+      ]
+    }
+  },
+  "exercise stress test": {
+    "id": "est",
+    "indications": {
+      "id": "est-input",
+      "options": [
+        {
+          "id": "initial evaluation with suspected or known coronary artery disease.    Cor Health Ind. # 1.1",
+          "label": "initial evaluation with suspected or known coronary artery disease."
+        },
+        {
+          "id": "chest pain - rule out myocardial ischemia.    CorHealth Ind. # 1.1",
+          "label": "chest pain - rule out myocardial ischemia."
+        },
+        {
+          "id": "follow up suspected or known coronary artery disease with significant change in clinical status.   Cor Health Ind. # 1.2",
+          "label": "follow up CAD with change in clinical status"
+        },
+        {
+          "id": "  known CAD with recurrent or new symptoms.   ASE 2020: class 1",
+          "label": "known CAD with recurrent or new symptoms. ASE 2020: class 1."
+        },
+        {
+          "id": "age ≥ 30 with 2 or 3 anginal criteria.   Cor Health Ind. # 1.3",
+          "label": "age ≥ 30 with 2 or 3 anginal criteria"
+        },
+        {
+          "id": "≥60 with 1 of 3 anginal criteria.    Cor Health Ind. # 1.3",
+          "label": "≥60 with 1 of 3 anginal criteria"
+        },
+        {
+          "id": "low pretest likelihood of CAD but having other characteristics that would indicate cardiovascular risk.    Cor Health Ind. # 1.3",
+          "label": "low pretest likelihood of CAD but having other characteristics that would indicate cardiovascular risk"
+        },
+        {
+          "id": "Before discharge post cardiac ischemic event.    Cor Health Ind. # 2.1",
+          "label": "Before DC post cardiac ischemic event"
+        },
+        {
+          "id": "Early after discharge for prognostic assessment. Cor Health Ind. # 2.2",
+          "label": "Early after DC for prognostic assessment"
+        },
+        {
+          "id": "Early after discharge for activity prescription.  Cor Health Ind. # 2.2",
+          "label": "Early after DC for activity prescription"
+        },
+        {
+          "id": "Late after discharge for prognostic assessment. Cor Health Ind. # 2.3",
+          "label": "Late after DC for prognostic assessment"
+        },
+        {
+          "id": "Late after discharge for activity prescription.  Cor Health Ind. # 2.3",
+          "label": "Late after DC for activity prescription"
+        },
+        {
+          "id": "valvular heart disease. Cor Health Ind. # 3.1", 
+          "label": "VHD"
+        },
+        {
+          "id": "significant structural heart disease. Cor Health Ind. # 3.2",
+          "label": "significant structural heart disease"
+        },
+        {
+          "id": "congenital heart block. Cor Health Ind. #  3.2",
+          "label": "congenital heart block"
+        },
+        {
+          "id": "known or suspected exercise-induced arrhythmias. Cor Health Ind. #  4.3",
+          "label": "known or suspected exercise-induced arrhythmias"
+        },
+        {
+          "id": "Evaluation of medical, surgical, or ablative therapy in patients with exercise-induced arrhythmias. Cor Health Ind. #  4.4",
+          "label": "Evaluation of medical, surgical, or ablative therapy in patients with exercise-induced arrhythmias"
+        },
+        {
+          "id": "Evaluation of isolated ventricular ectopic beats in middle-aged patients. Cor Health Ind. #  4.5",
+          "label": "Evaluation of isolated PVCs in middle-aged patients"
+        },
+        {
+          "id": "Investigation of prolonged first-degree AVB or type I second degree Wenckebach, LBBB, RBBB, or isolated ectopic beats in young patients considering participation in competitive sports.. Cor Health Ind. #  4.6",
+          "label": "Investigation of prolonged first-degree atrioventricular block or type I second degree Wenckebach, left bundle-branch block, right bundle-branch block, or isolated ectopic beats in young patients considering participation in competitive sports."
+        },
+        {
+          "id": "reduced exercise tolerance of uncertain etiology to look for chronotropic incompetence. Cor Health Ind. #  4.7",
+          "label": "reduced exercise tolerance of uncertain etiology to look for chronotropic incompetence"
+        },
+        {
+          "id": "dyspnea in atrial fibrillation to look for poor rate-control. Cor Health Ind. #  4.8",
+          "label": "dyspnea in AF to look for poor rate-control"
+        },
+        {
+          "id": "exertional symptoms. Cor Health Ind. # 4.9",
+          "label": "exertional symptoms"
+        },
+        {
+          "id": "arrhythmia symptoms. Cor Health Ind. # 4.9",
+          "label": "arrhythmia symptoms"
+        },
+        {
+          "id": "exertional symptoms. Cor Health Ind. # 4.9",
+          "label": "exertional symptoms"
+        },
+        {
+          "id": "Wolff-Parkinson-White syndrome. Cor Health Ind. #  4.10",
+          "label": "Patient with WPW"
+        },
+        {
+          "id": "Asymptomatic persons with diabetes mellitus who plan to start vigorous exercise. Cor Health Ind. #  5.1",
+          "label": "Asymptomatic persons with diabetes mellitus who plan to start vigorous exercise."
+        },
+        {
+          "id": " multiple risk factors as a guide to risk-reduction therapy. Cor Health Ind. # 5.2",
+          "label": "multiple risk factors as a guide to risk-reduction therapy"
+        },
+        {
+          "id": "Asymptomatic persons who Plan to start vigorous exercise. Cor Health Ind. #  5.3",
+          "label": "Asymptomatic persons who plan to start vigorous exercise."
+        },
+        {
+          "id": "Asymptomatic persons who Plan to start vigorous exercise. Cor Health Ind. #  5.3",
+          "label": "Asymptomatic persons who plan to start vigorous exercise."
+        },
+        {
+          "id": "Asymptomatic persons with  peripheral vascular disease. Cor Health Ind. #  5.3",
+          "label": "Asymptomatic persons with peripheral vascular disease."
+        },
+        {
+          "id": "Asymptomatic persons with  chronic renal failure. Cor Health Ind. #  5.3",
+          "label": "Asymptomatic persons with chronic renal failure."
+        },
+        {
+          "id": "identification of masked hypertension",
+          "label": "identification of masked hypertension."
+        },
+        {
+          "id": "assessment of antihypertensive treatment efficacy", 
+          "label": "assessment of antihypertensive treatment efficacy"
+        }
+      ]
+    }
+  },
+  "holter monitor": {
+    "id": "holter",
+    "options": [
+      {
+        "id": "24hr",
+        "label": "24 Hours"
+      },
+      {
+        "id": "48hr",
+        "label": "48 Hours"
+      },
+      {
+        "id": "72hr",
+        "label": "72 Hours"
+      },
+      {
+        "id": "2wk",
+        "label": "2 Weeks"
+      }
+    ],
+    "indications": {
+      "id": "holter-input",
+      "options": [
+        {
+          "id": "Cor Health Ind. # 1. symptom-rhythm correlation",
+          "label": "symptom-rhythm correlation"
+        },
+        {
+          "id": "syncope.  Cor Health Ind. #  2",
+          "label": "syncope"
+        },
+        {
+          "id": "palpitation.  Cor Health Ind. # 2",
+          "label": "palpitation"
+        },
+        {
+          "id": "dyspnea.  Cor Health Ind. # 2",
+          "label": "SOB"
+        },
+        {
+          "id": "chest discomfort.    Cor Health Ind. # 2",
+          "label": "CP"
+        },
+        {
+          "id": "pre-syncope. Cor Health Ind. # 2",
+          "label": "pre-syncope"
+        },
+        {
+          "id": "Episodic fatigue.(Class 2B)",
+          "label": "fatigue"
+        },
+        {
+          "id": "diaphoresis.(Class 2B)",
+          "label": "diaphoresis"
+        },
+        {
+          "id": "left ventricular dysfunction. Cor Health Ind. # 3",
+          "label": "LVD"
+        },
+        {
+          "id": "inherited cardiomyopathies. Cor Health Ind. #  3",
+          "label": "inherited CM"
+        },
+        {
+          "id": "unexplained thromboembolic events. Cor Health Ind. #  3",
+          "label": "CVA/TIA"
+        },
+        {
+          "id": "monitoring pharmacologic management of arrhythmia  Cor Health Ind. # 3",
+          "label": "monitoring pharmacologic management"
+        },
+        {
+          "id": "atrial  premature beats. Cor Health Ind. #  3",
+          "label": "PAC"
+        },
+        {
+          "id": "atrial tachycardia,. Cor Health Ind. #  3",
+          "label": "AT"
+        },
+        {
+          "id": "ventricular arrhythmia. Cor Health Ind. #  3",
+          "label": "VT"
+        },
+        {
+          "id": " premature ventricular contraction. Cor Health Ind. #  3",
+          "label": "PVC"
+        },
+        {
+          "id": " supraventricular arrhythmia. Cor Health Ind. # 3",
+          "label": "SVT"
+        },
+        {
+          "id": " atrial fibrillation or flutter Cor Health Ind. #  3",
+          "label": "AF"
+        },
+        {
+          "id": "non-sustained ventricular tachycardia. Cor Health Ind. #  3",
+          "label": "NSVT"
+        },
+        {
+          "id": "To follow up Wolff-Parkinson-White.  Cor Health Ind. #4.1",
+          "label": "WPW"
+        },
+        {
+          "id": "To follow up long QT syndrome.  Cor Health Ind. #4.2",
+          "label": "LQTS"
+        },
+        {
+          "id": "To follow up myocardial ischemia.  Cor Health Ind. #4.3",
+          "label": "ischemia"
+        },
+        {
+          "id": "To follow up Brugada  syndrome.  Cor Health Ind. #4.4",
+          "label": "Brugada ECG"
+        },
+        {
+          "id": "To follow up coronary spasm,.  Cor Health Ind. #4.4",
+          "label": "coronary spasm"
+        },
+        {
+          "id": "To follow up early repolarization syndrome.  Cor Health Ind. #4.4",
+          "label": "early repolarization syndrome"
+        },
+        {
+          "id": "hypertrophic, dilated, or ischemic cardiomyopathy. Cor Health Ind. #  4.5",
+          "label": "hypertrophic, dilated, or ischemic cardiomyopathy"
+        },
+        {
+          "id": "assess the response to adjunctive pharmacological therapy in patients receiving ICD therapy. (Class 1)",
+          "label": "rx in ICD tx"
+        },
+        {
+          "id": "Evaluation of the rate of supraventricular arrhythmias in patients with implanted defibrillators. (Class 2B)",
+          "label": "SVT in ICD tx"
+        }
+      ]
+    }
+  }
+}

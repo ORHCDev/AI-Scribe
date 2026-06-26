@@ -60,6 +60,7 @@ from utils.read_files import file_reader, extract_patient_name, detect_type, ext
 from utils.hl7 import *
 from utils.lab_processor import generate_lab_hl7
 from utils.auto_processing import AutoProcessor
+from utils.referral_form_processor import get_referral_labels
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
@@ -843,6 +844,9 @@ def update_gui_with_response(response_text):
             # No PLAN found, hide panel and expand response_display
             eform_selection_panel.hide()
             response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
+    elif prompt_type == "Requisition":
+        # Don't hide the eform panel
+        pass
     else:
         # Not a Scribe prompt, hide panel and expand response_display
         eform_selection_panel.hide()
@@ -1032,7 +1036,7 @@ def generate_note(formatted_message):
                         sex = 'Female'
                     elif sex == 'm':
                         sex = 'Male'
-
+                print(prompt_type)
                 # If note generation is on
                 if prompt_type == "Scribe":
                     # If pre-processing is enabled
@@ -1058,11 +1062,36 @@ def generate_note(formatted_message):
                             update_gui_with_response(post_processed_note)
                         else:
                             update_gui_with_response(medical_note)
-                
-                
                 elif prompt_type == "None":
                     ai_response = send_text_to_chatgpt(formatted_message)
                     update_gui_with_response(ai_response)
+
+                elif prompt_type == "Requisition":
+                    labels = get_referral_labels()
+                    base_prompt = ai_prompts.get("Requisition")
+                    ind_prompt = f"{base_prompt}\n\n Available procedures and options and indications\n {json.dumps(labels, indent=2)}"
+                    full_prompt = f"{ind_prompt}\n\n Clinical text:\n {formatted_message}"
+            #print(full_prompt)
+                    """
+                    ai_response =
+                        {
+                            "electrocardiogram": {
+                                "indications": "Chest pain of suspected cardiac origin."
+                            },
+                            "holter monitor": {
+                                "indications": "symptom-rhythm correlation",
+                                "options": "24 Hours"
+                            }
+                        }
+                        """
+                    print("base_prompt:", repr(base_prompt))
+                    print(base_prompt)
+                    ai_response = send_text_to_chatgpt(full_prompt)
+                    print("ai_response:", repr(ai_response))
+                    print(ai_response)
+                    update_gui_with_response(ai_response)
+                    json_response = json.loads(ai_response)
+                    eform_selection_panel.set_referral_data(json_response)
                 
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
