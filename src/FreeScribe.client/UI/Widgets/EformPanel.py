@@ -462,7 +462,7 @@ class EformPanel(tk.Frame):
         doc_data = {}
         for doc in selected_docs:
             for row in res:
-                print(row)
+                #print(row)
                 row_type = row.get("doctype")
                 row_desc = row.get("docdesc")
                 doc_no   = row.get("document_no")
