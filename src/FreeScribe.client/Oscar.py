@@ -314,20 +314,19 @@ class Oscar:
         Extracts and returns 0letter eForm text.
         Requires that passed fdid is the form data id for an 0letter.
         """
-
         # Get HTML
         html = self._get_filled_eform_html(fdid)
         # Organize HTML
         soup = BeautifulSoup(html, "lxml")
         # Search for text area
-        textarea = soup.find("textarea", {"name" : "sbx"})
-
-        if textarea:
-            return textarea.text.strip()
-
         textarea = soup.find("textarea", {"id": "Letter"})
 
         # Return text if textarea exists
+        if textarea and textarea.text.strip():
+            return textarea.text.strip()
+
+        textarea = soup.find("textarea", {"name" : "sbx"})
+
         if not textarea:
             return None
 
