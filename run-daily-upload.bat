@@ -23,14 +23,14 @@ goto run_uploader
 
 echo Running daily vector DB upload
 REM Navigate to chatbot directory
-cd /d "src\FreeScribe.client\chatbot"
+cd /d "src\FreeScribe.client\"
 
 REM Log output to a dated file
 set LOGFILE=logs\upload_%date:~10,4%%date:~4,2%%date:~7,2%.log
 if not exist "logs" mkdir "logs"
 
 echo === Upload started %date% %time% === >> "%LOGFILE%"
-python daily_uploader.py >> "%LOGFILE%" 2>&1
+python chatbot/daily_uploader.py >> "%LOGFILE%" 2>&1
 echo === Upload finished %date% %time% (exit code %errorlevel%) === >> "%LOGFILE%"
 
 endlocal
