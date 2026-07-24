@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from RAG.VectorSearch import VectorDB
 from RAG.embedder import EmbeddingEngine
 from AIConnect import AIConnect
@@ -34,7 +39,7 @@ def initialize_oscardb(config) -> SOQ | OscarDB:
     user = oscar_login["user"]
     passw = oscar_login["passw"]
     pin = oscar_login["pin"]
-    oscar_url = oscar_login["ip_addr"]
+    oscar_url = oscar_login["url"]
     oscar_version = oscar_login["version"]
 
     # Driver path
