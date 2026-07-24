@@ -11,6 +11,8 @@ import yaml
 import requests
 
 # Compared date
+# datetime.now() for today's date
+# datetime(YYYY, MM, DD) for specific date
 DATE = datetime.now().strftime("%Y-%m-%d")
 # Date operator for comparison
 # '=' : will upload documents with same date as above
