@@ -370,45 +370,52 @@ class EmbeddingEngine:
             chunks = self.chunker.chunk_medical_document(text)
             ctr = 1
             # Vectorize and upsert each chunk
-            for idx, chunk in enumerate(chunks):
-                vector = self.model.encode(
-                    chunk, 
-                    normalize_embeddings=True, 
-                    batch_size=self.batch_size
-                ).tolist()
-                time.sleep(delay)
-
-                # Summarize text chunk using LLM
-                summary = None
-                summary_vector = None
-                if summarize:
-                    summary = self.ai_conn.send_message(chunk, pre_prompt=SUMMARY_PROMPT)
-                    summary_vector = self.model.encode(
-                        summary,
+            try:
+                for idx, chunk in enumerate(chunks):
+                    vector = self.model.encode(
+                        chunk,
                         normalize_embeddings=True,
                         batch_size=self.batch_size
                     ).tolist()
                     time.sleep(delay)
 
-                data = {
-                    "demographic_no"    : demo_no,
-                    "document_id"       : doc_no,
-                    "document_type"     : doc_type,
-                    "chunk_index"       : idx,
-                    "chunk_text"        : chunk,
-                    "chunk_summary"     : summary,
-                    "embedding_raw"     : vector,
-                    "embedding_summary" : summary_vector,
-                    "observation_date"  : obs_date,
-                    "entry_date"        : entry_date,
-                }
+                    # Summarize text chunk using LLM
+                    summary = None
+                    summary_vector = None
+                    if summarize:
+                        summary = self.ai_conn.send_message(chunk, pre_prompt=SUMMARY_PROMPT)
+                        summary_vector = self.model.encode(
+                            summary,
+                            normalize_embeddings=True,
+                            batch_size=self.batch_size
+                        ).tolist()
+                        time.sleep(delay)
 
-                self.vector_db.insert_document_chunk(data)
+                    data = {
+                        "demographic_no"    : demo_no,
+                        "document_id"       : doc_no,
+                        "document_type"     : doc_type,
+                        "chunk_index"       : idx,
+                        "chunk_text"        : chunk,
+                        "chunk_summary"     : summary,
+                        "embedding_raw"     : vector,
+                        "embedding_summary" : summary_vector,
+                        "observation_date"  : obs_date,
+                        "entry_date"        : entry_date,
+                    }
 
-                if ctr % collect_after == 0:
-                    gc.collect()
-                
-                ctr += 1
+                    self.vector_db.insert_document_chunk(data, commit=False)
+
+                    if ctr % collect_after == 0:
+                        gc.collect()
+
+                    ctr += 1
+
+                # Commit all chunks for this document at once so a killed run never leaves a partially-uploaded document
+                self.vector_db.conn.commit()
+            except Exception as e:
+                print(f"Error upserting {doc_no}, rolling back: {e}")
+                self.vector_db.conn.rollback()
 
             print(f"Completed {doc_no} | Docs done so far: {i+1}")
 

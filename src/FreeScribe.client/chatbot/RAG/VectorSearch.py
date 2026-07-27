@@ -309,7 +309,7 @@ class VectorDB:
         return row_id
 
 
-    def insert_document_chunk(self, chunk):
+    def insert_document_chunk(self, chunk, commit: bool = True):
         query = """
         INSERT INTO document_chunks (
             demographic_no,
@@ -350,7 +350,8 @@ class VectorDB:
 
         self.cursor.execute(query, chunk)
         row_id: int = self.cursor.fetchone()[0]
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         print("Upserted document chunk row id=%d", row_id)
         return row_id
 
