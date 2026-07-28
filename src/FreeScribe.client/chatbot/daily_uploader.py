@@ -50,7 +50,7 @@ def initialize_oscardb(config) -> SOQ | OscarDB:
     query_choice = config["query_choice"]
 
     # Initialize Oscar Session
-    oscar = Oscar(user, passw, pin, oscar_url, driver_path, oscar_version=oscar_version)
+    oscar = Oscar(user, passw, pin, oscar_url, driver_path, headless=True, oscar_version=oscar_version)
     oscar.run()
 
     if query_choice == "ssh":
