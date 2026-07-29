@@ -14,7 +14,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class SOQ:
-    def __init__(self, user, passw, pin, oscar_url, driver_path, headless=True, oscar_version=15):
+    def __init__(self, user, passw, pin, oscar_url, driver_path, headless=True, oscar_version=15, query_timeout=60):
         self.user = user
         self.passw = passw
         self.pin = pin
@@ -27,6 +27,7 @@ class SOQ:
         self.headless = headless
 
         self.session = requests.session()
+        self.query_timeout = query_timeout
         self.initialize_driver()
 
 
@@ -151,7 +152,8 @@ class SOQ:
         )
         query_btn.click()
 
-        table = self.wait.until(
+        results_wait = WebDriverWait(self.driver, self.query_timeout)
+        table = results_wait.until(
             EC.presence_of_element_located((By.XPATH, '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[8]/td/table/tbody'))
         )
     
