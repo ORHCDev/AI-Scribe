@@ -30,6 +30,8 @@ DELAY = 5
 # Vectorization batch size. How much of the chunk is vectorized at once. 
 # Default for embedding model is 32. 
 BATCH_SIZE = 8
+# Only upload these document types. Empty list uploads all types.
+DOC_TYPES = []
 
 def initialize_oscardb(config) -> SOQ | OscarDB:
     """
@@ -140,6 +142,7 @@ if __name__ == "__main__":
             date=DATE, 
             date_op=DATE_OP, 
             delay=DELAY, 
+            include_types=DOC_TYPES,
             skip_exists=True, 
             summarize=False
         )
