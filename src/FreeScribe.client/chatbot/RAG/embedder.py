@@ -262,6 +262,7 @@ class EmbeddingEngine:
         date_op         : str = '=',
         delay           : float = 0.5, 
         skip_types      : list[str]=[],
+        include_types   : list[str]=[],
         skip_exists     : bool = False,
         summarize       : bool = False,
         collect_after   : int = 10
@@ -293,6 +294,10 @@ class EmbeddingEngine:
         skip_types : List[str]
             Document types to be skipped.
             I.e. skip_types=['LAB'] will skip documents that are labeled with 'LAB'
+
+        include_types : List[str]
+            Document types to be allowed while all others are skipped.
+            I.e. skip_types=['LAB'] will only allow documents that are labeled with 'LAB'
 
         skip_exists : bool
             If True, will skip documents that already exist in the vector database.
@@ -343,6 +348,11 @@ class EmbeddingEngine:
             obs_date = row["observationdate"]
             entry_date = row["contentdatetime"]
             demo_no = row["patient_id"]
+
+            # Skip if doc type is not in the include list
+            if include_types and doc_type not in include_types:
+                print(f"Skipping {doc_type} (not in include list)")
+                continue
 
             # Skip if doc type is in to skip list 
             if doc_type in skip_types: 
