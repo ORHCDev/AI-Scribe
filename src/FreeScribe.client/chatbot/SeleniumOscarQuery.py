@@ -153,10 +153,26 @@ class SOQ:
         query_btn.click()
 
         results_wait = WebDriverWait(self.driver, self.query_timeout)
-        table = results_wait.until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[8]/td/table/tbody'))
-        )
-    
+        try:
+            table = results_wait.until(
+                EC.presence_of_element_located((By.XPATH, '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[8]/td/table/tbody'))
+            )
+        except Exception as e:
+            # Capture what the page actually shows for debugging before returning empty
+            page_text = ""
+            try:
+                body = self.driver.find_element(By.TAG_NAME, "body")
+                page_text = body.text[:2000]
+            except Exception:
+                pass
+            logging.warning(
+                f"Results table not found within {self.query_timeout}s; "
+                f"assuming no results. Reason: {e}"
+            )
+            if page_text:
+                logging.warning(f"Current page text: {page_text}")
+            return []
+
         # Get headers
         headers = [th.text.strip() for th in table.find_elements(By.TAG_NAME, "th")]
         
