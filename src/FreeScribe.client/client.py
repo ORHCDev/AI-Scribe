@@ -880,6 +880,13 @@ def send_text_to_api(edited_text, context_length=None):
         "accept": "application/json",
     }
 
+    try:
+        header_settings = json.loads(app_settings.editable_settings["Model Headers"])
+        print(header_settings)
+        headers.update(header_settings)
+    except (json.JSONDecodeError, TypeError) as e:
+        print(f"Invalid Model Headers JSON: {e}")
+
     payload = {}
 
     try:
@@ -929,7 +936,7 @@ def send_text_to_api(edited_text, context_length=None):
         # Open API Style
         verify = not app_settings.editable_settings["AI Server Self-Signed Certificates"]
         response = requests.post(app_settings.editable_settings["Model Endpoint"]+"/chat/completions", headers=headers, json=payload, verify=verify)
-
+        print(response.text)
         response.raise_for_status()
         response_data = response.json()
         response_text = (response_data['choices'][0]['message']['content'])

@@ -9,6 +9,7 @@ OscarLogin :
 AIConnection :
   endpoint : http://ipaddress/v1
   api_key : api_key
+  headers : list of request headers, remove if not needed
 
 Selenium :
   geckodriver_path : Path\to\geckodriver

@@ -5,6 +5,7 @@ class AIConnect():
         self, 
         endpoint : str, 
         api_key : str = None, 
+        headers : list[dict[str, str]] = [],
         temperature : float = 0.1, 
         top_p : float = 0.4, 
         top_k : int = 30, 
@@ -42,6 +43,7 @@ class AIConnect():
         """
         self.endpoint = endpoint
         self.api_key = api_key
+        self.headers = headers
 
         self.temperature = temperature    
         self.top_p = top_p
@@ -105,6 +107,9 @@ class AIConnect():
             "Content-Type" : "application/json",
             "accept": "application/json",
         }
+        # Add the additional headers
+        for header in self.headers:
+            headers.update(header)
 
         # Send message
         response = requests.post(
