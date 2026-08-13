@@ -108,6 +108,7 @@ class SettingsWindow():
         self.llm_settings = [
             "Model Endpoint",
             "AI Server Self-Signed Certificates",
+            "Model Headers",
         ]
 
         self.adv_ai_settings = [
@@ -153,6 +154,7 @@ class SettingsWindow():
             "Model Endpoint": "https://api.openai.com/v1/",
             "Use Local LLM": True,
             "Architecture": "CPU",
+            "Model Headers": "",
             "use_story": False,
             "use_memory": False,
             "use_authors_note": False,
