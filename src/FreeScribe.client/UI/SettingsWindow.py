@@ -93,6 +93,7 @@ class SettingsWindow():
         
         self.general_settings = [
             "Show Welcome Message",
+            "Use Database Patient Lookup",
             "Show Scrub PHI"
         ]
 
@@ -205,6 +206,7 @@ class SettingsWindow():
             "ReportMasterPath" : r'.\oscarReportmasterXLS.xls',
             "HL7 Base Folder" : r'.\hl7',
             "Feedback Base Folder" : r'.\feedback',
+            "Use Database Patient Lookup": True,
             "Default Upload Folder" : r'.',
             "Default Download Folder" : r'.',
         }
