@@ -15,6 +15,7 @@ import shutil
 from utils.read_files import file_reader, extract_patient_name, detect_type, extract_patient_notes
 from utils.hl7 import find_details, extract_observation_date, generate_header, loinc_code_detector, extra_loinc_prompt, lab_detector, EXTRA_LOINC_START_IDX
 from utils.lab_processor import generate_lab_hl7
+from utils.patient_details import find_details_from_db
 import scrubadub
 
 
@@ -27,7 +28,7 @@ class AutoProcessor:
     - Feedback: Generates AI feedback for doctor queries
     """
     
-    def __init__(self, settings, ai_callback, prompts, log_callback=None):
+    def __init__(self, settings, ai_callback, prompts, log_callback=None, patient_db=None):
         """
         Initialize the auto processor.
         
@@ -36,11 +37,13 @@ class AutoProcessor:
             ai_callback: Function to call for AI text generation (e.g., send_text_to_chatgpt)
             prompts: PromptsWindow class for managing AI prompts
             log_callback: Optional function to call for logging messages
+            patient_db: Optional PatientDetailsDB instance for direct database patient lookups
         """
         self.settings = settings
         self.ai_callback = ai_callback
         self.prompts = prompts
         self.log_callback = log_callback or print
+        self.patient_db = patient_db
         self.stop_processing = False
         self.prompt_type = None
         
@@ -222,11 +225,14 @@ class AutoProcessor:
                 res = None
                 if first_name and last_name:
                     self.log(f"Extracted Patient: {last_name}, {first_name}")
-                    res = find_details(
-                        self.settings.editable_settings['ReportMasterPath'], 
-                        last_name, 
-                        first_name
-                    )
+                    if self.patient_db is not None and self.settings.editable_settings.get("Use Database Patient Lookup", True):
+                        res = find_details_from_db(self.patient_db, last_name, first_name)
+                    if not res:
+                        res = find_details(
+                            self.settings.editable_settings['ReportMasterPath'], 
+                            last_name, 
+                            first_name
+                        )
 
                 if res:
                     sex, hin, dob, name, _ = res

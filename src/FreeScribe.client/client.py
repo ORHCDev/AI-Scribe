@@ -60,6 +60,7 @@ from utils.read_files import file_reader, extract_patient_name, detect_type, ext
 from utils.hl7 import *
 from utils.lab_processor import generate_lab_hl7
 from utils.auto_processing import AutoProcessor
+from utils.patient_details import PatientDetailsDB, find_details_from_db
 from utils.referral_form_processor import get_referral_labels
 import ctypes
 import sys
@@ -76,6 +77,7 @@ sys.stderr = dual
 
 
 chatbot = OscarCB(config_path=r".\configs\config.yaml")
+patient_db = PatientDetailsDB(config_path=r".\configs\config.yaml")
 
 # GUI Setup
 root = tk.Tk()
@@ -97,6 +99,7 @@ app_settings.set_main_window(window)
 # Cleanup on window close
 def on_close():
     chatbot.cleanup()
+    patient_db.cleanup()
     root.destroy()
 
 root.protocol("WM_DELETE_WINDOW", on_close)
@@ -1121,8 +1124,12 @@ def generate_note(formatted_message):
                         print(f"An unknown error occurred while trying to extract document type and patient name: {e}")
 
                     # Generate HL7 Header
+                    res = None
                     if first_name and last_name:
-                        res = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
+                        if app_settings.editable_settings.get("Use Database Patient Lookup", True):
+                            res = find_details_from_db(patient_db, last_name, first_name)
+                        if not res:
+                            res = find_details(app_settings.editable_settings['ReportMasterPath'], last_name, first_name)
                         if res:
                             sex, hin, dob, name, _ = res
                             obs_date = extract_observation_date(ocr_text, doc_type)
@@ -1325,7 +1332,7 @@ def start_auto_processing_thread():
     """
     global auto_process_thread, auto_processor
     
-    auto_processor = AutoProcessor(app_settings, send_text_to_chatgpt, ai_prompts, append_log)
+    auto_processor = AutoProcessor(app_settings, send_text_to_chatgpt, ai_prompts, append_log, patient_db=patient_db)
     
     auto_process_thread = threading.Thread(
         target=auto_processor.run, 
