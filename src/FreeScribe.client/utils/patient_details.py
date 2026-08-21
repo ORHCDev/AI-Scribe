@@ -165,7 +165,7 @@ def find_details_from_db(db, surname, first_name):
     query = f"""
         SELECT d.demographic_no, d.last_name, d.first_name, d.hin, d.year_of_birth, d.month_of_birth, d.date_of_birth, d.sex FROM demographic
         AS d LEFT JOIN provider AS p ON d.provider_no = p.provider_no 
-        WHERE d.last_name = UPPER('{surname.replace("'", "''")}') AND d.first_name = UPPER('{first_name.replace("'", "''")}') LIMIT 1;
+        WHERE d.last_name = UPPER('{surname.replace("'", "''")}') AND d.first_name LIKE UPPER('{first_name.replace("'", "''")}%') LIMIT 1;
     """
     if hasattr(db, "connection") and hasattr(db.connection, "query_database"):
         conn = db.connection
