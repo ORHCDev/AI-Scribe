@@ -1,9 +1,12 @@
 from chatbot.Tools.Tool import tool, ToolReturn as tr
 from chatbot.Tools.utils import period_parser, export_data, wrap_text
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import datetime as dt
 import os
+import webbrowser
 
 
 
@@ -133,6 +136,7 @@ def get_measurement_history(db_conn, demo_no : str, test_names : list[str], plot
 
     # Plot trend
     if bool(plot):
+        plt.figure(figsize=(10, 6))
         for test in test_names:
             try:
                 dates = []
@@ -151,15 +155,23 @@ def get_measurement_history(db_conn, demo_no : str, test_names : list[str], plot
             except Exception as e:
                 print(f"Error reading entry: {e}")
 
-        plt.gcf().canvas.manager.set_window_title("Historical Measurements")
-        plt.gcf().canvas.get_default_filename = lambda: f"{demo_no}_{'_'.join(test_names)}.png"
-
         plt.xlabel("Date Observed")
         plt.ylabel("Quantity")
         plt.title("Historical Measurements")
         plt.legend()
         plt.gcf().autofmt_xdate()
-        plt.show(block=False)
+
+        # Save and open the plot inside the default image viewer
+        save_path = os.path.join(os.getcwd(), "reports")
+        os.makedirs(save_path, exist_ok=True)
+        filename = os.path.join(save_path, f"{demo_no}_{'_'.join(test_names)}.png")
+        plt.savefig(filename, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Plot saved to {filename}")
+        try:
+            webbrowser.open(os.path.abspath(filename))
+        except Exception as e:
+            print(f"Unable to open plot: {e}")
 
 
     return tr(
@@ -752,7 +764,18 @@ def vitals_overview(db_conn, demo_no : str):
     #    plt.setp(ax.get_xticklabels(), visible=False)
 
     #ax4.tick_params(axis="x", labelrotation=45)
-    plt.show(block=False)
+
+    # Save and open the plot inside the default image viewer
+    save_path = os.path.join(os.getcwd(), "reports")
+    os.makedirs(save_path, exist_ok=True)
+    filename = os.path.join(save_path, f"{demo_no}_vitals_overview.png")
+    fig.savefig(filename, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Plot saved to {filename}")
+    try:
+        webbrowser.open(os.path.abspath(filename))
+    except Exception as e:
+        print(f"Unable to open plot: {e}")
 
     to_send = []
     for key, val in sections.items():
