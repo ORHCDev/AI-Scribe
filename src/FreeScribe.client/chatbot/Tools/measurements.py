@@ -682,6 +682,8 @@ def vitals_overview(db_conn, demo_no : str):
     med_text = plot_vals["MEDS_data"]
     box_width_days = 2
     for d in med_dates:
+        if isinstance(d, str):
+            d = dt.date.fromisoformat(d[:10])
         for plot in [ax_top, ax1, ax2, ax3, ax4]:
             plot.axvspan(
                 d - dt.timedelta(days=box_width_days/2),
