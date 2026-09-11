@@ -5,7 +5,7 @@ from datetime import datetime
 import logging
 
 
-"""@tool(
+@tool(
     category="documents",
     description=(
         "Retrieves and returns OCR-extracted text from a patient's most recently uploaded "
@@ -20,7 +20,7 @@ import logging
         "demo_no": "Patient's demographic number",
         "limit": "Maximum number of recent documents to retrieve and scan"
     }
-)"""
+)
 def get_recent_documents(db_conn, demo_no : str, limit = 5):
     """
     Queries the Oscar EMR database to find and scan a patient's most recent documents.
@@ -85,7 +85,7 @@ def get_recent_documents(db_conn, demo_no : str, limit = 5):
 
 
 
-"""@tool(
+@tool(
     category="documents",
     description=(
         "Retrieves OCR-extracted text from a specific patient document based on document type "
@@ -105,7 +105,7 @@ def get_recent_documents(db_conn, demo_no : str, limit = 5):
             "Only include if the user specifies a date."
         )
     }
-)"""
+)
 def get_specific_document(db_conn, demo_no : str, doc_type : str, date : str = ""):
     """
     Fetches and returns the scanned text from a specified document.

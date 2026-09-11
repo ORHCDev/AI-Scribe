@@ -152,6 +152,29 @@ class Oscar:
         # Switch back to home window
         self.driver.switch_to.window(self.home_window)
 
+    def get_patient_name(self):
+        """
+        Iterates over the opened windows. If an encounter window is opened will return the
+        name of the patient opened in that window, read directly from the browser page title.
+        """
+        patient_name = None
+
+        for handle in self.driver.window_handles:
+            self.driver.switch_to.window(handle)
+            url = self.driver.current_url
+
+            match = re.search(r"demographicNo=(\d+)", url)
+            if match:
+                try:
+                    patient_name = self.driver.title.strip()
+                except Exception as e:
+                    logging.error(f"Failed to read encounter page title: {e}")
+                    patient_name = None
+                return patient_name
+
+        # Switch back to home window
+        self.driver.switch_to.window(self.home_window)
+
 
     def pass_cookies(self, session : requests.Session):
         """
