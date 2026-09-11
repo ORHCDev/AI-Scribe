@@ -19,6 +19,7 @@ import pyperclip
 import wave
 import threading
 import numpy as np
+import atexit
 
 import json
 import pyaudio
@@ -78,6 +79,9 @@ sys.stderr = dual
 
 chatbot = OscarCB(config_path=r".\configs\config.yaml")
 patient_db = PatientDetailsDB(config_path=r".\configs\config.yaml")
+
+atexit.register(chatbot.cleanup)
+atexit.register(patient_db.cleanup)
 
 # GUI Setup
 root = tk.Tk()
@@ -2135,5 +2139,10 @@ if app_settings.editable_settings[SettingsKeys.LOCAL_WHISPER.value]:
 
 root.bind("<<LoadSttModel>>", load_stt_model)
 
-root.mainloop()
+try:
+    root.mainloop()
+finally:
+    chatbot.cleanup()
+    patient_db.cleanup()
+
 p.terminate()

@@ -61,3 +61,4 @@ xlrd==2.0.2
 # matplotlib
 # psycopg2
 # sentence_transformers
+psutil==7.2.2
