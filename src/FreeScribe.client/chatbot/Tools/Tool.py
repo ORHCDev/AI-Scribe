@@ -3,6 +3,7 @@ from typing import Callable, Dict, Any, List
 import pandas as pd
 
 import json
+import logging
 import numpy as np
 
 @dataclass
@@ -208,3 +209,40 @@ class ToolEmbeddings:
             }
             for score, tool in scored[:top_k]
         ]
+
+
+    def registry_diff(self, registry_names) -> dict[str, list[str]]:
+        # missing_embeddings: registered but un-embedded (never searchable); orphan_embeddings: embedded but unregistered (KeyError if selected).
+        embedded = {t["tool_name"] for t in self.tools}
+        registry = set(registry_names)
+        return {
+            "missing_embeddings": sorted(registry - embedded),
+            "orphan_embeddings": sorted(embedded - registry),
+        }
+
+
+    def verify_registry(self, registry_names, logger=None) -> dict[str, list[str]]:
+        # Warn at startup on any registry<->embeddings drift so un-callable tools are surfaced loudly.
+        log = logger or logging.getLogger(__name__)
+        diff = self.registry_diff(registry_names)
+
+        if diff["missing_embeddings"]:
+            log.warning(
+                "Tool embeddings out of sync: %d registered tool(s) have no embedding "
+                "and will NOT be discoverable via vector search: %s. "
+                "Re-run chatbot/store_tool_embeddings.py to regenerate the index.",
+                len(diff["missing_embeddings"]),
+                ", ".join(diff["missing_embeddings"]),
+            )
+        if diff["orphan_embeddings"]:
+            log.warning(
+                "Tool embeddings out of sync: %d embedding(s) reference tools not in the "
+                "registry (execution will fail if selected): %s. "
+                "Re-run chatbot/store_tool_embeddings.py to regenerate the index.",
+                len(diff["orphan_embeddings"]),
+                ", ".join(diff["orphan_embeddings"]),
+            )
+        if not diff["missing_embeddings"] and not diff["orphan_embeddings"]:
+            log.info("Tool embeddings in sync with registry (%d tools).", len(self.tools))
+
+        return diff

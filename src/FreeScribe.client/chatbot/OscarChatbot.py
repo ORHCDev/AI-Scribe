@@ -172,6 +172,8 @@ class OscarCB:
                 password=vdb_config["password"]
             )
             tool_embds = ToolEmbeddings(path=r".\chatbot\Tools\tool_embeddings.jsonl")
+            # Warn if any registered tool is missing an embedding (never selectable by vector search).
+            tool_embds.verify_registry(TOOL_REGISTRY.keys())
             self.vec_search = VectorSearch(vec_db, tool_embds)
             logging.info("Successfully initialized connection to vector database")
             return True
