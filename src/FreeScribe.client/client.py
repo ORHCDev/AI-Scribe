@@ -524,9 +524,13 @@ def cancel_processing():
         is_audio_processing_whole_canceled.set()  # Flag to terminate processing
 
 def clear_application_press():
-    """Resets the application state by clearing text fields and recording status."""
-    reset_recording_status()  # Reset recording-related variables
-    clear_all_text_fields()  # Clear UI text areas
+    if messagebox.askyesno(
+        "Clear Transcript and Note",
+        "Are you sure you want to clear the transcript and medical node?"
+    ):
+        """Resets the application state by clearing text fields and recording status."""
+        reset_recording_status()  # Reset recording-related variables
+        clear_all_text_fields()  # Clear UI text areas
 
 def reset_recording_status():
     """Resets all recording-related variables and stops any active recording.
@@ -1937,12 +1941,14 @@ def chatbot_send_message():
     task.start()
 
 def chatbot_clear():
-    print("Cleared Chat")
-    chatbot.clear()
-    _reset_chat_log()
-    chat_history_listbox.selection_clear(0, tk.END)
-
-    
+    if messagebox.askyesno(
+        "Clear Chat",
+        "Are you sure you want to clear the chat?"
+    ):
+        print("Cleared Chat")
+        chatbot.clear()
+        _reset_chat_log()
+        chat_history_listbox.selection_clear(0, tk.END)
 
 def chatbot_new_session():
     if not chatbot.current_conversation:
