@@ -1,16 +1,23 @@
-# Builds/refreshes Tools/tool_embeddings.jsonl (the tool-discovery index); run from chatbot/ after any tool add/remove/rename/description change. Incremental by default; --force rebuilds all.
+# Builds/refreshes Tools/tool_embeddings.jsonl (the tool-discovery index); run after any tool add/remove/rename/description change. Incremental by default; --force rebuilds all.
 
-import Tools  # noqa: F401 -- importing the package registers every tool
-from Tools.Tool import TOOL_REGISTRY
-
-import argparse
-import json
-import numpy as np
+import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable
+
+# Put src/FreeScribe.client on sys.path so the `chatbot` package resolves regardless of cwd (tool modules import via `from chatbot.Tools...`).
+_CLIENT_DIR = Path(__file__).resolve().parent.parent
+if str(_CLIENT_DIR) not in sys.path:
+    sys.path.insert(0, str(_CLIENT_DIR))
+
+import chatbot.Tools  # noqa: E402,F401 -- importing the package registers every tool
+from chatbot.Tools.Tool import TOOL_REGISTRY  # noqa: E402
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import numpy as np  # noqa: E402
+from typing import Any, Dict, Iterable  # noqa: E402
 
 
-DEFAULT_PATH = Path("Tools") / "tool_embeddings.jsonl"
+DEFAULT_PATH = Path(__file__).resolve().parent / "Tools" / "tool_embeddings.jsonl"
 MODEL_NAME = "abhinand/MedEmbed-base-v0.1"
 
 
