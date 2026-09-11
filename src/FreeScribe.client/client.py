@@ -1660,6 +1660,7 @@ def switch_mode(mode: str):
         chatbot_mode_button.config(relief='sunken')
         root.geometry(_FULL_SIZE)
         current_view = "chatbot"
+        _refresh_patient_from_oscar()
 
     elif mode == "minimal":
         minimal_frame.grid(row=1, column=0, columnspan=14, sticky='nsew')
@@ -1921,6 +1922,7 @@ def chatbot_send_message():
         chat_log_display.scrolled_text.insert(tk.END, "\n\n")
         chat_log_display.scrolled_text.config(state='disabled')
 
+        refresh_patient_status()
 
         # Scroll to the bottom
         # chat_log_display.yview(tk.END)
@@ -1981,6 +1983,75 @@ def load_chat_history_session(event=None):
     chat_log_display.scrolled_text.insert(tk.END, text)
     chat_log_display.scrolled_text.config(state='disabled')
 
+
+# ── Patient status (currently viewed patient) ──────────────────────────────
+def _refresh_patient_from_oscar():
+    # Refresh the patient indicator to reflect the patient currently open in OSCAR
+    demo_no = None
+    if chatbot.oscar is not None and chatbot.oscar.driver is not None:
+        try:
+            demo_no = chatbot.oscar.get_demographic_no()
+        except Exception as e:
+            print(f"Failed to read patient from Oscar: {e}")
+            demo_no = None
+    refresh_patient_status(demo_no=demo_no)
+
+
+def _on_ai_scribe_focus(event):
+    if current_view == "chatbot":
+        _refresh_patient_from_oscar()
+
+root.bind("<FocusIn>", _on_ai_scribe_focus)
+
+
+def refresh_patient_status(demo_no: str | None = None):
+    if patient_status_button is None:
+        return
+    if demo_no is None:
+        demo_no = chatbot.curr_demo
+    if not demo_no:
+        patient_status_button.config(
+            text="No Patient Selected\n(click to select)",
+            fg='#8a8a8a',
+            relief='raised',
+        )
+        return
+    label = f"Patient (Demo #): {demo_no}"
+    try:
+        name = _fetch_patient_name(demo_no)
+        if name:
+            label = f"{name} "
+    except Exception as e:
+        print(f"Failed to fetch patient name: {e}")
+    patient_status_button.config(
+        text=label,
+        fg='#1f6f2d',
+        relief='groove',
+        justify='left',
+        anchor='w',
+        padx=8,
+        pady=8,
+        wraplength=280,
+    )
+
+
+def _fetch_patient_name(demo_no: str) -> str | None:
+    oscar = chatbot.oscar
+    if oscar is not None and oscar.driver is not None:
+        try:
+            name = oscar.get_patient_name()
+            if name:
+                return _clean_patient_name(name)
+        except Exception as e:
+            print(f"Failed to read patient name from Oscar: {e}")
+    return None
+
+
+def _clean_patient_name(title: str) -> str | None:
+    match = re.match(r"^Encounter\s*-\s*(.+)$", title, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).strip()
 
 
 chatbot_frame = tk.Frame(root)
@@ -2056,11 +2127,27 @@ chat_history_listbox = tk.Listbox(
     highlightthickness=1,
 )
 chat_history_listbox.grid(
-    row=0, column=9, columnspan=2, rowspan=3, padx=(4, 2), pady=12, sticky='nsew',
+    row=0, column=9, columnspan=2, rowspan=3, padx=(4, 2), pady=(12, 4), sticky='nsew',
 )
 chat_history_listbox.bind('<<ListboxSelect>>', load_chat_history_session)
 chat_history_listbox.insert(tk.END, "Chat History")
 chat_history_listbox.config(fg='grey')
+
+# Patient indicator 
+patient_status_button = tk.Button( # Add functionality to Open OSCAR window on click
+    chatbot_frame,
+    text="No Patient Selected\n(click to select)",
+    fg='#8a8a8a',
+    relief='raised',
+    justify='left',
+    anchor='w',
+    padx=8,
+    pady=8,
+    wraplength=280,
+)
+patient_status_button.grid(
+    row=2, column=9, columnspan=2, padx=(4, 2), pady=(2, 12), sticky='nsew',
+)
 
 # Chat session state 
 chat_sessions = []
