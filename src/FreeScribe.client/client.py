@@ -268,7 +268,13 @@ def record_audio():
             frames_per_buffer=CHUNK, 
             input_device_index=int(MicrophoneState.SELECTED_MICROPHONE_INDEX))
     except (OSError, IOError) as e:
-        messagebox.showerror("Audio Error", f"Please check your microphone settings under whisper settings. Error opening audio stream: {e}")
+        print(f"Failed to open audio stream: {e}")
+        messagebox.showerror(
+            "Microphone Unavailable",
+            "We couldn't access your microphone.\n\n"
+            "Please check that your microphone is connected and selected correctly "
+            "in Whisper Settings, then try again."
+        )
         return
 
     
@@ -1381,7 +1387,11 @@ def _load_stt_model_thread():
     global stt_local_model
     
     if not WHISPER_AVAILABLE:
-        messagebox.showerror("Error", "openai-whisper is not installed. Cannot use Local Whisper. Please install it or use Remote Whisper.")
+        messagebox.showerror(
+            "Whisper Unavailable",
+            "The package openai-whisper is not installed.\n\n"
+            "Please install the package or use Remote Whisper."
+        )
         return
     
     model = app_settings.editable_settings["Whisper Model"].strip()
@@ -1393,10 +1403,14 @@ def _load_stt_model_thread():
         stt_local_model = whisper.load_model(model)
         print("STT model loaded successfully.")
     except Exception as e:
-        # Log the error message
-        print(f"An error occurred while loading STT: {e}")
+        print(f"Failed to load STT model '{model}': {e}", exc_info=True)
         stt_local_model = None
-        messagebox.showerror("Error", f"An error occurred while loading the STT model: {e}")
+        messagebox.showerror(
+            "Speech-to-Text Error",
+            "We couldn't load the speech-to-text model.\n\n"
+            "Please try again or select a different speech-to-text model in Settings.\n\n"
+            "If the problem continues, contact support."
+        )
     finally:
         stt_loading_window.destroy()
         print("Closing STT loading window.")
@@ -1885,52 +1899,72 @@ def chatbot_send_message():
         chat_current_task[0] = None
 
         if error is not None:
-            print(f"Chatbot error: {error}")
-            messagebox.showerror("Chatbot Error", str(error))
-            return
-        workflow_type, result, saved_id = result
-        # result is WorkflowResult type
-        resp = result.response
-        sources = result.sources
+            print(f"Chatbot error: {error}", exc_info=True)
 
-        if workflow_type is None:
-            return
-
-        if saved_id is not None:
-            chat_log_display.scrolled_text.config(state='normal')
-            chat_log_display.scrolled_text.delete("1.0", tk.END)
-            chat_log_display.scrolled_text.config(state='disabled')
-            _show_saved_chat(saved_id)
-            chat_history_listbox.selection_clear(0, tk.END)
-            chat_log_display.scrolled_text.config(state='normal')
-            chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
-            chat_log_display.scrolled_text.config(state='disabled')
-
-        workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
-
-        chat_log_display.scrolled_text.config(state='normal')
-        chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n")
-
-        if sources:
-            src_label = tk.Label(
-                chat_log_display.scrolled_text,
-                text=f"Sources [{len(sources)}]",
-                fg="blue",
-                cursor="hand2",
-                background=chat_log_display.scrolled_text.cget("background")
+            messagebox.showerror(
+                "Chatbot Unavailable",
+                "The chatbot was unable to produce a response.\n\n"
+                "Please try again. If the problem continues, contact support."
             )
-            chat_log_display.scrolled_text.window_create(tk.END, window=src_label)
-            SourcesWindow(root, src_label, sources, chatbot.oscar.open_doc)
+            return
 
-        chat_log_display.scrolled_text.insert(tk.END, "\n\n")
-        chat_log_display.scrolled_text.config(state='disabled')
+        try:
+            workflow_type, result, saved_id = result
+            # result is WorkflowResult type
+            resp = result.response
+            sources = result.sources
+
+            if workflow_type is None:
+                return
+
+            if saved_id is not None:
+                chat_log_display.scrolled_text.config(state='normal')
+                chat_log_display.scrolled_text.delete("1.0", tk.END)
+                chat_log_display.scrolled_text.config(state='disabled')
+                _show_saved_chat(saved_id)
+                chat_history_listbox.selection_clear(0, tk.END)
+                chat_log_display.scrolled_text.config(state='normal')
+                chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
+                chat_log_display.scrolled_text.config(state='disabled')
+
+            workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
+
+            chat_log_display.scrolled_text.config(state='normal')
+            chat_log_display.scrolled_text.insert(tk.END, f"CHATBOT {workflow_label}:\n{resp}\n")
+
+            if sources:
+                src_label = tk.Label(
+                    chat_log_display.scrolled_text,
+                    text=f"Sources [{len(sources)}]",
+                    fg="blue",
+                    cursor="hand2",
+                    background=chat_log_display.scrolled_text.cget("background")
+                )
+                chat_log_display.scrolled_text.window_create(tk.END, window=src_label)
+                SourcesWindow(root, src_label, sources, chatbot.oscar.open_doc)
+
+            chat_log_display.scrolled_text.insert(tk.END, "\n\n")
+            chat_log_display.scrolled_text.config(state='disabled')
 
 
-        # Scroll to the bottom
-        # chat_log_display.yview(tk.END)
-        chat_log_display.scrolled_text.see(tk.END)
+            # Scroll to the bottom
+            # chat_log_display.yview(tk.END)
+            chat_log_display.scrolled_text.see(tk.END)
 
-        print("Message sent")
+            print("Message sent")
+
+        except Exception as e:
+            print(f"Error displaying chatbot response: {e}", exc_info=True)
+
+            # Make sure the text widget isn't left in an editable state
+            chat_log_display.scrolled_text.config(state='disabled')
+
+            messagebox.showerror(
+                "Chatbot Error",
+                "The chatbot responded, but we couldn't display the response correctly.\n\n"
+                "Please try again. If the problem continues, contact support."
+            )
+
     task = BackgroundTask(
         root, 
         func=chatbot.run, 
