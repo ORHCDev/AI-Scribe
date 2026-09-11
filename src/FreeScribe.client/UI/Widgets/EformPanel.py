@@ -219,13 +219,26 @@ class EformPanel(tk.Frame):
         """
         Loads checkboxes for the selected eForm in the dropdown.
         """
+
+        # clean leftover data from the old selection
+        self.checkbox_data = []
+        self.checkbox_vars.clear()
+        for w in self.scrollable_frame.winfo_children():
+            w.destroy()
+
+
         form_name = self.eform_var.get()
-        fid = self.eforms[form_name]
+        fid = self.eforms.get(form_name) # not found returns None instead of KeyError
+
+        # degrade instead of crashing if oscar fails to initialize or the selected form has no id.
+        if self.oscar is None or fid is None:
+            print(f"eForm checkboxes unavailable (oscar={'None' if self.oscar is None else 'ok'}, form={form_name})")
+            return
+
         print(f"Loading checkboxes for {form_name}")
 
         checkboxes = self.oscar.get_eform_checkboxes(fid)
         self.checkbox_data = checkboxes
-        self.checkbox_vars.clear()
 
         for row, checkbox in enumerate(checkboxes):
             # create checkbox

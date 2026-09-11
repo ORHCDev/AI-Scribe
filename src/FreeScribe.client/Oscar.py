@@ -53,6 +53,13 @@ class Oscar:
             self.driver = webdriver.Firefox(service=service, options=options)
             self.wait = WebDriverWait(self.driver, 10)
 
+            # record current process's geckodriver PID for cleaning purposes
+            try:
+                with open(r".\chatbot\logs\owned_drivers.pids", "a") as _f:
+                    _f.write(f"{self.driver.service.process.pid}\n")
+            except Exception:
+                pass
+
         except Exception as e:
             logging.error(f"Failed to initialize WebDriver: {e}")
             self.cleanup()  # Ensure cleanup if initialization fails
