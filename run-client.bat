@@ -24,6 +24,7 @@ goto run_client
 echo Running client
 REM Navigate to FreeScribe client and run the app
 cd /d "src\FreeScribe.client"
+python cleanup_orphans.py
 python client.py
 
 endlocal
