@@ -1403,7 +1403,7 @@ def _load_stt_model_thread():
         stt_local_model = whisper.load_model(model)
         print("STT model loaded successfully.")
     except Exception as e:
-        print(f"Failed to load STT model '{model}': {e}", exc_info=True)
+        print(f"Failed to load STT model '{model}': {e}")
         stt_local_model = None
         messagebox.showerror(
             "Speech-to-Text Error",
@@ -1900,7 +1900,7 @@ def chatbot_send_message():
         chat_current_task[0] = None
 
         if error is not None:
-            print(f"Chatbot error: {error}", exc_info=True)
+            print(f"Chatbot error: {error}")
 
             messagebox.showerror(
                 "Chatbot Unavailable",
@@ -1947,7 +1947,7 @@ def chatbot_send_message():
             chat_log_display.scrolled_text.insert(tk.END, "\n\n")
             chat_log_display.scrolled_text.config(state='disabled')
 
-        refresh_patient_status()
+            refresh_patient_status()
 
             # Scroll to the bottom
             # chat_log_display.yview(tk.END)
@@ -1956,7 +1956,7 @@ def chatbot_send_message():
             print("Message sent")
 
         except Exception as e:
-            print(f"Error displaying chatbot response: {e}", exc_info=True)
+            print(f"Error displaying chatbot response: {e}")
 
             # Make sure the text widget isn't left in an editable state
             chat_log_display.scrolled_text.config(state='disabled')
