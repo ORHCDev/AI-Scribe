@@ -107,7 +107,7 @@ def get_recent_lab_results(db_conn, demo_no : str):
     parameters={
         "demo_no": "Patient's demographic number",
         "test_names": "List of lab or measurement names to retrieve historical values for",
-        "plot": "Boolean indicating whether to generate a time-series plot of the results"
+        "plot": "Optional. Set to true when the user asks to plot, graph, chart, or visualize the measurement history. Set to false when they only ask to retrieve or list the historical values. Defaults to false."
     }
 )
 def get_measurement_history(db_conn, demo_no : str, test_names : list[str], plot : bool = False):
