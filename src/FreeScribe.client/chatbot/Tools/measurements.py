@@ -662,7 +662,10 @@ def vitals_overview(db_conn, demo_no : str):
         else:
             data = [float(row["dataField"]) for row in res if row["type"].upper() == mtype]
         
-        plot_vals[f"{mtype}_dates"] = dates
+        plot_vals[f"{mtype}_dates"] = [
+            d if isinstance(d, dt.date) else dt.date.fromisoformat(str(d)[:10])
+            for d in dates
+        ]
         plot_vals[f"{mtype}_data"] = data
 
 
@@ -783,21 +786,29 @@ def vitals_overview(db_conn, demo_no : str):
     for key, val in sections.items():
         for v in val:
             print(f"{v}: {plot_vals[f'{v}_data']}")
+            if not plot_vals[f'{v}_data']:
+                continue
             if v == "BP":
-                mr_data = f"{plot_vals[f'{v}_data'][0][0]}/{plot_vals[f'{v}_data'][1][0]}"
+                for i in range(len(plot_vals[f'{v}_data'][0])):
+                    to_send.append({
+                        "Type": v,
+                        "Data": f"{plot_vals[f'{v}_data'][0][i]}/{plot_vals[f'{v}_data'][1][i]}",
+                        "Date": plot_vals[f'{v}_dates'][i],
+                    })
             elif v == "MEDS":
-                mr_data = wrap_text(plot_vals[f'{v}_data'][0])
+                for i in range(len(plot_vals[f'{v}_data'])):
+                    to_send.append({
+                        "Type": v,
+                        "Data": wrap_text(plot_vals[f'{v}_data'][i]),
+                        "Date": plot_vals[f'{v}_dates'][i],
+                    })
             else:
-                mr_data = plot_vals[f'{v}_data'][0]
-
-            mr_date = plot_vals[f'{v}_dates'][0]
-            
-            temp = {
-                "Type" : v,
-                "Data" : mr_data,
-                "Date" : mr_date,
-            }
-            to_send.append(temp)
+                for i in range(len(plot_vals[f'{v}_data'])):
+                    to_send.append({
+                        "Type": v,
+                        "Data": plot_vals[f'{v}_data'][i],
+                        "Date": plot_vals[f'{v}_dates'][i],
+                    })
 
     return tr(
         label="Vitals Overview",
