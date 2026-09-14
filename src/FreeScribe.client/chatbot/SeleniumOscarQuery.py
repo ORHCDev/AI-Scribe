@@ -40,6 +40,14 @@ class SOQ:
             if self.headless:
                 options.add_argument("--headless")
 
+            options.set_preference("dom.ipc.processCount", 1)
+            options.set_preference("fission.autostart", False)
+
+            # Auto-accept native confirm dialogs (e.g. Oscar's "edit this note in
+            # another window ... continue?") instead of the default "dismiss and
+            # notify", which cancels them and raises UnexpectedAlertOpenError.
+            options.unhandled_prompt_behavior = "accept"
+
             service = Service(self.driver_path)
             self.driver = webdriver.Firefox(service=service, options=options)
             self.wait = WebDriverWait(self.driver, 10)

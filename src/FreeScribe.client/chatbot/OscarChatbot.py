@@ -1,5 +1,6 @@
 
 import logging
+import time
 import yaml
 import requests
 import json
@@ -66,23 +67,43 @@ class OscarCB:
 
             # Driver path
             driver_path = self.config["Selenium"]["geckodriver_path"]
-
-            # Initialize Oscar Session
-            self.oscar = Oscar(
-                user, 
-                passw, 
-                pin, 
-                oscar_url, 
-                driver_path,
-                oscar_version=oscar_version
-            )
-            self.oscar.run()
-            logging.info("Successfully Initialized Oscar Session")
-            return True
         except Exception as e:
-            logging.error(f"Failed to initialize Oscar Session: {e}")
+            logging.error(f"Failed to read Oscar config: {e}")
             self.oscar = None
             return False
+
+        # Oscar login over Selenium is flaky (slow page loads, the SSL-bypass page
+        # appearing late, element-wait races). Retry a few times, cleaning up the
+        # half-open browser between attempts so failed tries don't leave orphans.
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            oscar = None
+            try:
+                oscar = Oscar(
+                    user,
+                    passw,
+                    pin,
+                    oscar_url,
+                    driver_path,
+                    oscar_version=oscar_version
+                )
+                oscar.run()
+                self.oscar = oscar
+                logging.info(f"Successfully Initialized Oscar Session (attempt {attempt}/{max_attempts})")
+                return True
+            except Exception as e:
+                logging.error(f"Failed to initialize Oscar Session (attempt {attempt}/{max_attempts}): {e}")
+                # Close the half-open browser before retrying so we don't leak a driver.
+                if oscar is not None:
+                    try:
+                        oscar.cleanup()
+                    except Exception:
+                        pass
+                if attempt < max_attempts:
+                    time.sleep(3)
+
+        self.oscar = None
+        return False
      
 
     def _initialize_oscar_db(self):
