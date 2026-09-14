@@ -37,3 +37,7 @@ oscar_failed/
 config.yaml
 **/logs
 prompts.yaml
+# RAG eval: real gold set + reports are PHI, keep out of git
+src/FreeScribe.client/chatbot/RAG/eval/gold_set.yaml
+src/FreeScribe.client/chatbot/RAG/eval/*_report.json
+eval_report.json
