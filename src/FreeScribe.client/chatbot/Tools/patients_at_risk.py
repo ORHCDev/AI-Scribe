@@ -3,16 +3,21 @@ from chatbot.Tools.utils import period_parser
 
 
 
-"""@tool(
+@tool(
     category="patients_at_risk",
-    description="Fetches and returns patient's who have an ejection fraction less than the given amount.",
+    description=(
+        "Returns the full list of patients who have an ejection fraction less than the specified amount. The user may "
+        "specify a time period over which to narrow the search. If no time period is specified, default to the prior "
+        "6 months. This tool is relevant when the user asks about patients who have an ejection fraction, or EF, less "
+        "than a specific amount."
+    ),
     context="Here are the patient's who have an EF percent less than given:",
     parameters={
         "EF_pct": "Ejection fraction percentage to filter for patient's with an EF less than it.",
-        "period": "An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. I.e. '6m' would indicate 6 months."
+        "period": "Optional. An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. I.e. '6m' would indicate 6 months."
     }
-)"""
-def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6mo") -> list[dict]:
+)
+def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6m") -> list[dict]:
     """
     Queries and returns a list of dictionaries of patient's that have an ejection fraction of less than EF_pct.
 
@@ -40,7 +45,7 @@ def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6mo") -
     FROM measurements
     WHERE type = "EF_B"
       AND DATE(dateObserved) > '{date}'
-      AND dataField < '{float(EF_pct)}
+      AND dataField < {float(EF_pct)}
     ORDER BY dateObserved DESC;
     """
 
