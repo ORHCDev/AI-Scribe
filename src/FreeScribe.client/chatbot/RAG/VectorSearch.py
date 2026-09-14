@@ -1,7 +1,7 @@
 import psycopg2
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from chatbot.Tools.Tool import ToolEmbeddings
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 import numpy as np
 import gc
@@ -116,9 +116,31 @@ class VectorDB:
                 )
         if date_filter is not None:
             if date_filter["value"] is not None:
-                filters.append(
-                    f"{date_filter['column']} = '{date_filter['value']}'"
-                )
+                col = date_filter["column"]
+                val = date_filter["value"]
+                delta = date_filter.get("delta") or 0
+                try:
+                    center = datetime.strptime(val, "%Y-%m-%d").date()
+                except (ValueError, TypeError):
+                    center = None
+                # Compare on the date part only: observation_date is a timestamp,
+                # so an exact `= 'YYYY-MM-DD'` match would require a midnight time.
+                if center is not None and delta > 0:
+                    # +/- delta day window around the requested date
+                    start = center - timedelta(days=delta)
+                    end = center + timedelta(days=delta)
+                    filters.append(
+                        f"DATE({col}) BETWEEN '{start}' AND '{end}'"
+                    )
+                elif center is not None:
+                    filters.append(
+                        f"DATE({col}) = '{center}'"
+                    )
+                else:
+                    # Unparseable date: fall back to a plain equality on the raw value
+                    filters.append(
+                        f"{col} = '{val}'"
+                    )
         filter_str = ""
         if filters:
             filter_str = "WHERE " + " \nAND ".join(filters)
@@ -652,11 +674,22 @@ class VectorSearch:
         -------
         Returns a np.ndarray of normalized scores.
         """
+        s = np.asarray(scores, dtype=float)
+        if s.size == 0:
+            return s
+
         if method == "log":
-            return np.log1p(scores) / np.max(np.log1p(scores))
+            # Cross-encoder scores (e.g. MedCPT logits) can be negative, and log1p
+            # is only defined for values > -1. Shift so the smallest score is 0
+            # (a monotonic shift that preserves ordering), then log-compress and
+            # scale to [0, 1]. Guard the all-equal case (denominator 0).
+            shifted = s - s.min()
+            logged = np.log1p(shifted)
+            denom = logged.max()
+            return logged / denom if denom > 0 else np.zeros_like(logged)
         else:
-            s = np.array(scores)
-            return (s - s.min()) / (s.max() - s.min())
+            rng = s.max() - s.min()
+            return (s - s.min()) / rng if rng > 0 else np.zeros_like(s)
 
 
     def _days_old(self, date : datetime) -> int:
@@ -789,13 +822,16 @@ class VectorSearch:
                     (boost, rank[1])
                 )
 
+        # Sort by the recency-boosted score. combined holds dicts when to_dict is
+        # set (boost under the "boost" key) and (boost, metadata) tuples otherwise.
+        boost_key = (lambda x: x["boost"]) if to_dict else (lambda x: x[0])
         reranked = sorted(
-            combined, 
-            key=lambda x: x[0], 
+            combined,
+            key=boost_key,
             reverse=True
         )
 
-        return combined
+        return reranked
 
 
     def rank(
