@@ -96,12 +96,11 @@ def get_recent_lab_results(db_conn, demo_no : str):
 @tool(
     category="measurements",
     description=(
-        "Returns the full historical record of one or more specified measurements or lab tests "
-        "for a patient, including numeric values, measurement instructions, and observation dates. "
-        "Optionally generates time-series plots showing trends over time. "
-        "This tool is most relevant when the user asks about trends, progression, stability, "
-        "or historical changes in specific labs or measurements (e.g., LDL over time, A1C trend, "
-        "renal function trajectory)."
+        "Returns the full historical record of one or more specified measurements or lab tests for a patient, "
+        "including numeric values, measurement instructions, and observation dates. If the user asks to plot, " 
+        "graph, chart, or visualize those values, also set plot to true. This tool is most relevant when the user " 
+        "asks about trends, progression, stability, or historical changes in specific labs or measurements (e.g., "
+        "LDL over time, A1C trend, renal function trajectory)."
     ),
     context="These are the patient's lab results, organize them as a table:",
     parameters={
