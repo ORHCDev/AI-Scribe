@@ -246,7 +246,8 @@ rag_tool_prompt: |
       "latest" → "most_recent": true
       "last visit" → "date": "last_visit"
 
-  - If ANY required parameter is missing or ambiguous → return []
+  - If a required parameter is missing or genuinely ambiguous → return []
+  - For optional parameters, use the tool's documented default unless the user explicitly requests a different value
 
   ---------------------
   OUTPUT

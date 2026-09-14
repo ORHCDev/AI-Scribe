@@ -142,6 +142,9 @@ class RAGWorkflow(Workflow):
             )
             tool_resp = context.ai_conn.send_message(tool_prompt)
 
+            print(f"Tool prompt: {tool_prompt}")
+            print(f"Tool response: {tool_resp}")
+
             #self._write_out(tool_prompt, "#")
             #self._write_out(tool_resp, "$")
             
