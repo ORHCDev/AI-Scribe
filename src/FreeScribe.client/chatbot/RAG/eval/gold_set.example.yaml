@@ -28,28 +28,28 @@
 
 - id: echo_ejection_fraction
   query: "What was the ejection fraction on the most recent echocardiogram?"
-  patient_id: "1001"
+  patient_id: ""
   date: null
-  relevant_measurement_ids: ["50411"]
+  relevant_measurement_ids: [""]
   notes: "EF should come from the March 2024 ECHO measurement group."
 
 - id: recent_blood_pressure
   query: "recent blood pressure readings"
-  patient_id: "1042"
+  patient_id: ""
   date: null
-  relevant_measurement_ids: ["88231"]
+  relevant_measurement_ids: [""]
   notes: "Most recent CARD/vitals measurement group."
 
 - id: stress_test_workload
   query: "exercise stress test METs and workload achieved"
-  patient_id: "1042"
-  date: "2023-11-15"
-  relevant_measurement_ids: ["77120"]
+  patient_id: ""
+  date: "2024-11-15"
+  relevant_measurement_ids: [""]
   notes: "Date filter should scope to the Nov 2023 EST; exercises the date window."
 
 - id: holter_afib
   query: "Did the Holter monitor show atrial fibrillation?"
-  patient_id: "1001"
+  patient_id: ""
   date: null
-  relevant_measurement_ids: ["61903"]
+  relevant_measurement_ids: [""]
   notes: "HOLT measurement group summarizing the Holter findings."
