@@ -1,0 +1,55 @@
+# -----------------------------------------------------------------------------
+# RAG measurement gold set  (TEMPLATE — the entries below are SYNTHETIC examples)
+# -----------------------------------------------------------------------------
+# Scope: MEASUREMENTS ONLY (the measurement_chunks table). Documents and chatbot
+# tools are out of scope for this eval.
+#
+# Copy this file to `gold_set.yaml` and replace it with real cases.
+#
+# IMPORTANT: a real gold set references real patient records (PHI). Keep
+# `gold_set.yaml` OUT of git and build/store it only inside the clinic's
+# controlled environment. This example file contains no real data.
+#
+# Each entry is one evaluation case:
+#   id                        : short unique label for the case
+#   query                     : the natural-language question a user would ask
+#   patient_id                : demographic_no to scope the search (string/int)
+#   date                      : optional 'YYYY-MM-DD' date filter (or null)
+#   relevant_measurement_ids  : measurement_ids values that SHOULD be retrieved,
+#                               matching the DB's stored grouped-id string exactly
+#                               (the measurements table groups ids as one string
+#                               per measurement_type/date, e.g. "88231" or
+#                               "88231\n\n88232").
+#   notes                     : free text, for humans only
+#
+# Aim for ~20-30 cases spread across measurement types (ECHO, EST, HOLTER, CATH,
+# CARD, MEDS, ...) and query phrasings to get a stable signal.
+# -----------------------------------------------------------------------------
+
+- id: echo_ejection_fraction
+  query: "What was the ejection fraction on the most recent echocardiogram?"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  notes: "EF should come from the March 2024 ECHO measurement group."
+
+- id: recent_blood_pressure
+  query: "recent blood pressure readings"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  notes: "Most recent CARD/vitals measurement group."
+
+- id: stress_test_workload
+  query: "exercise stress test METs and workload achieved"
+  patient_id: ""
+  date: "2024-11-15"
+  relevant_measurement_ids: [""]
+  notes: "Date filter should scope to the Nov 2023 EST; exercises the date window."
+
+- id: holter_afib
+  query: "Did the Holter monitor show atrial fibrillation?"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  notes: "HOLT measurement group summarizing the Holter findings."

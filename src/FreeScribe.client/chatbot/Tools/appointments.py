@@ -80,7 +80,7 @@ def get_appointment_history(db_conn, demo_no : str):
         save_results=res
     )
 
-@tool(
+"""@tool(
     category="appointments",
     description=(
         "Returns a list of upcoming appointments assigned to a specific provider, "
@@ -94,7 +94,7 @@ def get_appointment_history(db_conn, demo_no : str):
     parameters={
         "provider_id": "Provider ID"
     }
-)
+)"""
 def get_appointments_by_provider(db_conn, provider_id : str):
     """
     Queries the Oscar EMR database for a provider's upcoming appointments

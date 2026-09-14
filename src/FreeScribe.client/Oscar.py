@@ -16,7 +16,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import time
 
 class Oscar:
-    def __init__(self, user, passw, pin, oscar_url, driver_path, headless=False, oscar_version=15):
+    def __init__(self, user, passw, pin, oscar_url, driver_path, headless=False, oscar_version=15, wait_timeout=20):
         self.user = user
         self.passw = passw
         self.pin = pin
@@ -25,6 +25,7 @@ class Oscar:
         self.oscar_login_url = self.oscar_url + "index.jsp"
         self.driver_path = driver_path
         self.headless = headless
+        self.wait_timeout = wait_timeout
 
         self.home_window = None
         self.initialize_driver()
@@ -49,9 +50,16 @@ class Oscar:
             if self.headless:
                 options.add_argument("--headless")
 
+            # Auto-accept native confirm dialogs (e.g. Oscar's "You have started to
+            # edit this note in another window ... continue?", which fires when a
+            # stale/orphaned session still holds an edit lock). Without this the
+            # default "dismiss and notify" cancels the dialog and raises
+            # UnexpectedAlertOpenError, aborting the note write.
+            options.unhandled_prompt_behavior = "accept"
+
             service = Service(self.driver_path)
             self.driver = webdriver.Firefox(service=service, options=options)
-            self.wait = WebDriverWait(self.driver, 10)
+            self.wait = WebDriverWait(self.driver, self.wait_timeout)
 
             # record current process's geckodriver PID for cleaning purposes
             try:
