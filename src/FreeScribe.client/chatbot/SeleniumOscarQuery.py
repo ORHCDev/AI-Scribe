@@ -6,10 +6,12 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException
 
 import logging
 import requests
 import urllib3
+import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -153,20 +155,40 @@ class SOQ:
         if 'None' in query:
             raise ValueError("A query parameter was not provided.\n Please provide all necessary parameters.")
 
-        tbox = self.wait.until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[2]/td/textarea'))
-        )
-        # Clear query
-        tbox.send_keys(Keys.CONTROL + "a")
-        tbox.send_keys(Keys.DELETE)
-        # Send query
-        tbox.send_keys(query)
+        textbox_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[2]/td/textarea'
+        button_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[6]/td/input'
 
-        query_btn = self.wait.until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[6]/td/input'))
-        )
-        query_btn.click()
+        for attempt in range(3):
+            try:
+                print(f"QBE: entering query (attempt {attempt + 1})")
 
+                tbox = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, textbox_xpath))
+                )
+
+                tbox.clear()
+                tbox.send_keys(query)
+
+                print("QBE: clicking query button")
+
+                query_btn = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, button_xpath))
+                )
+
+                query_btn.click()
+
+                # Successfully submitted
+                break
+
+            except StaleElementReferenceException:
+                print(f"QBE: stale element, retrying ({attempt + 1}/3)")
+
+                if attempt == 2:
+                    raise
+
+                time.sleep(0.5)
+
+        print("QBE: waiting for results")
         results_wait = WebDriverWait(self.driver, self.query_timeout)
         try:
             table = results_wait.until(
