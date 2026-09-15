@@ -40,18 +40,30 @@ def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6m") ->
 
     date = period_parser(period)
 
+    MAX_RESULTS = 100
+
     query = f"""
     SELECT *
     FROM measurements
     WHERE type = "EF_B"
-      AND DATE(dateObserved) > '{date}'
-      AND dataField < {float(EF_pct)}
-    ORDER BY dateObserved DESC;
+    AND DATE(dateObserved) > '{date}'
+    AND dataField < {float(EF_pct)}
+    ORDER BY dateObserved DESC
+    LIMIT {MAX_RESULTS + 1};
     """
 
     res = db_conn.query_database(query)
+
+    truncated = len(res) > MAX_RESULTS
+    res = res[:MAX_RESULTS]
+
+    if truncated:
+        label = f"First {MAX_RESULTS} patients with EF < {EF_pct}; more results exist"
+    else:
+        label = f"Patients with EF < {EF_pct}"
+
     return tr(
-        label=f"Patient's with EF < {EF_pct}",
+        label=label,
         send_to_ai=True,
         query_results=res,
         save_results=res
