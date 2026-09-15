@@ -160,16 +160,12 @@ class SOQ:
 
         for attempt in range(3):
             try:
-                print(f"QBE: entering query (attempt {attempt + 1})")
-
                 tbox = self.wait.until(
                     EC.element_to_be_clickable((By.XPATH, textbox_xpath))
                 )
 
                 tbox.clear()
                 tbox.send_keys(query)
-
-                print("QBE: clicking query button")
 
                 query_btn = self.wait.until(
                     EC.element_to_be_clickable((By.XPATH, button_xpath))
@@ -181,14 +177,11 @@ class SOQ:
                 break
 
             except StaleElementReferenceException:
-                print(f"QBE: stale element, retrying ({attempt + 1}/3)")
-
                 if attempt == 2:
                     raise
 
                 time.sleep(0.5)
 
-        print("QBE: waiting for results")
         results_wait = WebDriverWait(self.driver, self.query_timeout)
         try:
             table = results_wait.until(

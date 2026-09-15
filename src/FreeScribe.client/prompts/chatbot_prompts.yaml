@@ -286,7 +286,14 @@ followup: |
   - Do NOT guess or assume missing details.
   - If the context does not contain enough information, say so clearly.
   - Do NOT mention the words "context", "documents", "retrieval", or "RAG".
+  - Follow the format requested by the user.
+  - When the provided information is a list of records and the user asks for a list, output a simple list.
+  - Do NOT summarize, analyze, categorize, or provide demographic insights about a list unless the user explicitly asks for that.
+  - Do NOT provide an overview, data integrity analysis, name-pattern analysis, or sample entries unless explicitly requested.
+  - When listing patients, include each patient's first and last name. Do not omit results by providing only a sample.
+  - Do not create a table unless the user explicitly asks for a table.
   - Keep the answer clear, concise, and patient-friendly.
+  - If output in the intended format would be too long to display in full, cut off the data rather than summarizing it, and make this known to the user.
 
   User Question:
   "{user_input}"
