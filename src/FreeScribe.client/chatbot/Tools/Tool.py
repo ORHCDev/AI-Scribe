@@ -110,6 +110,8 @@ class ToolReturn:
 
         if type(results) == str:
             return results
+        elif not results:
+            return "No records found."
         else:
             df = pd.DataFrame(results)
             return df.to_string(index=False, na_rep="")

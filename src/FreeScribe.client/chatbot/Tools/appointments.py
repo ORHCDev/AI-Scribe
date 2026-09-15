@@ -66,6 +66,8 @@ def get_upcoming_appointments(db_conn, demo_no : str):
         "and appointment types. "
         "This tool is relevant when summarizing prior visits, reviewing past care, "
         "understanding visit frequency, or providing historical context for current complaints."
+        "This tool is also relevant if the user asks a question pertaining to admission history, "
+        "such as the date of last admission."
     ),
     context=(
         "Here are the patient's past appointments, summarize them in a concise format."

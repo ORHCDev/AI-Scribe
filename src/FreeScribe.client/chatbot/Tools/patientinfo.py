@@ -11,7 +11,8 @@ from chatbot.Tools.Tool import tool, ToolReturn as tr
         "demographic number. "
         "This tool is most relevant when answering questions about who the patient is, confirming identity details, "
         "verifying demographic attributes, retrieving contact information, or establishing patient context prior to "
-        "reviewing clinical data such as medications, documents, or encounters."
+        "reviewing clinical data such as medications, documents, or encounters. "
+        "This tool should be used when the user requests a general or overall summary of a certain patient."
     ),
     context="Patient demographic and registration-level information",
     parameters={

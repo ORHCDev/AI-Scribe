@@ -284,7 +284,9 @@ followup: |
   - Use only facts explicitly stated or directly implied in the context.
   - Do NOT add external medical knowledge.
   - Do NOT guess or assume missing details.
-  - If the context does not contain enough information, say so clearly.
+  - If a tool was used to search for records and the tool returned no records, state that no matching records were found.
+  - Do not interpret an empty result as missing information.
+  - Distinguish between "no records found" and "insufficient information."
   - Do NOT mention the words "context", "documents", "retrieval", or "RAG".
   - Follow the format requested by the user.
   - When the provided information is a list of records and the user asks for a list, output a simple list.
