@@ -2,6 +2,21 @@ from chatbot.Tools.Tool import tool, ToolReturn as tr
 from datetime import datetime
 from chatbot.Tools.utils import period_parser
 
+# Status:
+# b: Booked
+# a: Exam Room 2
+# i: Arrived
+# c: Completed
+# E: Echo Room 1
+# d: Rescheduled
+# e: Exam Room 1
+# G: Holter Booked
+# R: Exam Room 3
+# j: Stress Echo Room
+# H: EST Room
+# N: No Show
+# C: Cancelled
+# B: Billed
 
 @tool(
     category="appointments",
@@ -52,7 +67,10 @@ def get_upcoming_appointments(db_conn, demo_no : str):
         "This tool is relevant when summarizing prior visits, reviewing past care, "
         "understanding visit frequency, or providing historical context for current complaints."
     ),
-    context="Here are the patients past appointments, summarize them in a concise format:",
+    context=(
+        "Here are the patient's past appointments, summarize them in a concise format."
+        "If the patient has no past appointments, explicitly state this to the user."
+    ),
     parameters={
         "demo_no": "Patient demographic number"
     }
@@ -338,7 +356,7 @@ def patients_not_seen(
     )
 
 
-"""@tool(
+@tool(
     category="appointments",
     description=(
         "Returns a list of active patients who have never had an appointment recorded "
@@ -348,9 +366,15 @@ def patients_not_seen(
         "data quality audits, onboarding follow-ups, or outreach to patients who "
         "have never been seen despite being registered."
     ),
-    context="Here are the patient's who haven't had appointments:",
+    context=(
+        "Here is a list of patients who have never had an appointment recorded. "
+        "Return the patients as a simple list using the patient's FirstName and LastName. "
+        "Do not summarize, analyze, group, or describe the dataset. "
+        "Do not provide an overview, demographic breakdown, sample entries, or table. "
+        "Include every patient in the results."
+    ),
     parameters={}
-)"""
+)
 def patients_with_no_appointments(db_conn) -> list[dict]:
     """
     Queries and returns a list of dictionaries of patient's that have not had any appointments scheduled.
@@ -377,6 +401,8 @@ def patients_with_no_appointments(db_conn) -> list[dict]:
         WHERE a.demographic_no = d.demographic_no
           AND a.demographic_no <> 0
     )
+
+    LIMIT 15;
     """
 
     res = db_conn.query_database(query)
@@ -388,32 +414,70 @@ def patients_with_no_appointments(db_conn) -> list[dict]:
     )
 
 
-"""@tool(
+@tool(
     category="appointments",
     description=(
-        "Returns patients who have missed one or more appointments within a specified time period "
-        "and do not currently have a future appointment scheduled. "
-        "Missed appointments may include no-shows or unattended visits depending on status rules. "
-        "Results are useful for identifying patients requiring rebooking, outreach, "
-        "or follow-up after missed care."
+        "Returns active patients who have had one or more no-show appointments "
+        "within a specified time period and do not currently have a future appointment scheduled. "
+        "No-show appointments are identified by appointment status 'N'. "
+        "Results include the patient's name, provider, and most recent missed appointment. "
+        "This tool is useful for identifying patients who may require rebooking, outreach, "
+        "or follow-up after a missed appointment."
     ),
-    context="Here are the patients with missed appointments and no rescheduled visits:",
+    context="Here are the patients with missed appointments and no future appointments:",
     parameters={
-        "period": "An integer followed by 'd', 'm', or 'y' (e.g., '6m' for six months)."
+        "period": (
+            "Optional. An integer followed by 'd', 'm', or 'y' representing "
+            "days, months, or years (e.g., '6m' for six months). Defaults to 6 months."
+        )
     }
-)"""
-def missed_appointments(db_conn, period : str = "6m") -> list[dict]:
+)
+def missed_appointments(db_conn, period: str = "6m") -> list[dict]:
+
+    date = period_parser(period)
+
+    query = f"""
+    SELECT
+        d.demographic_no AS "demoNo",
+        d.last_name AS "LastName",
+        d.first_name AS "FirstName",
+        d.provider_no AS "ProviderNo",
+        MAX(a.appointment_date) AS "LastMissedAppointment"
+
+    FROM demographic d
+
+    JOIN appointment a
+        ON a.demographic_no = d.demographic_no
+
+    WHERE d.patient_status = 'AC'
+
+      AND a.status = 'N'
+      AND a.appointment_date > '{date}'
+
+      AND NOT EXISTS (
+          SELECT 1
+          FROM appointment future
+          WHERE future.demographic_no = d.demographic_no
+            AND future.appointment_date >= CURDATE()
+            AND future.status NOT IN ('C', 'd')
+      )
+
+    GROUP BY
+        d.demographic_no,
+        d.last_name,
+        d.first_name,
+        d.provider_no
+
+    ORDER BY MAX(a.appointment_date) DESC
+
+    LIMIT 15;
     """
-    Queries and returns a list of dictionaries of patient's that have had missed appointments and new appointments
-    have yet to be scheduled.
 
-    Params
-    ------
-    db_conn : SOQ | OscarDB
-        Database connection.
+    res = db_conn.query_database(query)
 
-
-    period : str
-        An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. \\
-        I.e. '6m' would indicate 6 months.
-    """  
+    return tr(
+        label=f"Patients with missed appointments since {date}",
+        send_to_ai=True,
+        query_results=res,
+        save_results=res
+    )
