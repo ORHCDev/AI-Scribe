@@ -80,39 +80,134 @@ def get_appointment_history(db_conn, demo_no : str):
         save_results=res
     )
 
-"""@tool(
+@tool(
     category="appointments",
     description=(
-        "Returns a list of upcoming appointments assigned to a specific provider, "
-        "filtered to future dates only. "
-        "Each record typically contains patient identifiers, appointment date and time, "
-        "visit status, and appointment type. "
-        "This tool is most relevant for provider schedule reviews, workload planning, "
-        "clinic flow management, or answering questions about a provider's upcoming day or week."
+        "Returns a list of upcoming appointments assigned to a specific healthcare provider, "
+        "filtered to future dates only. The provider should be identified by name. "
+        "The provider name may be given with or without a professional title such as "
+        "'Dr.'. This tool is relevant when the user asks for the upcoming appointments or schedule "
+        "associated with a particular individual, who is assumed to be a doctor, provider or clinician."
     ),
-    context="Here are the providers upcoming appointments, summarize them in a concise format:",
+    context=(
+        "Here are the upcoming appointments for the requested provider or doctor. "
+        "Summarize them in a concise format:"
+    ),
     parameters={
-        "provider_id": "Provider ID"
+        "provider_name": "Name of the provider whose upcoming appointments should be retrieved"
     }
-)"""
-def get_appointments_by_provider(db_conn, provider_id : str):
+)
+def get_appointments_by_provider(db_conn, provider_name: str):
     """
-    Queries the Oscar EMR database for a provider's upcoming appointments
+    Queries the Oscar EMR database for a provider's upcoming appointments.
     """
-    
+
+    provider_query = f"""
+    SELECT
+        provider_no,
+        first_name,
+        last_name,
+        provider_type,
+        specialty,
+        email
+    FROM provider
+    WHERE CONCAT(first_name, ' ', last_name) = '{provider_name}'
+    OR CONCAT('Dr. ', first_name, ' ', last_name) = '{provider_name}'
+    ORDER BY provider_no;
+    """
+
+    providers = db_conn.query_database(provider_query)
+
     today = datetime.today().strftime("%Y-%m-%d")
-    
+
+    if not providers:
+        return tr(
+            label=f"Provider not found: {provider_name}",
+            send_to_ai=True,
+            query_results=[],
+            save_results=[]
+        )
+
+    if len(providers) > 1:
+        providers_with_appointments = []
+
+        for provider in providers:
+            provider_id = provider["provider_no"]
+
+            query = f"""
+            SELECT *
+            FROM appointment
+            WHERE provider_no = {provider_id}
+            AND appointment_date >= '{today}'
+            ORDER BY appointment_date
+            LIMIT 15;
+            """
+
+            appointments = db_conn.query_database(query)
+
+            if appointments:
+                providers_with_appointments.append({
+                    "provider": provider,
+                    "appointments": appointments
+                })
+
+        if len(providers_with_appointments) == 0:
+            return tr(
+                label=f"No upcoming appointments for {provider_name}",
+                send_to_ai=True,
+                query_results=[],
+                save_results=[]
+            )
+
+        if len(providers_with_appointments) > 1:
+            return tr(
+                label=f"Multiple providers found: {provider_name}",
+                send_to_ai=True,
+                query_results=[
+                    {
+                        "provider_no": item["provider"]["provider_no"],
+                        "first_name": item["provider"]["first_name"],
+                        "last_name": item["provider"]["last_name"],
+                        "specialty": item["provider"]["specialty"],
+                        "appointments": item["appointments"]
+                    }
+                    for item in providers_with_appointments
+                ],
+                save_results=providers_with_appointments
+            )
+
+        # Exactly one matching provider has appointments
+        res = providers_with_appointments[0]["appointments"]
+
+    else:
+        provider_id = providers[0]["provider_no"]
+
+        query = f"""
+        SELECT *
+        FROM appointment
+        WHERE provider_no = {provider_id}
+        AND appointment_date >= '{today}'
+        ORDER BY appointment_date
+        LIMIT 15;
+        """
+
+        res = db_conn.query_database(query)
+
+    provider_id = providers[0]["provider_no"]
+
     query = f"""
     SELECT *
     FROM appointment
     WHERE provider_no = {provider_id}
-      AND appointment_date > '{today}'
-    LIMIT 10;
+      AND appointment_date >= '{today}'
+    ORDER BY appointment_date
+    LIMIT 15;
     """
 
     res = db_conn.query_database(query)
+
     return tr(
-        label=f"Appointments for Provider {provider_id}",
+        label=f"Appointments for {provider_name}",
         send_to_ai=True,
         query_results=res,
         save_results=res
