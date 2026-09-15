@@ -214,27 +214,44 @@ def get_appointments_by_provider(db_conn, provider_name: str):
     )
 
 
-"""@tool(
+@tool(
     category="appointments",
     description=(
         "Returns a list of active patients who have not completed a valid appointment "
         "within a specified time period (days, months, or years). "
         "Patients with cancelled, no-show, or rescheduled visits within the period are excluded. "
         "Results typically include patient demographic identifiers and assigned provider. "
+        "The search may optionally be filtered to a specific provider by name. "
+        "The provider name may be given with or without a professional title such as 'Dr.'. "
         "This tool is especially relevant for patient outreach, recall programs, "
         "preventive care tracking, and identifying patients lost to follow-up."
     ),
-    context="Here are the patient's who haven't been seen recently:",
+    context=(
+        "Here is a list of patients who have not been seen within the specified period. "
+        "Return the patients as a simple list using the patient's FirstName and LastName. "
+        "Do not summarize, analyze, group, or describe the dataset. "
+        "Do not provide an overview, demographic breakdown, sample entries, or table. "
+        "Include every patient in the results."
+    ),
     parameters={
         "period": (
             "An integer followed by one of 'd', 'm', or 'y' representing days, months, or years "
-            "(e.g., '6m' for six months)."
+            "(e.g., '6m' for six months). Optional; defaults to 2 years."
+        ),
+        "provider_name": (
+            "Optional name of the provider to filter patients by. "
+            "The name may be given with or without 'Dr.' "
         )
     }
-)"""
-def patients_not_seen(db_conn, period : str = "2y") -> list[dict]:
+)
+def patients_not_seen(
+    db_conn,
+    period: str = "2y",
+    provider_name: str = None
+) -> list[dict]:
     """
-    Queries and returns a list of dictionaries of patient's that have not been seen for X days/months/years.
+    Queries and returns a list of active patients that have not been seen
+    within the specified period, optionally filtered by provider.
 
     Params
     ------
@@ -242,64 +259,80 @@ def patients_not_seen(db_conn, period : str = "2y") -> list[dict]:
         Database connection
 
     period : str
-        An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. \\
-        I.e. '6m' would indicate 6 months.
+        An integer followed by one of 'd', 'm', or 'y' for days, months,
+        or years respectively. E.g. '6m' indicates six months.
 
-    Returns
-    -------
-    A list of dictionaries of patient's that have not been seen for X days/months/years.
+    provider_name : str
+        Optional provider name used to filter the results.
     """
 
     date = period_parser(period)
 
-    # Status':
-    # b: Booked
-    # a: Exam Room 2
-    # i: Arrived
-    # c: Completed
-    # E: Echo Room 1
-    # d: Rescheduled
-    # e: Exam Room 1
-    # G: Holter Booked
-    # R: Exam Room 3
-    # j: Stress Echo Room
-    # H: EST Room
-    # N: No Show
-    # C: Cancelled
-    # B: Billed
+    provider_filter = ""
+
+    if provider_name:
+        provider_query = f"""
+        SELECT provider_no
+        FROM provider
+        WHERE CONCAT(first_name, ' ', last_name) = '{provider_name}'
+           OR CONCAT('Dr. ', first_name, ' ', last_name) = '{provider_name}'
+        """
+
+        providers = db_conn.query_database(provider_query)
+
+        if not providers:
+            return tr(
+                label=f"Provider not found: {provider_name}",
+                send_to_ai=True,
+                query_results=[],
+                save_results=[]
+            )
+
+        provider_ids = [str(provider["provider_no"]) for provider in providers]
+
+        provider_filter = f"""
+        AND d.provider_no IN ({','.join(provider_ids)})
+        """
 
     query = f"""
     SELECT 
         d.demographic_no AS "demoNo",
         d.last_name AS "LastName",
         d.first_name AS "FirstName",
-        d.provider_no AS "ProviderNo"
+        d.provider_no AS "ProviderNo",
+        MAX(a.appointment_date) AS "LastAppointment"
     FROM demographic d
+    JOIN appointment a
+        ON a.demographic_no = d.demographic_no
     WHERE d.patient_status = 'AC'
+    AND a.demographic_no <> 0
+    AND a.status NOT IN ('d', 'N', 'C')
 
-    # Exclude patient's who have had appointments within period
-    AND NOT EXISTS (
-        SELECT 1
-        FROM appointment a
-        WHERE a.demographic_no = d.demographic_no
-        AND a.demographic_no <> 0
-        AND a.status NOT IN ('d', 'N', 'C')
-        AND a.appointment_date > '{date}'
-    )
+    {provider_filter}
 
-    # Only include patient's who have had at least 1 appointment registered
-    AND EXISTS (
-        SELECT 1
-        FROM appointment a2
-        WHERE a2.demographic_no = d.demographic_no
-          AND a2.demographic_no <> 0
-    )
+    GROUP BY
+        d.demographic_no,
+        d.last_name,
+        d.first_name,
+        d.provider_no
+
+    HAVING MAX(a.appointment_date) <= '{date}'
+
+    ORDER BY MAX(a.appointment_date) ASC
+
+    LIMIT 15;
     """
 
     res = db_conn.query_database(query)
+
+    label = f"Patients Not Seen since {date}"
+
+    if provider_name:
+        label += f" for {provider_name}"
+
     return tr(
-        label=f"Patient's Not Seen since {date}",
-        send_to_ai=False,
+        label=label,
+        send_to_ai=True,
         query_results=res,
         save_results=res
     )
