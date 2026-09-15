@@ -2,7 +2,7 @@ from chatbot.Tools.Tool import tool, ToolReturn as tr
 from chatbot.Tools.utils import period_parser
 from datetime import datetime
 
-"""@tool(
+@tool(
     category="medication",
     description=(
         "Returns a list of medications that the patient is currently prescribed or actively taking. "
@@ -18,7 +18,7 @@ from datetime import datetime
     parameters={
         "demo_no": "Patient demographic number used to identify the patient in the EMR",
     }
-)"""
+)
 def get_current_medications(db_conn, demo_no : str):
     """
     Queries the Oscar EMR database for the patients current medication information.
@@ -52,7 +52,7 @@ def get_current_medications(db_conn, demo_no : str):
         save_results=res
     )
 
-"""@tool(
+@tool(
     category="medication",
     description=(
         "Returns a summary of the patient's past medication history, limited to medications that have been discontinued "
@@ -67,7 +67,7 @@ def get_current_medications(db_conn, demo_no : str):
     parameters={
         "demo_no": "Patient demographic number used to identify the patient in the EMR",
     }
-)"""
+)
 def get_medication_history(db_conn, demo_no : str):
     """
     Queries the Oscar EMR database for the patients past medication history information.
@@ -92,6 +92,7 @@ def get_medication_history(db_conn, demo_no : str):
     FROM drugs
     WHERE demographic_no = {demo_no}
         AND end_date < '{today}'
+        AND not archived
     ORDER BY end_date DESC
     LIMIT 10;
     """
