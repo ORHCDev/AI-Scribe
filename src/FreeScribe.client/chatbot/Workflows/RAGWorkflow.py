@@ -12,6 +12,88 @@ from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult
 )
 class RAGWorkflow(Workflow):
 
+    def get_patient_by_name(self, db_conn, patient_name: str):
+        patient_name = patient_name.strip()
+
+        query = f"""
+        SELECT
+            demographic_no,
+            first_name,
+            last_name
+        FROM demographic
+        WHERE CONCAT(first_name, ' ', last_name) = '{patient_name}'
+           OR CONCAT(last_name, ', ', first_name) = '{patient_name}'
+        LIMIT 10;
+        """
+
+        return db_conn.query_database(query)
+
+    def get_demo_num(self, user_input: str, context: WorkflowContext):
+        identifier_prompt = context.prompts.get("patient_identifier").format(
+            user_input=user_input
+        )
+
+        identifier_resp = context.ai_conn.send_message(identifier_prompt)
+
+        identifier_resp = (
+            identifier_resp
+            .replace("```json", "")
+            .replace("```", "")
+            .replace("**JSON only**", "")
+            .strip()
+        )
+
+        try:
+            identifier = json.loads(identifier_resp)
+        except json.JSONDecodeError:
+            logging.warning(
+                f"Could not parse patient identifier response: {identifier_resp}"
+            )
+            identifier = {
+                "patient_id": None,
+                "patient_name": None
+            }
+
+        patient_id = identifier.get("patient_id")
+        patient_name = identifier.get("patient_name")
+        patient_relevant = identifier.get("patient_relevant", False)
+
+        if patient_relevant and patient_id:
+            logging.info(f"Patient resolved from ID: {patient_id}")
+            return str(patient_id), None
+        
+        elif patient_relevant and patient_name:
+            matches = self.get_patient_by_name(
+                context.db_conn,
+                patient_name
+            )
+            if len(matches) == 1:
+                demo_no = matches[0]["demographic_no"]
+                logging.info(f"Patient resolved from name '{patient_name}': {demo_no}")
+                return str(demo_no), None
+            
+            elif len(matches) == 0:
+                logging.warning(f"No patient found with name: {patient_name}")
+                return None, (
+                    f"I could not find a patient named '{patient_name}'. "
+                    "Please check the patient's name and try again."
+                )
+            
+            else:
+                logging.warning(f"Multiple patients found with name '{patient_name}': {matches}")
+                patient_list = "\n".join(
+                    f"- {m['first_name']} {m['last_name']} "
+                    f"(demographic number {m['demographic_no']})"
+                    for m in matches
+                )
+                return None, (
+                    f"I found multiple patients named '{patient_name}'. "
+                    "Please specify which patient you mean:\n"
+                    f"{patient_list}"
+                )
+            
+        return None, None
+
     def run(self, user_input: str, context: WorkflowContext) -> WorkflowResult:
         """
         Chains multiple LLM calls together augmenting original user input with patient context.
@@ -53,8 +135,11 @@ class RAGWorkflow(Workflow):
         #self._write_out(rag_prompt, "#")
         #self._write_out(rag_str, "$")
 
-
         demo_no = context.curr_demo
+        if not isinstance(demo_no, int):
+            demo_no, patient_error = self.get_demo_num(user_input, context)
+            if patient_error:
+                return WorkflowResult(response=patient_error)
 
         # Perform RAG search on tool embeddings and documents
         date_rank = False
@@ -141,9 +226,6 @@ class RAGWorkflow(Workflow):
                 tools=tool_str,
             )
             tool_resp = context.ai_conn.send_message(tool_prompt)
-
-            #print(f"Tool prompt: {tool_prompt}")
-            #print(f"Tool response: {tool_resp}")
 
             #self._write_out(tool_prompt, "#")
             #self._write_out(tool_resp, "$")
