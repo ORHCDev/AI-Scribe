@@ -283,7 +283,7 @@ class RAGWorkflow(Workflow):
         #print(f"{'&'*50}\nTOOL CONTEXT: {tool_context}\n{'&'*50}")
 
         # Get AI followup response for User question with provided context
-        if context.conversation_history:
+        if context.conversation_history and context.memory_needed:
             history = '\n'.join(context.conversation_history)
             convo_history = f"Conversation History:{history}\nInput:{user_input}\n"
         else:

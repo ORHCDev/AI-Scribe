@@ -14,6 +14,7 @@ class WorkflowContext:
     conversation_history: list
     curr_demo: str
     prompts: dict
+    memory_needed: bool = True
 
 @dataclass
 class WorkflowEntry:
@@ -65,7 +66,7 @@ class WorkflowRegistry:
             f"{entry.name}: {entry.description} | Keywords: {', '.join(entry.keywords)}"
             for entry in cls._registry.values()
         )
-        history_str = "\n".join(context.conversation_history) if context.conversation_history else "None"
+        history_str = "\n".join(context.conversation_history) if (context.conversation_history and context.memory_needed) else "None"
         prompt = context.prompts.get("workflow_prompt").format(
             workflow_protocol=context.prompts.get("workflow_protocol"),
             workflow_descriptions=desc_str,
