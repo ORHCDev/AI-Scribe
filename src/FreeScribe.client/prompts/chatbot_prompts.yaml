@@ -462,3 +462,26 @@ workflow_prompt: |
   - Respond with the final answer only.
   - Do NOT reference tools, categories, or internal processes.
   - Do NOT explain how the answer was obtained.
+
+patient_identifier: |
+  Determine whether the user's question explicitly identifies a patient.
+
+  Return JSON only in this exact format:
+  {{
+    "patient_id": null,
+    "patient_name": null,
+    "patient_relevant": false
+  }}
+
+  Rules:
+  - patient_relevant must be true ONLY when the user explicitly identifies a patient.
+  - A demographic number is a patient_id.
+  - A person's name can be a patient_name only when the question refers to that person as a patient.
+  - Names of doctors, providers, physicians, clinicians, or other healthcare professionals are NOT patient names.
+  - If the question is about a provider's appointments, schedule, workload, or patients, patient_relevant must be false.
+  - If the user mentions a doctor or provider by name, do NOT put that name in patient_name.
+  - If no patient is explicitly specified, patient_relevant must be false.
+  - Never guess a patient.
+
+  User question:
+  "{user_input}"

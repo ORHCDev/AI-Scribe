@@ -11,7 +11,7 @@ from chatbot.Tools.utils import period_parser
         "6 months. This tool is relevant when the user asks about patients who have an ejection fraction, or EF, less "
         "than a specific amount."
     ),
-    context="Here are the patient's who have an EF percent less than given:",
+    context="Here are the names, demographic numbers, and latest EF results of the patients who have an EF percent less than given:",
     parameters={
         "EF_pct": "Ejection fraction percentage to filter for patient's with an EF less than it.",
         "period": "Optional. An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. I.e. '6m' would indicate 6 months."
