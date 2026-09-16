@@ -1,15 +1,6 @@
 """
-Retrieval-quality metrics for the RAG eval harness.
-
-Pure functions with no third-party dependencies so they run and unit-test on any
-machine. Every function takes:
-
-    retrieved : an ordered sequence of ids, best-ranked first
-    relevant  : the set/collection of ids that count as correct answers
-
-Ids can be any hashable value (document ids as ints, grouped measurement-id
-strings, etc.) as long as the ids in ``retrieved`` and ``relevant`` are the same
-type/spelling.
+Retrieval metrics. Pure, dependency-free. Each takes an ordered `retrieved` id
+sequence (best first) and a `relevant` id set; ids must be same-typed hashables.
 """
 
 from __future__ import annotations
@@ -23,7 +14,6 @@ def _top_k(retrieved: Sequence[Hashable], k: int) -> list:
 
 
 def hit_rate_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
-    """1.0 if at least one relevant id is in the top-k, else 0.0."""
     rel = set(relevant)
     if not rel:
         return 0.0
@@ -31,7 +21,6 @@ def hit_rate_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
 
 
 def recall_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
-    """Fraction of the relevant ids that appear in the top-k."""
     rel = set(relevant)
     if not rel:
         return 0.0
@@ -40,7 +29,6 @@ def recall_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
 
 
 def precision_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
-    """Fraction of the top-k that are relevant."""
     rel = set(relevant)
     topk = _top_k(retrieved, k)
     if not topk:
@@ -50,7 +38,6 @@ def precision_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
 
 
 def reciprocal_rank(retrieved: Sequence[Hashable], relevant) -> float:
-    """1 / rank of the first relevant id (rank is 1-based); 0.0 if none found."""
     rel = set(relevant)
     for i, r in enumerate(retrieved, start=1):
         if r in rel:
@@ -59,7 +46,6 @@ def reciprocal_rank(retrieved: Sequence[Hashable], relevant) -> float:
 
 
 def dcg_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
-    """Binary-gain DCG over the top-k."""
     rel = set(relevant)
     dcg = 0.0
     for i, r in enumerate(_top_k(retrieved, k), start=1):
@@ -69,7 +55,6 @@ def dcg_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
 
 
 def ndcg_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
-    """DCG normalized by the ideal DCG (all relevant ids ranked first)."""
     rel = set(relevant)
     if not rel:
         return 0.0
@@ -80,7 +65,6 @@ def ndcg_at_k(retrieved: Sequence[Hashable], relevant, k: int) -> float:
 
 
 def evaluate_query(retrieved, relevant, ks=(1, 3, 5, 10)) -> dict:
-    """All metrics for a single query as a flat {name: value} dict."""
     out = {"mrr": reciprocal_rank(retrieved, relevant)}
     for k in ks:
         out[f"recall@{k}"] = recall_at_k(retrieved, relevant, k)
@@ -91,7 +75,6 @@ def evaluate_query(retrieved, relevant, ks=(1, 3, 5, 10)) -> dict:
 
 
 def aggregate(per_query: list) -> dict:
-    """Mean of each metric across a list of per-query metric dicts."""
     if not per_query:
         return {}
     keys = per_query[0].keys()
