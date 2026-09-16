@@ -1,40 +1,8 @@
 """
-RAG retrieval-quality evaluation runner (MEASUREMENTS ONLY).
+Gold-set retrieval-quality eval for measurements (recall/precision/MRR/nDCG),
+with an optional cross-encoder rerank. Reads only the Postgres vector DB.
 
-Scope: this harness evaluates retrieval of Oscar *measurements* (the
-measurement_chunks table). Documents and chatbot tools are intentionally out of
-scope. Pipeline exercised: MedEmbed bi-encoder + pgvector search, optionally the
-MedCPT cross-encoder rerank, scored against a hand-labeled gold set with
-recall / precision / MRR / nDCG.
-
-This script needs the RAG runtime and is meant to run on the clinic / server
-machine, NOT on a dev laptop:
-  * Python deps: numpy, psycopg2, sentence-transformers, pyyaml
-  * a populated pgvector database (measurement_chunks)
-  * the embedding + cross-encoder models (downloaded on first run)
-
-It only reads the Postgres vector DB; it does NOT touch Oscar EMR, so no SSH
-tunnel or EMR credentials are required.
-
-Usage
------
-    cd src/FreeScribe.client
-    python -m chatbot.RAG.eval.run_eval \
-        --config /path/to/config.yaml \
-        --gold   chatbot/RAG/eval/gold_set.yaml \
-        --top-k 10 --rerank --out eval_report.json
-
-`--config` must be a YAML file with a `VectorDB` section:
-
-    VectorDB:
-      host: ...
-      port: 5432
-      dbname: ...
-      user: ...
-      password: ...
-    # optional:
-    RAG:
-      embedding_model: abhinand/MedEmbed-base-v0.1
+    python -m chatbot.RAG.eval.run_eval --config config.yaml --gold gold_set.yaml --top-k 10 --rerank
 """
 
 from __future__ import annotations
@@ -45,8 +13,7 @@ import os
 import sys
 from pathlib import Path
 
-# Make `chatbot...` importable no matter where this is launched from.
-_CLIENT_ROOT = Path(__file__).resolve().parents[3]  # src/FreeScribe.client
+_CLIENT_ROOT = Path(__file__).resolve().parents[3]
 for _p in (str(_CLIENT_ROOT), str(_CLIENT_ROOT / "chatbot")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -65,7 +32,6 @@ def _load_yaml(path):
 
 
 def _retrieve_measurements(vs, query, patient_id, date, top_k):
-    """Run the raw measurement vector search; return dict rows ordered by distance."""
     query_vec = vs.model.encode(query)
     return vs.ragdb.measurement_search(
         query_vec, patient_id=patient_id, date=date, top_k=top_k, to_dict=True
@@ -73,7 +39,6 @@ def _retrieve_measurements(vs, query, patient_id, date, top_k):
 
 
 def _ranked_ids(rows):
-    """measurement_ids in rank order, first occurrence wins (rows are distance-sorted)."""
     seen, out = set(), []
     for r in rows:
         rid = r["measurement_ids"]
@@ -84,11 +49,10 @@ def _ranked_ids(rows):
 
 
 def _reranked_ids(vs, query, rows):
-    """Cross-encoder rerank of the measurement chunk pool, mirroring RAGWorkflow."""
     chunks = [{"id": r["measurement_ids"], "text": r["chunk_text"]} for r in rows]
     if not chunks:
         return []
-    ranked = vs.rank(query, chunks, key="text")  # [(score, chunk), ...] desc
+    ranked = vs.rank(query, chunks, key="text")
     seen, out = set(), []
     for _score, chunk in ranked:
         if chunk["id"] not in seen:
@@ -115,7 +79,6 @@ def run(config_path, gold_path, top_k, do_rerank, ks):
         user=creds["user"],
         password=creds["password"],
     )
-    # tool_embds=None: measurement retrieval only, no tool embeddings involved.
     vs = VectorSearch(ragdb=ragdb, tool_embds=None, embedding_model=model_name)
 
     vector_scores, rerank_scores, per_case = [], [], []

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# RAG measurement gold set  (TEMPLATE — the entries below are SYNTHETIC examples)
+# RAG measurement gold set  (TEMPLATE -- entries below are SYNTHETIC examples)
 # -----------------------------------------------------------------------------
 # Scope: MEASUREMENTS ONLY (the measurement_chunks table). Documents and chatbot
 # tools are out of scope for this eval.
@@ -10,46 +10,155 @@
 # `gold_set.yaml` OUT of git and build/store it only inside the clinic's
 # controlled environment. This example file contains no real data.
 #
-# Each entry is one evaluation case:
-#   id                        : short unique label for the case
-#   query                     : the natural-language question a user would ask
+# Fields per case:
+#   id                        : short unique label
+#   query                     : the primary natural-language question
+#   phrasings                 : alternative wordings of the SAME question, incl.
+#                               terse ones. The auto-eval runs query + every
+#                               phrasing separately, so phrasing-sensitivity
+#                               (one wording works, another fails) is measured.
 #   patient_id                : demographic_no to scope the search (string/int)
 #   date                      : optional 'YYYY-MM-DD' date filter (or null)
-#   relevant_measurement_ids  : measurement_ids values that SHOULD be retrieved,
-#                               matching the DB's stored grouped-id string exactly
-#                               (the measurements table groups ids as one string
-#                               per measurement_type/date, e.g. "88231" or
-#                               "88231\n\n88232").
+#   relevant_measurement_ids  : measurement_ids that SHOULD be retrieved, matching
+#                               the DB's stored grouped-id string exactly. Leave
+#                               [""] and fill after running
+#                               dump_patient_measurements.py to see the real ids.
+#   target_types              : measurement types this question should hit. Used
+#                               by the rule-based auto-eval to derive the expected
+#                               answer from the DB WITHOUT hand-labeling.
+#   auto_rule                 : "latest" -> newest row of target_types;
+#                               "all"    -> every row of target_types (trends)
 #   notes                     : free text, for humans only
 #
-# Aim for ~20-30 cases spread across measurement types (ECHO, EST, HOLTER, CATH,
-# CARD, MEDS, ...) and query phrasings to get a stable signal.
+# Two ways to use this:
+#   * MANUAL -- fill patient_id + relevant_measurement_ids, run run_eval.py.
+#   * AUTO   -- fill only patient_id (or let auto_eval pick patients); the
+#              auto-eval derives expected ids from the DB, no hand-labeling.
 # -----------------------------------------------------------------------------
 
-- id: echo_ejection_fraction
+# --- Investigations -----------------------------------------------------------
+- id: echo_latest_ef
   query: "What was the ejection fraction on the most recent echocardiogram?"
+  phrasings:
+    - "most recent EF"
+    - "latest ejection fraction"
+    - "EF on last echo"
   patient_id: ""
   date: null
   relevant_measurement_ids: [""]
-  notes: "EF should come from the March 2024 ECHO measurement group."
+  target_types: ["ECHO", "SECHO"]
+  auto_rule: "latest"
+  notes: "Newest echo measurement group for the patient."
 
-- id: recent_blood_pressure
-  query: "recent blood pressure readings"
+- id: echo_ef_trend
+  query: "Show me the ejection fraction over time."
+  phrasings:
+    - "what is the trend of EF"
+    - "EF trend"
+    - "trend ef"
+    - "how has the EF changed over time"
   patient_id: ""
   date: null
   relevant_measurement_ids: [""]
-  notes: "Most recent CARD/vitals measurement group."
+  target_types: ["ECHO", "SECHO"]
+  auto_rule: "all"
+  notes: "Trend question -- all echo groups should be retrievable. Includes terse phrasings that tend to fail."
 
-- id: stress_test_workload
-  query: "exercise stress test METs and workload achieved"
+- id: ascending_aorta
+  query: "What is the ascending aorta diameter on the last echo?"
+  phrasings:
+    - "ascending aorta size"
+    - "aortic root diameter"
   patient_id: ""
-  date: "2024-11-15"
+  date: null
   relevant_measurement_ids: [""]
-  notes: "Date filter should scope to the Nov 2023 EST; exercises the date window."
+  target_types: ["ECHO"]
+  auto_rule: "latest"
+  notes: "Aortic measurements (Ascending Aorta, AoIND, AM, AA) live under ECHO."
+
+- id: stress_test_latest
+  query: "What was the result of the most recent exercise stress test?"
+  phrasings:
+    - "last stress test result"
+    - "most recent EST"
+    - "stress test"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  target_types: ["EST"]
+  auto_rule: "latest"
+  notes: "Newest EST group; METs / workload / achieved HR."
 
 - id: holter_afib
-  query: "Did the Holter monitor show atrial fibrillation?"
+  query: "Did the Holter monitor show any atrial fibrillation?"
+  phrasings:
+    - "any AF on Holter"
+    - "holter atrial fibrillation"
   patient_id: ""
   date: null
   relevant_measurement_ids: [""]
-  notes: "HOLT measurement group summarizing the Holter findings."
+  target_types: ["HOLT", "HOL"]
+  auto_rule: "latest"
+  notes: "Newest Holter group."
+
+- id: ecg_latest
+  query: "What did the most recent ECG show?"
+  phrasings:
+    - "most recent ECG"
+    - "latest EKG findings"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  target_types: ["ECG"]
+  auto_rule: "latest"
+  notes: "Newest ECG group."
+
+- id: cath_latest
+  query: "What did the last catheterization or angiogram show?"
+  phrasings:
+    - "last angiogram result"
+    - "most recent cath"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  target_types: ["CATH"]
+  auto_rule: "latest"
+  notes: "Newest catheterization group."
+
+# --- Medications --------------------------------------------------------------
+- id: meds_current
+  query: "What cardiac medications is the patient currently taking?"
+  phrasings:
+    - "current cardiac meds"
+    - "what medications is she on"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  target_types: ["MEDS"]
+  auto_rule: "latest"
+  notes: "Newest medication group."
+
+- id: meds_changes
+  query: "What medication changes were made recently?"
+  phrasings:
+    - "recent medication changes"
+    - "what meds changed"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  target_types: ["MEDS"]
+  auto_rule: "all"
+  notes: "Recent-change question -- all medication groups retrievable for compare."
+
+# --- Risk / history -----------------------------------------------------------
+- id: risk_factors
+  query: "What are the patient's cardiovascular risk factors?"
+  phrasings:
+    - "cardiac risk factors"
+    - "risk factors"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  target_types: ["RISK"]
+  auto_rule: "latest"
+  notes: "Risk-factor group."
