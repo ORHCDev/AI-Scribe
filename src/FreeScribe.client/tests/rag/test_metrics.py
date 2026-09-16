@@ -27,7 +27,7 @@ def test_hit_rate(metrics_mod):
 
 def test_ndcg_matches_manual_calculation(metrics_mod):
     retrieved = ["a", "b", "c", "d"]
-    relevant = {"b", "d"}  # ranks 2 and 4
+    relevant = {"b", "d"}
     dcg = 1.0 / math.log2(3) + 1.0 / math.log2(5)
     ideal = 1.0 / math.log2(2) + 1.0 / math.log2(3)
     assert metrics_mod.ndcg_at_k(retrieved, relevant, 4) == pytest.approx(dcg / ideal)
@@ -51,7 +51,6 @@ def test_aggregate_averages_across_queries(metrics_mod):
     q1 = metrics_mod.evaluate_query(["a", "b"], {"a"}, ks=(1, 2))
     q2 = metrics_mod.evaluate_query(["x", "y"], {"y"}, ks=(1, 2))
     agg = metrics_mod.aggregate([q1, q2])
-    # recall@1: q1 hits (1.0), q2 misses (0.0) -> mean 0.5
     assert agg["recall@1"] == pytest.approx(0.5)
     assert agg["recall@2"] == pytest.approx(1.0)
     assert agg["mrr"] == pytest.approx((1.0 + 0.5) / 2)

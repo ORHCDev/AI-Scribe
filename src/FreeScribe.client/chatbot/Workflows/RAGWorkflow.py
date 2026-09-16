@@ -146,14 +146,14 @@ class RAGWorkflow(Workflow):
         if date == 'old' or date == 'recent':
             date_rank = True
             embeddings = context.vec_search.search(
-                query=rag_str,
+                query=rstr,
                 patient_id=demo_no,
                 top_k=10,
                 to_dict=True
             )
         else:
             embeddings = context.vec_search.search(
-                query=rag_str,
+                query=rstr,
                 patient_id=demo_no,
                 top_k=10,
                 date=date,
