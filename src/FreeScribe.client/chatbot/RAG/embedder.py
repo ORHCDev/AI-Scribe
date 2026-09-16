@@ -157,9 +157,22 @@ class EmbeddingEngine:
         return results
 
 
+    def _build_measurement_text(self, type_group, obs_date, data):
+        """Prefix measurement text with type/date/description. A type missing from
+        the descriptions YAML omits the Description line instead of raising."""
+        if not self.descriptions:
+            return data
+
+        header = f"Type:{type_group}\nDate Observed:{obs_date}\n"
+        desc = self.descriptions.get(type_group)
+        if desc:
+            header += f"Description:{desc}\n"
+        return f"{header}Content:{data}"
+
+
     def upsert_measurements(
-        self, 
-        patient_id      : str | None = None, 
+        self,
+        patient_id      : str | None = None,
         date            : str | None = None,
         date_op         : str = "=",
         skip_exists     : bool = False,
@@ -226,9 +239,7 @@ class EmbeddingEngine:
                     continue
 
 
-            # Append descriptions to make vector search better
-            if self.descriptions:
-                data = f"Type:{type_group}\nDate Observed:{obs_date}\nDescription:{self.descriptions[type_group]}\nContent:{data}"
+            data = self._build_measurement_text(type_group, obs_date, data)
 
             vector = self.model.encode(
                 data, 

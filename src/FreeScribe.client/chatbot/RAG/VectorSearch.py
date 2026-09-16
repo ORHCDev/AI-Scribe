@@ -123,24 +123,15 @@ class VectorDB:
                     center = datetime.strptime(val, "%Y-%m-%d").date()
                 except (ValueError, TypeError):
                     center = None
-                # Compare on the date part only: observation_date is a timestamp,
-                # so an exact `= 'YYYY-MM-DD'` match would require a midnight time.
+                # DATE() compares the date part (the column is a timestamp).
                 if center is not None and delta > 0:
-                    # +/- delta day window around the requested date
                     start = center - timedelta(days=delta)
                     end = center + timedelta(days=delta)
-                    filters.append(
-                        f"DATE({col}) BETWEEN '{start}' AND '{end}'"
-                    )
+                    filters.append(f"DATE({col}) BETWEEN '{start}' AND '{end}'")
                 elif center is not None:
-                    filters.append(
-                        f"DATE({col}) = '{center}'"
-                    )
+                    filters.append(f"DATE({col}) = '{center}'")
                 else:
-                    # Unparseable date: fall back to a plain equality on the raw value
-                    filters.append(
-                        f"{col} = '{val}'"
-                    )
+                    filters.append(f"{col} = '{val}'")
         filter_str = ""
         if filters:
             filter_str = "WHERE " + " \nAND ".join(filters)
@@ -679,10 +670,8 @@ class VectorSearch:
             return s
 
         if method == "log":
-            # Cross-encoder scores (e.g. MedCPT logits) can be negative, and log1p
-            # is only defined for values > -1. Shift so the smallest score is 0
-            # (a monotonic shift that preserves ordering), then log-compress and
-            # scale to [0, 1]. Guard the all-equal case (denominator 0).
+            # Shift to non-negative first: cross-encoder logits can be <= -1,
+            # where log1p is undefined. The shift preserves ordering.
             shifted = s - s.min()
             logged = np.log1p(shifted)
             denom = logged.max()
@@ -822,8 +811,7 @@ class VectorSearch:
                     (boost, rank[1])
                 )
 
-        # Sort by the recency-boosted score. combined holds dicts when to_dict is
-        # set (boost under the "boost" key) and (boost, metadata) tuples otherwise.
+        # combined holds dicts when to_dict is set, else (boost, metadata) tuples.
         boost_key = (lambda x: x["boost"]) if to_dict else (lambda x: x[0])
         reranked = sorted(
             combined,

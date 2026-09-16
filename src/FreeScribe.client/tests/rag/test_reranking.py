@@ -1,10 +1,4 @@
-"""
-Bug-level tests for the reranking math in chatbot/RAG/VectorSearch.py::VectorSearch.
-
-These exercise real numeric behavior, so they need the real numpy. On machines
-without the RAG runtime installed, a tiny numpy stub is used for imports only and
-the whole module is skipped (detected via ``hasattr(np, "log1p")``).
-"""
+"""Reranking math tests -- need real numpy, else the module is skipped."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -13,15 +7,10 @@ import pytest
 
 HAS_REAL_NUMPY = hasattr(np, "log1p")
 
-pytestmark = pytest.mark.skipif(
-    not HAS_REAL_NUMPY,
-    reason="reranking math needs the real numpy (RAG runtime deps not installed here)",
-)
+pytestmark = pytest.mark.skipif(not HAS_REAL_NUMPY, reason="needs real numpy")
 
 
 class _FakeCrossEncoder:
-    """Returns caller-supplied scores aligned to the (query, text) pairs order."""
-
     def __init__(self, scores):
         self._scores = list(scores)
 
@@ -31,24 +20,19 @@ class _FakeCrossEncoder:
 
 def _make_vs(vectorsearch_mod, scores):
     VectorSearch = vectorsearch_mod.VectorSearch
-    vs = VectorSearch.__new__(VectorSearch)  # skip __init__ -> no model download
+    vs = VectorSearch.__new__(VectorSearch)
     vs.cross_encoder = _FakeCrossEncoder(scores)
     vs.model = None
     return vs
 
 
-# --- Regression for former BUG #4: log-normalize must handle negative scores ---
-# (Previously _normalize_scores('log') did np.log1p(scores) directly; MedCPT
-# cross-encoder logits can be <= -1, producing nan/-inf. Fixed by shifting the
-# scores to be non-negative before log1p.)
+# Regression for former BUG #4: log-normalize must survive negative logits.
 def test_log_normalize_survives_negative_scores(vectorsearch_mod):
     vs = _make_vs(vectorsearch_mod, scores=[])
-    scores = [-2.0, -0.5, 3.0]
-    out = np.asarray(vs._normalize_scores(scores, method="log"), dtype=float)
-    # no nan/inf, stays in [0, 1], and preserves the input ordering
+    out = np.asarray(vs._normalize_scores([-2.0, -0.5, 3.0], method="log"), dtype=float)
     assert np.isfinite(out).all()
     assert out.min() >= 0.0 and out.max() <= 1.0
-    assert list(out) == sorted(out)  # inputs were ascending, so outputs must be too
+    assert list(out) == sorted(out)
 
 
 def test_normalize_handles_all_equal_scores(vectorsearch_mod):
@@ -58,27 +42,17 @@ def test_normalize_handles_all_equal_scores(vectorsearch_mod):
         assert np.isfinite(out).all()
 
 
-# --- Regression for former BUG #3: date_rank must return the boost-sorted list ---
-# (Previously it computed `reranked = sorted(...)` but returned the unsorted
-# `combined`, so recency weighting never reordered the results. Fixed to return
-# `reranked`.)
+# Regression for former BUG #3: date_rank must return the boost-sorted list.
 def test_date_rank_returns_boost_sorted(vectorsearch_mod):
-    # Doc 0 is slightly more relevant but ~8 years old; doc 1 is a touch less
-    # relevant but 2 days old. Recency boost makes doc 1's final score the higher
-    # one, so a correct rerank must return them in descending boost order.
+    # Doc 0 is more relevant but old; doc 1 less relevant but recent -> recency
+    # boost should flip the order, so the result must be descending by boost.
     vs = _make_vs(vectorsearch_mod, scores=[0.90, 0.85])
     now = datetime.now(timezone.utc)
     docs = [
         {"text": "older but slightly more relevant", "obs_date": now - timedelta(days=3000)},
         {"text": "recent and almost as relevant", "obs_date": now - timedelta(days=2)},
     ]
-    out = vs.date_rank(
-        "query",
-        docs,
-        text_key="text",
-        date_key="obs_date",
-        recency_method="recent",
-        batch_size=2,
-    )
+    out = vs.date_rank("query", docs, text_key="text", date_key="obs_date",
+                       recency_method="recent", batch_size=2)
     boosts = [row[0] for row in out]
     assert boosts == sorted(boosts, reverse=True)

@@ -45,8 +45,11 @@ OTHE: |
 PLAN: |
   Clinical plan or physician management strategy including follow-up testing, medication changes, treatment plans, or referral recommendations.
 
-Risk: |
+RISK: |
   Cardiovascular risk factors and comorbid conditions that increase risk of heart disease.
+
+EXAM: |
+  Physical examination findings, including cardiovascular exam observations such as heart sounds, murmurs, pulses, and other clinical signs noted during assessment.
 
 RV: |
   Right ventricular structure and function findings from cardiac imaging or echocardiography.

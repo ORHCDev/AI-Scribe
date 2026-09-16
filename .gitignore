@@ -44,3 +44,7 @@ reports/
 src/FreeScribe.client/chatbot/RAG/eval/gold_set.yaml
 src/FreeScribe.client/chatbot/RAG/eval/*_report.json
 eval_report.json
+
+# RAG auto-eval per-case diagnostics (contains patient ids)
+auto_eval_report.jsonl
+*_report.jsonl

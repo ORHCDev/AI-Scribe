@@ -1,21 +1,6 @@
 """
-Shared fixtures for the RAG bug-level unit tests.
-
-These tests are designed to run on ANY machine, including ones that do not have
-the heavy RAG runtime installed (numpy / psycopg2 / sentence-transformers).
-The modules under test import those packages at module load time, so we install
-lightweight stand-ins in ``sys.modules`` for the ones that are missing *before*
-loading the source files directly by path.
-
-Rules:
-  * We only stub a dependency when the real one cannot be imported. On the
-    RAG server (where everything is installed) the real packages are used.
-  * numpy is special: the reranking math genuinely needs it, so we never fake
-    the math. Tests that need real numpy detect it via ``hasattr(np, "log1p")``
-    and skip when only the tiny stub is present.
-  * The modules under test are loaded straight from their .py files under
-    private module names, so we never depend on the (inconsistent) package
-    layout under ``chatbot/``.
+Fixtures for the RAG unit tests: stub the heavy runtime deps when missing and
+load the modules under test straight from their .py files by path.
 """
 
 import importlib.util
@@ -26,7 +11,7 @@ from pathlib import Path
 import pytest
 
 _HERE = Path(__file__).resolve().parent
-_CLIENT_ROOT = _HERE.parent.parent                 # src/FreeScribe.client
+_CLIENT_ROOT = _HERE.parent.parent
 _RAG_DIR = _CLIENT_ROOT / "chatbot" / "RAG"
 _EVAL_DIR = _RAG_DIR / "eval"
 
@@ -40,10 +25,8 @@ def _install_stub(name, **attrs):
 
 
 def _stub_if_missing(name, factory):
-    """Install a stub for ``name`` only if the real package cannot be imported."""
     try:
         __import__(name)
-        return  # real dependency present -> use it
     except Exception:
         factory()
 
@@ -53,11 +36,8 @@ def _make_numpy_stub():
         def __class_getitem__(cls, _item):
             return cls
 
-    # Only the names evaluated while importing VectorSearch.py (used in type
-    # annotations: ndarray, float64) plus the three attributes pytest.approx
-    # probes on sys.modules['numpy'] (isscalar, bool_, ndarray) are provided.
-    # We deliberately do NOT provide log1p etc., so tests that need the real
-    # numpy detect its absence via ``hasattr(np, "log1p")`` and skip.
+    # No log1p etc., so tests needing real numpy skip via hasattr(np, "log1p").
+    # isscalar/bool_/ndarray are what pytest.approx probes on sys.modules['numpy'].
     _install_stub(
         "numpy",
         ndarray=_Sub,
@@ -69,7 +49,7 @@ def _make_numpy_stub():
 
 def _make_psycopg2_stub():
     def _connect(*_a, **_k):
-        raise RuntimeError("psycopg2 is stubbed in tests; do not open a real connection")
+        raise RuntimeError("psycopg2 is stubbed in tests")
 
     _install_stub("psycopg2", connect=_connect)
 
@@ -89,15 +69,13 @@ def _make_sentence_transformers_stub():
 
 
 def _make_tool_stub():
-    # VectorSearch.py does ``from chatbot.Tools.Tool import ToolEmbeddings`` at import
-    # time. Register fake parent packages so that import resolves without pulling in
-    # the real Tool.py (which needs pandas/numpy).
+    # For VectorSearch's `from chatbot.Tools.Tool import ToolEmbeddings`.
     pkg = _install_stub("chatbot")
     pkg.__path__ = []
     tools = _install_stub("chatbot.Tools")
     tools.__path__ = []
 
-    class _ToolEmbeddings:  # only the name is needed at import time
+    class _ToolEmbeddings:
         pass
 
     tool = _install_stub("chatbot.Tools.Tool", ToolEmbeddings=_ToolEmbeddings)
@@ -105,10 +83,35 @@ def _make_tool_stub():
     tools.Tool = tool
 
 
+def _make_tools_utils_stub():
+    # For embedder's `from Tools.utils import pdf_image_to_text`.
+    pkg = _install_stub("Tools")
+    pkg.__path__ = []
+    util = _install_stub("Tools.utils", pdf_image_to_text=lambda *_a, **_k: "")
+    pkg.utils = util
+
+
+def _make_rag_chunker_stub():
+    # For embedder's `from RAG.chunker import Chunker`.
+    pkg = _install_stub("RAG")
+    pkg.__path__ = []
+
+    class _Chunker:
+        def __init__(self, *_a, **_k):
+            pass
+
+    ch = _install_stub("RAG.chunker", Chunker=_Chunker)
+    pkg.chunker = ch
+
+
 _stub_if_missing("numpy", _make_numpy_stub)
 _stub_if_missing("psycopg2", _make_psycopg2_stub)
 _stub_if_missing("sentence_transformers", _make_sentence_transformers_stub)
 _stub_if_missing("chatbot.Tools.Tool", _make_tool_stub)
+_stub_if_missing("pandas", lambda: _install_stub("pandas"))
+_stub_if_missing("yaml", lambda: _install_stub("yaml", safe_load=lambda *_a, **_k: {}))
+_stub_if_missing("Tools.utils", _make_tools_utils_stub)
+_stub_if_missing("RAG.chunker", _make_rag_chunker_stub)
 
 
 def _load_from_path(mod_name, file_path):
@@ -127,3 +130,31 @@ def vectorsearch_mod():
 @pytest.fixture(scope="session")
 def metrics_mod():
     return _load_from_path("_rag_eval_metrics", _EVAL_DIR / "metrics.py")
+
+
+@pytest.fixture(scope="session")
+def embedder_mod():
+    return _load_from_path("_rag_embedder_under_test", _RAG_DIR / "embedder.py")
+
+
+@pytest.fixture(scope="session")
+def ragworkflow_mod():
+    # Register the pure-stdlib Workflow module under the name RAGWorkflow imports.
+    wf = _load_from_path(
+        "chatbot.Workflows.Workflow",
+        _CLIENT_ROOT / "chatbot" / "Workflows" / "Workflow.py",
+    )
+    chatbot = sys.modules.get("chatbot")
+    if chatbot is None:
+        chatbot = _install_stub("chatbot")
+        chatbot.__path__ = []
+    workflows = sys.modules.get("chatbot.Workflows")
+    if workflows is None:
+        workflows = _install_stub("chatbot.Workflows")
+        workflows.__path__ = []
+    chatbot.Workflows = workflows
+    workflows.Workflow = wf
+    return _load_from_path(
+        "_rag_workflow_under_test",
+        _CLIENT_ROOT / "chatbot" / "Workflows" / "RAGWorkflow.py",
+    )
