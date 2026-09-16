@@ -431,6 +431,38 @@ general_prompt: |
 
 
 
+memory_gate_prompt: |
+  You are deciding whether PRIOR CONVERSATION CONTEXT (memory) is required to correctly answer a new user message in a medical chatbot conversation.
+
+  RULES:
+  1. DEFAULT to {{"needs_memory": false}} for any self-contained message.
+  2. A message is SELF-CONTAINED if it states a complete question or new topic on its own, even if it is a routine data-retrieval request such as:
+     - "trend ldl"
+     - "what was their latest bp"
+     - "latest creatinine", "most recent echo", "current meds"
+     These ask for new data and do NOT depend on prior chat.
+  3. Prior context IS required ONLY when the message CANNOT be understood without earlier messages, such as:
+     - Referring to something discussed earlier ("as I said", "that medication we discussed", "the test you mentioned", "and then?")
+     - A follow-up that depends on a previous answer ("does it interact with her azithromycin?", "how about the diastolic?")
+     - Using pronouns or incomplete statements with no referent in the current message ("what about him?", "is it high?")
+  4. When in doubt, choose {{"needs_memory": false}}.
+
+  EXAMPLES:
+  - "trend ldl" -> {{"needs_memory": false}}
+  - "what was their latest bp" -> {{"needs_memory": false}}
+  - "give me the troponin trend" -> {{"needs_memory": false}}
+  - "as I said, the dose we discussed" -> {{"needs_memory": true}}
+  - "and does it interact with metformin?" -> {{"needs_memory": true}}
+
+  Respond ONLY with valid JSON, no other text:
+  {{"needs_memory": true}}
+  or
+  {{"needs_memory": false}}
+
+  New user message:
+  "{user_input}"
+
+
 workflow_protocol: |
   Respond ONLY with valid JSON. Do NOT include any text outside the JSON object.
 

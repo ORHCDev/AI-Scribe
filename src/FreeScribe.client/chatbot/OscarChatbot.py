@@ -1,5 +1,6 @@
 
 import logging
+import re
 import time
 import yaml
 import requests
@@ -273,6 +274,29 @@ class OscarCB:
         """"""
 
 
+    def decide_memory_needed(self, context: WorkflowContext, user_input: str) -> bool:
+        """
+        Asks the LLM if prior conversation memory is required.
+        """
+        try:
+            prompt = context.prompts.get("memory_gate_prompt").format(user_input=user_input)
+            result = context.ai_conn.send_message(prompt)
+            # Extract the JSON object from the LLM response
+            match = re.search(r"\{.*\}", result, re.DOTALL)
+            needed = False
+            if match:
+                parsed = json.loads(match.group(0))
+                if isinstance(parsed, dict):
+                    needed = bool(parsed.get("needs_memory", False))
+                else:
+                    # Fall back to a simple textual check of the response
+                    needed = "true" in result.lower()
+            logging.info(f"Memory gate decision: {needed}")
+            return needed
+        except Exception as e:
+            logging.warning(f"Memory gate decision failed, defaulting to not include memory: {e}")
+            return False
+
 
     def _build_context(self) -> WorkflowContext:
         return WorkflowContext(
@@ -301,6 +325,8 @@ class OscarCB:
                 new_chat_result = self.new_chat()
                 self.curr_demo = demo_no
         context = self._build_context()
+        # Ask the LLM whether prior conversation memory is needed for this input
+        context.memory_needed = self.decide_memory_needed(context, user_input)
         # if a forced workflow, no need to run classify
         if selected_workflow and selected_workflow in self.workflows:
             workflow_type = selected_workflow

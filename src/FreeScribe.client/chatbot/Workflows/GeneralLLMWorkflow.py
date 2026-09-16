@@ -11,7 +11,7 @@ class GeneralLLMWorkflow(Workflow):
         """
         Single LLM call with conversation history. No patient context or tools.
         """
-        history = '\n'.join(context.conversation_history) if context.conversation_history else "None"
+        history = '\n'.join(context.conversation_history) if (context.conversation_history and context.memory_needed) else "None"
         prompt = context.prompts.get("general_prompt").format(
             history=history,
             user_input=user_input
