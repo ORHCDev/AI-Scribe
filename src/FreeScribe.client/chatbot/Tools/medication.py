@@ -104,7 +104,7 @@ def get_medication_history(db_conn, demo_no : str):
         save_results=res
     )
     
-"""@tool(
+@tool(
     category="medication",
     description=(
         "Returns both current and past prescription records for a specific medication name for the given patient. "
@@ -120,7 +120,7 @@ def get_medication_history(db_conn, demo_no : str):
         "demo_no": "Patient demographic number used to identify the patient in the EMR",
         "drug_name": "Drug name or partial drug name to search for (brand, generic, or custom name)",
     }
-)"""
+)
 def get_prescription_by_drug(db_conn, demo_no : str, drug_name : str):
     """
     Queries the Oscar EMR database for the patients past medication history information.
@@ -162,7 +162,7 @@ def get_prescription_by_drug(db_conn, demo_no : str, drug_name : str):
     )
 
 
-"""@tool(
+@tool(
     category="medication",
     description=(
         "Returns a report of active patients who have medication entries matching one or more specified drug names "
@@ -179,7 +179,7 @@ def get_prescription_by_drug(db_conn, demo_no : str, drug_name : str):
         "meds": "List of medication names or partial names to search for in medication measurement entries",
         "period": "Time window to search within, expressed as a duration such as '6m', '30d', or '1y'",
     }
-)"""
+)
 def medication_lookup(db_conn, meds : list[str], period : str):
     """
     Queries and returns a report of patients that are on the given medications.
