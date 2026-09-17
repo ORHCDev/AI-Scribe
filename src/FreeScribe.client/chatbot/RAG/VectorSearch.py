@@ -292,6 +292,55 @@ class VectorDB:
         return res
 
 
+    def fetch_measurements(
+        self,
+        patient_id : str | int,
+        types      : list[str] | None=None,
+        mode       : str="latest",
+        top_k      : int=10,
+        to_dict    : bool=False
+    ):
+        cols = ['measurement_ids', 'measurement_type', 'demographic_no', 'observation_date', 'chunk_text']
+        col_str = ", ".join(cols)
+
+        filters = ["demographic_no = %s"]
+        filter_params = [patient_id]
+        if types:
+            filters.append("measurement_type = ANY(%s)")
+            filter_params.append(list(types))
+        where_str = " AND ".join(filters)
+
+        if mode == "latest":
+            sql = f"""
+            SELECT {col_str}
+            FROM measurement_chunks
+            WHERE {where_str}
+              AND (measurement_type, observation_date) IN (
+                  SELECT measurement_type, MAX(observation_date)
+                  FROM measurement_chunks
+                  WHERE {where_str}
+                  GROUP BY measurement_type
+              )
+            ORDER BY measurement_type ASC, chunk_index ASC;
+            """
+            params = filter_params + filter_params
+        else:
+            sql = f"""
+            SELECT {col_str}
+            FROM measurement_chunks
+            WHERE {where_str}
+            ORDER BY observation_date DESC, chunk_index ASC
+            LIMIT %s;
+            """
+            params = filter_params + [top_k]
+
+        self.cursor.execute(sql, params)
+        rows = self.cursor.fetchall()
+        if to_dict:
+            return [dict(zip(cols, r)) for r in rows]
+        return rows
+
+
     def insert_measurement_chunk(self, chunk):
         query = """
         INSERT INTO measurement_chunks (
