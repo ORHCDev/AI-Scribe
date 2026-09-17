@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -239,8 +240,12 @@ class RAGWorkflow(Workflow):
                 for tool in tool_call:
                     logging.info(f"Calling tool: {tool}")
                     name = tool.get("tool_name")
-                    args = tool.get("args")
-                    args["db_conn"] = context.db_conn
+                    args = tool.get("args") or {}
+                    sig = inspect.signature(context.tools.get(name).func).parameters
+                    if "db_conn" in sig:
+                        args["db_conn"] = context.db_conn
+                    if "vec_search" in sig:
+                        args["vec_search"] = context.vec_search
                     res = context.tools.execute_tool(name, **args)
                     tool_context += f"Tool: {name}\nResults: {res}\n\n"
 

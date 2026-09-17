@@ -9,6 +9,53 @@ import os
 import webbrowser
 
 
+@tool(
+    category="measurements",
+    description=(
+        "Returns exact measurement records for a patient directly from the clinical "
+        "database, bypassing semantic search. Use this whenever the user asks for the "
+        "most recent, latest, or current value of a specific measurement type, or for "
+        "the full history, trend, or changes of a type over time. Set mode to 'latest' "
+        "for the newest record of each requested type, or 'all' for the complete "
+        "history. Provide the measurement_type codes to fetch, such as ECHO, ECG, CATH, "
+        "EST, HOLT, MEDS, RISK, CARD. This is the reliable path for time-sensitive "
+        "measurement questions where the newest record must not be missed."
+    ),
+    context="These are the patient's measurement records:",
+    parameters={
+        "demo_no": "Patient's demographic number",
+        "types": "List of measurement_type codes to fetch (e.g. ['ECHO'], ['MEDS','RISK'])",
+        "mode": "'latest' for the newest record per type, 'all' for full history. Defaults to 'latest'."
+    }
+)
+def get_measurements(vec_search, demo_no : str, types : list[str], mode : str = "latest"):
+    if isinstance(types, str):
+        types = [types]
+
+    rows = vec_search.ragdb.fetch_measurements(
+        patient_id=str(demo_no),
+        types=types,
+        mode=mode,
+        to_dict=True,
+    )
+
+    res = [
+        {
+            "Type": r["measurement_type"],
+            "Date Observed": str(r["observation_date"]),
+            "Content": r["chunk_text"],
+        }
+        for r in rows
+    ]
+
+    return tr(
+        label=f"{str(mode).capitalize()} measurements for {types}",
+        send_to_ai=False,
+        query_results=res,
+        save_results=res,
+    )
+
+
 
 @tool(
     category="measurements",
