@@ -47,11 +47,12 @@ def _expected_rows(cur, patient, target_types, rule):
 
 def _retrieve(cur, patient, query_vec, k):
     cur.execute(
+        "WITH candidate AS MATERIALIZED ("
+        "  SELECT measurement_ids, measurement_type, observation_date, embedding_raw "
+        "  FROM measurement_chunks WHERE demographic_no = %s"
+        ") "
         "SELECT measurement_ids, measurement_type, observation_date "
-        "FROM measurement_chunks "
-        "WHERE demographic_no = %s "
-        "ORDER BY embedding_raw <=> %s::vector "
-        "LIMIT %s;",
+        "FROM candidate ORDER BY embedding_raw <=> %s::vector LIMIT %s;",
         (patient, _vec_literal(query_vec), k),
     )
     return cur.fetchall()
