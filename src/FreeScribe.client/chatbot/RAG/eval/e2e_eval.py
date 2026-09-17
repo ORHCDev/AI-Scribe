@@ -118,6 +118,16 @@ def main():
                     continue
                 exp_ids = [r[0] for r in expected]
 
+                # Deterministic tool path: what get_measurements would deliver
+                # (SQL by type + date), independent of the query phrasing.
+                tool_mode = "all" if rule == "all" else "latest"
+                tool_rows = vs.ragdb.fetch_measurements(
+                    patient_id=str(patient), types=q["target_types"],
+                    mode=tool_mode, top_k=max(FINAL_K, len(exp_ids)), to_dict=True,
+                )
+                tool_ids = [r["measurement_ids"] for r in tool_rows]
+                tool_rec = _recall(exp_ids, tool_ids)
+
                 for phrasing in [q["query"]] + (q.get("phrasings") or []):
                     embeddings = vs.search(
                         query=phrasing, patient_id=str(patient),
@@ -143,7 +153,7 @@ def main():
                     rec = _recall(exp_ids, ranked_ids)
                     hit = _first_hit_rank(exp_ids, ranked_ids)
                     rr = (1.0 / hit) if hit else 0.0
-                    results[q["id"]].append((rec, rr))
+                    results[q["id"]].append((rec, rr, tool_rec))
                     n_eval += 1
 
                     log.write(json.dumps({
@@ -152,6 +162,7 @@ def main():
                         "phrasing": phrasing,
                         "auto_rule": rule,
                         "recall": round(rec, 3),
+                        "tool_recall": round(tool_rec, 3),
                         "mrr": round(rr, 3),
                         "first_hit_rank": hit,
                         "expected": [
@@ -169,9 +180,9 @@ def main():
     ragdb.cleanup()
 
     print("=" * 74)
-    print(f"{'question':22s} {'n':>3s} {'recall':>7s} {'mrr':>6s}")
+    print(f"{'question':22s} {'n':>3s} {'vec_rec':>8s} {'tool_rec':>9s} {'mrr':>6s}")
     print("-" * 74)
-    all_rec, all_rr = [], []
+    all_rec, all_rr, all_tool = [], [], []
     for q in questions:
         flat = results[q["id"]]
         if not flat:
@@ -179,14 +190,16 @@ def main():
             continue
         recs = [p[0] for p in flat]
         rrs = [p[1] for p in flat]
+        tools = [p[2] for p in flat]
         all_rec += recs
         all_rr += rrs
-        print(f"{q['id']:22s} {len(flat):>3d} {sum(recs)/len(recs):>7.3f} "
-              f"{sum(rrs)/len(rrs):>6.3f}")
+        all_tool += tools
+        print(f"{q['id']:22s} {len(flat):>3d} {sum(recs)/len(recs):>8.3f} "
+              f"{sum(tools)/len(tools):>9.3f} {sum(rrs)/len(rrs):>6.3f}")
     print("-" * 74)
     if all_rec:
-        print(f"{'OVERALL':22s} {len(all_rec):>3d} {sum(all_rec)/len(all_rec):>7.3f} "
-              f"{sum(all_rr)/len(all_rr):>6.3f}")
+        print(f"{'OVERALL':22s} {len(all_rec):>3d} {sum(all_rec)/len(all_rec):>8.3f} "
+              f"{sum(all_tool)/len(all_tool):>9.3f} {sum(all_rr)/len(all_rr):>6.3f}")
     print("=" * 74)
     print(f"evaluated {n_eval} cases; skipped {n_skip}; diagnostics in {REPORT}")
 

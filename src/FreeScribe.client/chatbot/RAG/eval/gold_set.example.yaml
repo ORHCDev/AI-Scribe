@@ -48,6 +48,7 @@
   relevant_measurement_ids: [""]
   target_types: ["ECHO", "SECHO"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements"]
   notes: "Newest echo measurement group for the patient."
 
 - id: echo_ef_trend
@@ -62,6 +63,7 @@
   relevant_measurement_ids: [""]
   target_types: ["ECHO", "SECHO"]
   auto_rule: "all"
+  expected_tool: ["get_measurements", "get_measurement_history"]
   notes: "Trend question -- all echo groups should be retrievable. Includes terse phrasings that tend to fail."
 
 - id: ascending_aorta
@@ -74,6 +76,7 @@
   relevant_measurement_ids: [""]
   target_types: ["ECHO"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements"]
   notes: "Aortic measurements (Ascending Aorta, AoIND, AM, AA) live under ECHO."
 
 - id: stress_test_latest
@@ -87,6 +90,7 @@
   relevant_measurement_ids: [""]
   target_types: ["EST"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements"]
   notes: "Newest EST group; METs / workload / achieved HR."
 
 - id: holter_afib
@@ -99,6 +103,7 @@
   relevant_measurement_ids: [""]
   target_types: ["HOLT", "HOL"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements"]
   notes: "Newest Holter group."
 
 - id: ecg_latest
@@ -111,6 +116,7 @@
   relevant_measurement_ids: [""]
   target_types: ["ECG"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements"]
   notes: "Newest ECG group."
 
 - id: cath_latest
@@ -123,6 +129,7 @@
   relevant_measurement_ids: [""]
   target_types: ["CATH"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements"]
   notes: "Newest catheterization group."
 
 # --- Medications --------------------------------------------------------------
@@ -136,6 +143,7 @@
   relevant_measurement_ids: [""]
   target_types: ["MEDS"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements", "get_current_medications"]
   notes: "Newest medication group."
 
 - id: meds_changes
@@ -148,6 +156,7 @@
   relevant_measurement_ids: [""]
   target_types: ["MEDS"]
   auto_rule: "all"
+  expected_tool: ["get_measurements", "get_medication_history"]
   notes: "Recent-change question -- all medication groups retrievable for compare."
 
 # --- Risk / history -----------------------------------------------------------
@@ -161,4 +170,49 @@
   relevant_measurement_ids: [""]
   target_types: ["RISK"]
   auto_rule: "latest"
+  expected_tool: ["get_measurements"]
   notes: "Risk-factor group."
+
+# --- Routing negatives (no target_types -> skipped by retrieval evals) ---------
+- id: appt_next
+  query: "When is the patient's next appointment?"
+  phrasings:
+    - "next appointment"
+    - "upcoming visit date"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  expected_tool: ["get_upcoming_appointments"]
+  notes: "Negative for get_measurements; should route to appointments."
+
+- id: primary_provider
+  query: "Who is the patient's primary care provider?"
+  phrasings:
+    - "family doctor"
+    - "who is their provider"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  expected_tool: ["get_patient_primary_provider", "get_patient_demographic"]
+  notes: "Negative for get_measurements; should route to patient info."
+
+- id: patient_dob
+  query: "What is the patient's date of birth?"
+  phrasings:
+    - "patient DOB"
+    - "how old is the patient"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  expected_tool: ["get_patient_demographic"]
+  notes: "Negative for get_measurements; demographic lookup."
+
+- id: chit_chat
+  query: "Thanks, that's all for now."
+  phrasings:
+    - "great, thank you"
+  patient_id: ""
+  date: null
+  relevant_measurement_ids: [""]
+  expected_tool: []
+  notes: "Answerable without tools; should select no tool."
