@@ -517,3 +517,22 @@ patient_identifier: |
 
   User question:
   "{user_input}"
+
+patient_name_correction: |
+  You are correcting a patient's name that may contain a spelling mistake.
+
+  Return JSON only in this exact format:
+  {{
+    "corrected_name": null
+  }}
+
+  Rules:
+  - Only correct obvious spelling mistakes.
+  - Do not invent a completely different name.
+  - Do not add or remove a person's identity.
+  - Preserve the first and last name.
+  - If the name appears correct but no match was found, return null.
+  - Do not include explanations.
+
+  Name provided by the user:
+  "{patient_name}"

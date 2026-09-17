@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 
 from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult, workflow
 
@@ -12,9 +13,56 @@ from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult
 )
 class RAGWorkflow(Workflow):
 
-    def get_patient_by_name(self, db_conn, patient_name: str):
-        patient_name = patient_name.strip()
+    def _correct_patient_name(self, patient_name: str, context: WorkflowContext):
+        correction_prompt = context.prompts.get(
+            "patient_name_correction"
+        ).format(
+            patient_name=patient_name
+        )
 
+        correction_resp = context.ai_conn.send_message(correction_prompt)
+
+        correction_resp = (
+            correction_resp
+            .replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
+
+        try:
+            correction = json.loads(correction_resp)
+        except json.JSONDecodeError:
+            logging.warning(
+                f"Could not parse patient name correction response: "
+                f"{correction_resp}"
+            )
+            return None
+
+        corrected_name = correction.get("corrected_name")
+        print(corrected_name)
+
+        if not corrected_name:
+            return None
+
+        corrected_name = corrected_name.strip()
+
+        if corrected_name.lower() == patient_name.lower():
+            return None
+        else:
+            return corrected_name
+
+    def _get_patient_by_name(self, patient_name: str, context: WorkflowContext):
+        db_conn = context.db_conn
+
+        # Normalize the user's input
+        patient_name = patient_name.strip()
+        search_name = patient_name.lower().replace(",", " ")
+        search_parts = search_name.split()
+
+        if len(search_parts) < 2:
+            return []
+
+        # Exact match
         query = f"""
         SELECT
             demographic_no,
@@ -22,13 +70,77 @@ class RAGWorkflow(Workflow):
             last_name
         FROM demographic
         WHERE CONCAT(first_name, ' ', last_name) = '{patient_name}'
-           OR CONCAT(last_name, ', ', first_name) = '{patient_name}'
+        OR CONCAT(last_name, ', ', first_name) = '{patient_name}'
         LIMIT 10;
         """
 
-        return db_conn.query_database(query)
+        exact_matches = db_conn.query_database(query)
 
-    def get_demo_num(self, user_input: str, context: WorkflowContext):
+        if exact_matches:
+            return exact_matches
+
+        # Middle-name-omitted match
+        first_name = search_parts[0]
+        last_name = search_parts[-1]
+
+        query = f"""
+        SELECT
+            demographic_no,
+            first_name,
+            last_name
+        FROM demographic
+        WHERE
+            (
+                first_name LIKE '{first_name}%'
+                AND last_name = '{last_name}'
+            )
+            OR
+            (
+                first_name LIKE '{last_name}%'
+                AND last_name = '{first_name}'
+            )
+        LIMIT 10;
+        """
+
+        middle_name_matches = db_conn.query_database(query)
+
+        if middle_name_matches:
+            return middle_name_matches
+
+        # LLM call to fix typos
+        corrected_name = self._correct_patient_name(
+            patient_name,
+            context
+        )
+
+        if not corrected_name:
+            return []
+
+        logging.info(
+            f"Trying corrected patient name: "
+            f"'{patient_name}' -> '{corrected_name}'"
+        )
+
+        corrected_query = f"""
+        SELECT
+            demographic_no,
+            first_name,
+            last_name
+        FROM demographic
+        WHERE CONCAT(first_name, ' ', last_name) = '{corrected_name}'
+        OR CONCAT(last_name, ', ', first_name) = '{corrected_name}'
+        LIMIT 10;
+        """
+
+        corrected_matches = db_conn.query_database(corrected_query)
+
+        if corrected_matches:
+            return corrected_matches
+        else:
+            return []
+
+
+    def _get_demo_num(self, user_input: str, context: WorkflowContext):
         identifier_prompt = context.prompts.get("patient_identifier").format(
             user_input=user_input
         )
@@ -63,34 +175,46 @@ class RAGWorkflow(Workflow):
             return str(patient_id), None
         
         elif patient_relevant and patient_name:
-            matches = self.get_patient_by_name(
-                context.db_conn,
-                patient_name
+            matches = self._get_patient_by_name(
+                patient_name,
+                context
             )
-            if len(matches) == 1:
-                demo_no = matches[0]["demographic_no"]
-                logging.info(f"Patient resolved from name '{patient_name}': {demo_no}")
-                return str(demo_no), None
-            
-            elif len(matches) == 0:
+
+            # No matches
+            if len(matches) == 0:
                 logging.warning(f"No patient found with name: {patient_name}")
+
                 return None, (
                     f"I could not find a patient named '{patient_name}'. "
                     "Please check the patient's name and try again."
                 )
-            
-            else:
-                logging.warning(f"Multiple patients found with name '{patient_name}': {matches}")
-                patient_list = "\n".join(
-                    f"- {m['first_name']} {m['last_name']} "
-                    f"(demographic number {m['demographic_no']})"
-                    for m in matches
+
+            # One match
+            if len(matches) == 1:
+                demo_no = matches[0]["demographic_no"]
+
+                logging.info(
+                    f"Patient resolved from name '{patient_name}': {demo_no}"
                 )
-                return None, (
-                    f"I found multiple patients named '{patient_name}'. "
-                    "Please specify which patient you mean:\n"
-                    f"{patient_list}"
-                )
+
+                return str(demo_no), None
+
+            # Multiple matches
+            logging.warning(
+                f"Multiple patients found for '{patient_name}': {matches}"
+            )
+
+            patient_list = "\n".join(
+                f"- {m['first_name']} {m['last_name']} "
+                f"(demographic number: {m['demographic_no']})"
+                for m in matches
+            )
+
+            return None, (
+                f"I found multiple patients matching '{patient_name}'. "
+                "Please specify which patient you mean:\n"
+                f"{patient_list}"
+            )
             
         return None, None
 
@@ -137,7 +261,7 @@ class RAGWorkflow(Workflow):
 
         demo_no = context.curr_demo
         if not isinstance(demo_no, int):
-            demo_no, patient_error = self.get_demo_num(user_input, context)
+            demo_no, patient_error = self._get_demo_num(user_input, context)
             if patient_error:
                 return WorkflowResult(response=patient_error)
 
