@@ -138,13 +138,23 @@ class VectorDB:
         
         column_str = ",\n".join(columns)
 
-        # Create SQL query
+        # Filter to the patient/date subset first (small, uses the btree indexes),
+        # then order that subset by exact vector distance. Ordering directly on the
+        # base table lets the planner use the HNSW index, which post-filters and can
+        # return far fewer than top_k rows for a patient (or zero). A MATERIALIZED CTE
+        # forces exact search over just the filtered rows, so top_k is always honored.
         sql = f"""
-        SELECT 
+        WITH candidate AS MATERIALIZED (
+            SELECT
+                {column_str},
+                {vector_col} AS _search_vec
+            FROM {table_name}
+            {filter_str}
+        )
+        SELECT
             {column_str},
-            {vector_col} <=> '{query_vec_str}'::vector AS distance
-        FROM {table_name}
-        {filter_str}
+            _search_vec <=> '{query_vec_str}'::vector AS distance
+        FROM candidate
         ORDER BY distance
         LIMIT {top_k};
         """
