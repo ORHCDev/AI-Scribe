@@ -17,14 +17,20 @@ import webbrowser
         "most recent, latest, or current value of a specific measurement type, or for "
         "the full history, trend, or changes of a type over time. Set mode to 'latest' "
         "for the newest record of each requested type, or 'all' for the complete "
-        "history. Provide the measurement_type codes to fetch, such as ECHO, ECG, CATH, "
-        "EST, HOLT, MEDS, RISK, CARD. This is the reliable path for time-sensitive "
-        "measurement questions where the newest record must not be missed."
+        "history. Provide the exact measurement_type codes to fetch. Common codes: "
+        "ECHO and SECHO (echocardiogram, ejection fraction, chamber and aorta "
+        "dimensions), ECG (electrocardiogram, rhythm), EST (exercise stress test), "
+        "HOLT and HOL (Holter monitor, arrhythmia, atrial fibrillation), CATH "
+        "(catheterization, angiogram, coronary anatomy), MEDS (medications), RISK "
+        "(cardiovascular risk factors), CARD (cardiac history). Include every relevant "
+        "code, and both variants where two exist (ECHO+SECHO, HOLT+HOL). This is the "
+        "reliable path for time-sensitive measurement questions where the newest record "
+        "must not be missed."
     ),
     context="These are the patient's measurement records:",
     parameters={
         "demo_no": "Patient's demographic number",
-        "types": "List of measurement_type codes to fetch (e.g. ['ECHO'], ['MEDS','RISK'])",
+        "types": "List of exact measurement_type codes, e.g. ['ECHO','SECHO'] for echo/EF, ['MEDS'] for medications, ['HOLT','HOL'] for Holter",
         "mode": "'latest' for the newest record per type, 'all' for full history. Defaults to 'latest'."
     }
 )
