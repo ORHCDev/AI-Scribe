@@ -129,9 +129,10 @@ class EformPanel(tk.Frame):
         self.doc_cbs = {opt: tk.BooleanVar(value=opt in self.document_defaults) for opt in self.doc_types}
 
         # Dropdown
-        self.eform_var = tk.StringVar(value=list(self.eforms.keys())[0])
+        eform_keys = list(self.eforms.keys())
+        self.eform_var = tk.StringVar(value=eform_keys[0] if eform_keys else "")
 
-        values = list(self.eforms.keys())
+        values = eform_keys
         self.eform_selector = SearchableComboBox(button_frame, textvariable=self.eform_var, values=values)
         self.eform_selector.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
 
@@ -189,6 +190,24 @@ class EformPanel(tk.Frame):
         self.grid_remove()
 
 
+    def _ensure_db_conn(self) -> bool:
+        """
+        Checks whether the Oscar EMR database connection is available.
+        """
+        if self.db_conn is None:
+            if not getattr(self, "_db_unavailable_notified", False):
+                self._db_unavailable_notified = True
+                print("eForm data unavailable (db_conn is None)")
+                messagebox.showwarning(
+                    "Database Unavailable",
+                    "No Oscar EMR database connection is available. The eForm panel "
+                    "features are disabled. Check the Oscar/SSH connection settings.",
+                    parent=self,
+                )
+            return False
+        return True
+
+
     def _load_eforms(self):
         """
         Queries Oscar EMR database for all active eForm templates.
@@ -204,6 +223,8 @@ class EformPanel(tk.Frame):
         WHERE status = 1
         ORDER BY form_name;
         """
+        if not self._ensure_db_conn():
+            return {}
         res = self.db_conn.query_database(query)
 
         # Load eforms from rows
@@ -304,6 +325,8 @@ class EformPanel(tk.Frame):
         SELECT DISTINCT doctype
         FROM document;
         """
+        if not self._ensure_db_conn():
+            return []
         res = self.db_conn.query_database(query)
         
         # Extract document type from returned rows
@@ -420,6 +443,8 @@ class EformPanel(tk.Frame):
         ORDER BY form_date DESC
         LIMIT 1;
         """
+        if not self._ensure_db_conn():
+            return None
         res = self.db_conn.query_database(query)
 
         fdid = res[0]["fdid"]
@@ -453,6 +478,8 @@ class EformPanel(tk.Frame):
             AND cd.module_id = {demo_no}
         ORDER BY d.observationdate DESC;
         """
+        if not self._ensure_db_conn():
+            return ""
         res = self.db_conn.query_database(query)
         
         # Get selected documents
@@ -552,5 +579,7 @@ class EformPanel(tk.Frame):
         WHERE demographic_no = {demo_no}
         LIMIT 1;
         """
+        if not self._ensure_db_conn():
+            return False
         res = self.db_conn.query_database(query)
         return res[0]
