@@ -259,19 +259,24 @@ class RAGWorkflow(Workflow):
         #self._write_out(rag_prompt, "#")
         #self._write_out(rag_str, "$")
 
-        '''logging.info(
-            f"RAG PATIENT DEBUG: context.curr_demo={context.curr_demo!r}, "
-            f"type={type(context.curr_demo).__name__}"
-        )'''
         demo_no = context.curr_demo
-        '''if not isinstance(demo_no, int):
+        logging.info(
+            f"RAG PATIENT DEBUG: original demo_no={demo_no!r}, "
+            f"isdigit={demo_no and demo_no.isdigit()}"
+        )
+
+        if demo_no and demo_no.isdigit():
+            logging.info(f"RAG PATIENT DEBUG: final demo_no unchanged")
+        else:
             demo_no, patient_error = self._get_demo_num(user_input, context)
+            logging.info(
+                f"RAG PATIENT DEBUG: final demo_no={demo_no!r}, "
+                f"isdigit={demo_no and demo_no.isdigit()}"
+            )
             if patient_error:
-                return WorkflowResult(response=patient_error)'''
-        '''logging.info(
-            f"RAG PATIENT DEBUG: final demo_no={demo_no!r}, "
-            f"type={type(demo_no).__name__}"
-        )'''
+                return WorkflowResult(response=patient_error)
+            elif not demo_no:
+                return WorkflowResult(response="No patient was specified. Please state which patient.")
 
         # Perform RAG search on tool embeddings and documents
         date_rank = False
