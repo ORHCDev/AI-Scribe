@@ -1976,24 +1976,50 @@ def chatbot_send_message():
     chat_current_task[0] = task
     task.start()
 
+def chatbot_cancel_generation():
+    task = chat_current_task[0]
+
+    if task is not None:
+        if task.is_running():
+            try:
+                kill_thread(task.thread_id)
+                print("Cancelled chatbot generation")
+            except Exception as e:
+                print(f"Failed to cancel chatbot generation: {e}")
+
+        task.cancel()
+
+    chat_current_task[0] = None
+
+    # restore the chat input box
+    chat_user_input.scrolled_text.config(fg='black', state='normal')
+    chat_user_input.scrolled_text.delete("1.0", tk.END)
+    chat_send_button.config(state='normal')
+    chat_user_input.scrolled_text.focus_set()
+    chat_current_task[0] = None
+
 def chatbot_clear():
     if messagebox.askyesno(
         "Clear Chat",
         "Are you sure you want to clear the chat?"
     ):
+        chatbot_cancel_generation()
         print("Cleared Chat")
         chatbot.clear()
         _reset_chat_log()
         chat_history_listbox.selection_clear(0, tk.END)
 
 def chatbot_new_session():
-    if not chatbot.current_conversation:
-        return
-    print("Starting New Chat")
-    saved_id = chatbot.new_chat()
-    _reset_chat_log()
-    _show_saved_chat(saved_id)
-    chat_history_listbox.selection_clear(0, tk.END)
+    if not chat_current_task[0] or messagebox.askyesno(
+        "New Chat",
+        "Are you sure you want to cancel your most recent request?"
+    ):
+        chatbot_cancel_generation()
+        print("Starting New Chat")
+        saved_id = chatbot.new_chat()
+        _reset_chat_log()
+        _show_saved_chat(saved_id)
+        chat_history_listbox.selection_clear(0, tk.END)
 
 def chatbot_workflow_toggle():
     # toggle between workflow options
