@@ -139,6 +139,55 @@ class RAGWorkflow(Workflow):
         else:
             return []
 
+    def _get_demo_num_from_history(self, context: WorkflowContext):
+        if not context.conversation_history:
+            return None
+
+        history = "\n".join(context.conversation_history)
+
+        prompt = f"""
+        Review the conversation history below and identify the most recently
+        referenced patient demographic number.
+
+        Return JSON only in this format:
+        {{
+            "patient_id": "12345"
+        }}
+
+        Rules:
+        - Return the demographic number of the most recently referenced patient.
+        - If multiple patients were discussed, use the patient referenced most recently.
+        - Do not guess or infer a demographic number.
+        - If no demographic number is explicitly referenced, return null.
+
+        Conversation history:
+        {history}
+        """
+
+        response = context.ai_conn.send_message(prompt)
+
+        response = (
+            response
+            .replace("```json", "")
+            .replace("```", "")
+            .replace("**JSON only**", "")
+            .strip()
+        )
+
+        try:
+            result = json.loads(response)
+        except json.JSONDecodeError:
+            logging.warning(
+                f"Could not parse patient ID from conversation history: {response}"
+            )
+            return None
+
+        patient_id = result.get("patient_id")
+
+        if patient_id is None:
+            return None
+
+        return str(patient_id)
 
     def _get_demo_num(self, user_input: str, context: WorkflowContext):
         identifier_prompt = context.prompts.get("patient_identifier").format(
@@ -216,6 +265,14 @@ class RAGWorkflow(Workflow):
                 f"{patient_list}"
             )
             
+        history_demo_no = self._get_demo_num_from_history(context)
+
+        if history_demo_no:
+            logging.info(
+                f"Patient resolved from conversation history: {history_demo_no}"
+            )
+            return history_demo_no, None
+
         return None, None
 
     def run(self, user_input: str, context: WorkflowContext) -> WorkflowResult:
