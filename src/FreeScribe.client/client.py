@@ -1991,6 +1991,14 @@ def chatbot_cancel_generation():
 
     chat_current_task[0] = None
 
+    # send alert in chat logs
+    chat_log_display.scrolled_text.config(state='normal')
+    chat_log_display.scrolled_text.insert(tk.END, "ALERT:\nprompt cancelled\n")
+    chat_log_display.scrolled_text.insert(tk.END, "\n\n")
+    chat_log_display.scrolled_text.config(state='disabled')
+    chat_log_display.scrolled_text.see(tk.END)
+    refresh_patient_status()
+
     # restore the chat input box
     chat_user_input.scrolled_text.config(fg='black', state='normal')
     chat_user_input.scrolled_text.delete("1.0", tk.END)
@@ -2142,7 +2150,15 @@ chat_log_display._id = "chat_log_tbox"
 _reset_chat_log()
 
 # ── User input ────────────────────────────────────────────────────────────────
-chat_user_input = CustomTextBox(chatbot_frame, height=5)
+chat_user_input = CustomTextBox(chatbot_frame, height=5, cancel_command=lambda: (
+        chatbot_cancel_generation()
+        if messagebox.askyesno(
+            "Cancel Generation",
+            "Are you sure you want to cancel the current prompt?"
+        )
+        else None
+    )
+)
 chat_user_input.grid(
     row=1, column=1, columnspan=8, padx=(5, 2), pady=(4, 4), sticky='nsew',
 )
