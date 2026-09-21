@@ -1898,6 +1898,7 @@ def chatbot_send_message():
         chat_send_button.config(state='normal')
         chat_user_input.scrolled_text.focus_set()
         chat_current_task[0] = None
+        chat_user_input.set_cancel_button_active(False)
 
         if error is not None:
             print(f"Chatbot error: {error}")
@@ -1974,6 +1975,7 @@ def chatbot_send_message():
         on_done = handle_return
     )
     chat_current_task[0] = task
+    chat_user_input.set_cancel_button_active(True)
     task.start()
 
 def chatbot_cancel_generation():
@@ -1989,8 +1991,6 @@ def chatbot_cancel_generation():
 
         task.cancel()
 
-    chat_current_task[0] = None
-
     # send alert in chat logs
     chat_log_display.scrolled_text.config(state='normal')
     chat_log_display.scrolled_text.insert(tk.END, "ALERT:\nprompt cancelled\n")
@@ -2005,6 +2005,7 @@ def chatbot_cancel_generation():
     chat_send_button.config(state='normal')
     chat_user_input.scrolled_text.focus_set()
     chat_current_task[0] = None
+    chat_user_input.set_cancel_button_active(False)
 
 def chatbot_clear():
     if messagebox.askyesno(
@@ -2150,7 +2151,11 @@ chat_log_display._id = "chat_log_tbox"
 _reset_chat_log()
 
 # ── User input ────────────────────────────────────────────────────────────────
-chat_user_input = CustomTextBox(chatbot_frame, height=5, cancel_command=lambda: (
+chat_user_input = CustomTextBox(
+    chatbot_frame,
+    height=5,
+    use_cancel_button=True,
+    cancel_command=lambda: (
         chatbot_cancel_generation()
         if messagebox.askyesno(
             "Cancel Generation",
