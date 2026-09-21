@@ -211,13 +211,15 @@ class RAGWorkflow(Workflow):
                     logging.info(f"Calling tool: {tool}")
                     name = tool.get("tool_name")
                     args = tool.get("args") or {}
-                    sig = inspect.signature(context.tools.get(name).func).parameters
+                    tool_obj = context.tools.get(name)
+                    sig = inspect.signature(tool_obj.func).parameters
                     if "db_conn" in sig:
                         args["db_conn"] = context.db_conn
                     if "vec_search" in sig:
                         args["vec_search"] = context.vec_search
                     res = context.tools.execute_tool(name, **args)
-                    tool_context += f"Tool: {name}\nResults: {res}\n\n"
+                    instruction = f"{tool_obj.context}\n" if tool_obj.context else ""
+                    tool_context += f"Tool: {name}\n{instruction}Results: {res}\n\n"
 
                     sources.append({
                         "source_type": "tool",
