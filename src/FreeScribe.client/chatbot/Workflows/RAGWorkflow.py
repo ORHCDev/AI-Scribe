@@ -11,6 +11,43 @@ from chatbot.Tools.demonumber import get_demo_num
     keywords=["search", "query", "find", "lab values", "lab results", "lab documents", "documents"]
 )
 class RAGWorkflow(Workflow):
+    def _resolve_query(self, user_input: str, context: WorkflowContext) -> str:
+        if not context.conversation_history or not context.memory_needed:
+            return user_input
+
+        history = "\n".join(context.conversation_history[-5:])
+
+        prompt = context.prompts.get("query_resolution_prompt").format(
+            history=history,
+            user_input=user_input
+        )
+
+        response = context.ai_conn.send_message(prompt)
+
+        response = (
+            response
+            .replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
+
+        try:
+            result = json.loads(response)
+            resolved_query = result.get("resolved_query")
+
+            if resolved_query:
+                logging.info(
+                    f"Query resolution: {user_input!r} -> {resolved_query!r}"
+                )
+                return resolved_query
+
+        except json.JSONDecodeError:
+            logging.warning(
+                f"Could not parse resolved query: {response}"
+            )
+
+        return user_input
+
     def run(self, user_input: str, context: WorkflowContext) -> WorkflowResult:
         """
         Chains multiple LLM calls together augmenting original user input with patient context.
@@ -27,6 +64,7 @@ class RAGWorkflow(Workflow):
         """
 
         if not user_input.strip(): return WorkflowResult(response="")
+        resolved_input = self._resolve_query(user_input, context)
 
         today = datetime.now()
 
@@ -40,7 +78,7 @@ class RAGWorkflow(Workflow):
             last_week=(today - timedelta(weeks=1)).date(),
             last_month=(today - timedelta(days=30)).date(),
             last_year=(datetime(year=(today.year - 1), month=today.month, day=1)).date(),
-            user_input=user_input
+            user_input=resolved_input
         )
         rag_str = context.ai_conn.send_message(rag_prompt)
         rag_str = rag_str.replace("```json", "").replace("```", "").replace("**JSON only**", "").strip()
@@ -61,7 +99,7 @@ class RAGWorkflow(Workflow):
         if demo_no and demo_no.isdigit():
             logging.info(f"RAG PATIENT DEBUG: final demo_no unchanged")
         else:
-            demo_no, patient_error = get_demo_num(user_input, context)
+            demo_no, patient_error = get_demo_num(resolved_input, context)
             logging.info(
                 f"RAG PATIENT DEBUG: final demo_no={demo_no!r}, "
                 f"isdigit={demo_no and demo_no.isdigit()}"
@@ -152,7 +190,7 @@ class RAGWorkflow(Workflow):
             tool_prompt = context.prompts.get("rag_tool_prompt").format(
                 tool_protocol=context.prompts.get("rag_tool_protocol"),
                 demo_no=demo_no,
-                user_input=user_input,
+                user_input=resolved_input,
                 tools=tool_str,
             )
             tool_resp = context.ai_conn.send_message(tool_prompt)
@@ -219,9 +257,9 @@ class RAGWorkflow(Workflow):
         # Get AI followup response for User question with provided context
         if context.conversation_history and context.memory_needed:
             history = '\n'.join(context.conversation_history)
-            convo_history = f"Conversation History:{history}\nInput:{user_input}\n"
+            convo_history = f"Conversation History:{history}\nInput:{resolved_input}\n"
         else:
-            convo_history = user_input
+            convo_history = resolved_input
 
         followup_prompt = context.prompts.get("followup").format(
             user_input=convo_history,
