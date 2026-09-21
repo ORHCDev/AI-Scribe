@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 
 from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult, workflow
-from chatbot.Tools.demonumber import get_demo_num
+from chatbot.Tools.demonumber import get_demo_num, demo_number_required
 
 @workflow(
     name="rag_search",
@@ -91,23 +91,26 @@ class RAGWorkflow(Workflow):
         #self._write_out(rag_str, "$")
 
         demo_no = context.curr_demo
-        logging.info(
-            f"RAG PATIENT DEBUG: original demo_no={demo_no!r}, "
-            f"isdigit={demo_no and demo_no.isdigit()}"
-        )
-
-        if demo_no and demo_no.isdigit():
-            logging.info(f"RAG PATIENT DEBUG: final demo_no unchanged")
-        else:
-            demo_no, patient_error = get_demo_num(resolved_input, context)
+        if demo_number_required(resolved_input, context):
             logging.info(
-                f"RAG PATIENT DEBUG: final demo_no={demo_no!r}, "
+                f"RAG PATIENT DEBUG: original demo_no={demo_no!r}, "
                 f"isdigit={demo_no and demo_no.isdigit()}"
             )
-            if patient_error:
-                return WorkflowResult(response=patient_error)
-            elif not demo_no:
-                return WorkflowResult(response="No patient was specified. Please state which patient.")
+
+            if demo_no and demo_no.isdigit():
+                logging.info("RAG PATIENT DEBUG: final demo_no unchanged")
+            else:
+                demo_no, patient_error = get_demo_num(resolved_input, context)
+                logging.info(
+                    f"RAG PATIENT DEBUG: final demo_no={demo_no!r}, "
+                    f"isdigit={demo_no and demo_no.isdigit()}"
+                )
+                if patient_error:
+                    return WorkflowResult(response=patient_error)
+                elif not demo_no:
+                    return WorkflowResult(response="No patient was specified. Please state which patient.")
+        else:
+            logging.info("Demo number deemed unnecessary for this prompt")
 
         # Perform RAG search on tool embeddings and documents
         date_rank = False

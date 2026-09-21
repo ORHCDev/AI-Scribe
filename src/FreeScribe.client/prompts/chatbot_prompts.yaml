@@ -569,3 +569,36 @@ query_resolution_prompt: |
 
   Latest user message:
   {user_input}
+
+patient_requirement_prompt: |
+  Determine whether the user's request requires a specific patient to be
+  identified before the request can be answered.
+
+  Return JSON only.
+
+  Rules:
+  - patient_required = true if the request asks about one specific patient,
+    or asks for information that must be tied to a particular patient.
+  - patient_required = false if the request intentionally asks about multiple
+    patients, all patients, a population, or asks which patients meet a
+    condition.
+  - Examples of requests where patient_required is false:
+      - "Which patients have EF <=35%?"
+      - "Find patients with LDL over 3"
+      - "How many patients have diabetes?"
+      - "List all patients with low ejection fraction"
+  - Examples where patient_required is true:
+      - "What is this patient's EF?"
+      - "Show the EF for patient 1234"
+      - "What medications is the patient taking?"
+  - If the request explicitly identifies a patient, patient_required should
+    normally be true.
+  - Do not infer a patient from information that is not explicitly provided.
+
+  Format:
+  {{
+    "patient_required": true
+  }}
+
+  User request:
+  {user_input}
