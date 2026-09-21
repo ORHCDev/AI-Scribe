@@ -237,6 +237,129 @@ def get_appointments_by_provider(db_conn, provider_name: str):
 @tool(
     category="appointments",
     description=(
+        "Returns the appointment day sheet for a given date: a list of patients "
+        "with appointments scheduled that day. "
+        "Each result typically includes appointment date, start time, patient name, "
+        "chart number, reason, notes, and provider. "
+        "The results may optionally be filtered to a single provider by name. "
+        "The provider name may be given with or without a professional title such as 'Dr.'. "
+        "This tool is most relevant when answering questions about who is booked on a "
+        "given day, a provider's day sheet or daily schedule, or the list of patients "
+        "being seen on a particular date."
+    ),
+    context=(
+        "Here are the appointments scheduled for the requested day. "
+        "Present the patients as a simple list including each patient's appointment "
+        "time and name, along with the provider and reason for the visit. "
+        "If no appointments are found, explicitly state this to the user."
+    ),
+    parameters={
+        "date": (
+            "The date of the day sheet in YYYY-MM-DD format. "
+            "Optional; defaults to today's date when not provided."
+        ),
+        "provider_name": (
+            "Optional name of the provider to filter the day sheet by. "
+            "The name may be given with or without 'Dr.'"
+        )
+    }
+)
+def get_appointment_day_sheet(
+    db_conn,
+    date: str = None,
+    provider_name: str = None
+):
+    """
+    Queries the Oscar EMR database for the appointment day sheet on a given date,
+    optionally filtered to a single provider.
+
+    Params
+    ------
+    db_conn : SOQ | OscarDB
+        Database connection.
+
+    date : str
+        Date of the day sheet in YYYY-MM-DD format. Defaults to today.
+
+    provider_name : str
+        Optional provider name used to filter the results.
+    """
+
+    if date:
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return tr(
+                label=f"Invalid date: {date}",
+                send_to_ai=True,
+                query_results=[],
+                save_results=[]
+            )
+    else:
+        date = datetime.today().strftime("%Y-%m-%d")
+
+    label = f"Appointment Day Sheet for {date}"
+
+    provider_filter = ""
+
+    if provider_name:
+        provider_query = f"""
+        SELECT provider_no
+        FROM provider
+        WHERE CONCAT(first_name, ' ', last_name) = '{provider_name}'
+           OR CONCAT('Dr. ', first_name, ' ', last_name) = '{provider_name}'
+        """
+
+        providers = db_conn.query_database(provider_query)
+
+        if not providers:
+            return tr(
+                label=f"Provider not found: {provider_name}",
+                send_to_ai=True,
+                query_results=[],
+                save_results=[]
+            )
+
+        provider_ids = [str(provider["provider_no"]) for provider in providers]
+
+        provider_filter = f"""
+        AND a.provider_no IN ({','.join(provider_ids)})
+        """
+
+        label += f" for {provider_name}"
+
+    query = f"""
+    SELECT
+        a.appointment_date AS "Date",
+        a.start_time AS "Time",
+        a.name AS "Name",
+        a.demographic_no AS "ChartNo",
+        a.reason AS "Reason",
+        a.notes AS "Notes",
+        CONCAT(p.last_name, ', ', LEFT(p.first_name, 1)) AS "Provider"
+    FROM appointment a
+    JOIN provider p
+        ON p.provider_no = a.provider_no
+    WHERE a.appointment_date = '{date}'
+
+    {provider_filter}
+
+    ORDER BY a.start_time;
+    """
+
+    res = db_conn.query_database(query)
+
+    return tr(
+        label=label,
+        send_to_ai=True,
+        query_results=res,
+        save_results=res
+    )
+
+
+@tool(
+    category="appointments",
+    description=(
         "Returns a list of active patients who have not completed a valid appointment "
         "within a specified time period (days, months, or years). "
         "Patients with cancelled, no-show, or rescheduled visits within the period are excluded. "
