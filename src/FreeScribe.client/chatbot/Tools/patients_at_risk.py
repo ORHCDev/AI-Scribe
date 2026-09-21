@@ -12,8 +12,7 @@ from chatbot.Tools.utils import period_parser
         "than a specific amount."
     ),
     context=(
-        "Here are the demographic numbers and EF values of the patients. Look up each patient's full name from their "
-        "demographic number, then output all three fields in a table format."
+        "Here are the names, demographic numbers and EF values of the patients. Output all three fields in a table format."
     ),
     parameters={
         "EF_pct": "Ejection fraction percentage to filter for patient's with an EF less than it.",
@@ -60,6 +59,30 @@ def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6m") ->
     truncated = len(res) > MAX_RESULTS
     res = res[:MAX_RESULTS]
 
+    mapped_results = []
+    for entry in res:
+        name_query = f"""
+        SELECT first_name, last_name
+        FROM demographic
+        WHERE demographic_no = {entry["demographicNo"]}
+        """
+
+        name_results = db_conn.query_database(name_query)
+
+        if name_results:
+            first_name = name_results[0]["first_name"]
+            last_name = name_results[0]["last_name"]
+            patient_name = f"{first_name} {last_name}".title()
+        else:
+            patient_name = "Unknown"
+
+        mapped_results.append({
+            "demographic_number": entry["demographicNo"],
+            "patient_name": patient_name,
+            "ef_value": entry["dataField"],
+            "date_observed": entry["dateObserved"]
+        })
+
     if truncated:
         label = f"First {MAX_RESULTS} patients with EF < {EF_pct}; more results exist"
     else:
@@ -68,8 +91,8 @@ def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6m") ->
     return tr(
         label=label,
         send_to_ai=True,
-        query_results=res,
-        save_results=res
+        query_results=mapped_results,
+        save_results=mapped_results
     )
 
 
