@@ -11,6 +11,9 @@ reason) is written to REPORT.
 import os
 import sys
 import json
+import argparse
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
@@ -110,13 +113,78 @@ def _parse_verdict(resp):
         return None, resp
 
 
+def _load_done(path):
+    # (patient, question_id) pairs already in the report, so --resume can skip them.
+    done = set()
+    if not os.path.exists(path):
+        return done
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+                done.add((str(r["patient"]), r["question_id"]))
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return done
+
+
+def _summarize(path):
+    # Aggregate accuracy per question over the WHOLE report (so batched/resumed runs sum up).
+    agg = {}
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                agg.setdefault(r["question_id"], []).append(int(r.get("correct", 0)))
+    print("=" * 60)
+    print(f"{'question':22s} {'n':>3s} {'accuracy':>9s}")
+    print("-" * 60)
+    allv = []
+    for qid in sorted(agg):
+        v = agg[qid]
+        allv += v
+        print(f"{qid:22s} {len(v):>3d} {sum(v)/len(v):>9.3f}")
+    print("-" * 60)
+    if allv:
+        print(f"{'OVERALL':22s} {len(allv):>3d} {sum(allv)/len(allv):>9.3f}")
+    print("=" * 60)
+
+
 def main():
+    ap = argparse.ArgumentParser(
+        description="Answer-correctness eval (batchable / resumable)."
+    )
+    ap.add_argument("--n", type=int, default=AUTO_PICK_N,
+                    help="Auto-pick this many patients by measurement volume (ignored if --patients given).")
+    ap.add_argument("--patients", default="",
+                    help="Comma-separated demographic_no to evaluate (overrides --n).")
+    ap.add_argument("--questions", default="",
+                    help="Comma-separated question ids to run (default: all gold-set questions).")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="Parallel LLM workers. >1 is faster but needs an endpoint that allows concurrency.")
+    ap.add_argument("--resume", action="store_true",
+                    help="Append to the report and skip (patient, question) pairs already in it.")
+    ap.add_argument("--report", default=REPORT, help="Report path (default: %(default)s).")
+    args = ap.parse_args()
+
     with open(CONFIG, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     creds = cfg["VectorDB"]
     ai_cfg = cfg["AIConnection"]
     with open(GOLD, "r", encoding="utf-8") as f:
         questions = [q for q in yaml.safe_load(f) if q.get("target_types")]
+    if args.questions:
+        want = {s.strip() for s in args.questions.split(",") if s.strip()}
+        questions = [q for q in questions if q["id"] in want]
     with open(PROMPTS, "r", encoding="utf-8") as f:
         prompts = yaml.safe_load(f)
 
@@ -130,68 +198,79 @@ def main():
     )
     cur = ragdb.cursor
 
-    patients = PATIENTS if PATIENTS else _pick_patients(cur, AUTO_PICK_N)
-    print(f"Patients: {patients}\n")
+    if args.patients:
+        patients = [p.strip() for p in args.patients.split(",") if p.strip()]
+    else:
+        patients = PATIENTS if PATIENTS else _pick_patients(cur, args.n)
+    print(f"Patients: {patients}")
 
-    results = {q["id"]: [] for q in questions}
-    n_eval = n_skip = n_unparsed = 0
+    done = _load_done(args.report) if args.resume else set()
+    if done:
+        print(f"Resume: {len(done)} case(s) already in {args.report}; skipping those.")
 
-    with open(REPORT, "w", encoding="utf-8") as log:
-        for patient in patients:
-            for q in questions:
-                rule = q.get("auto_rule", "latest")
-                rows = _expected_rows(cur, patient, q["target_types"], rule)
-                if not rows:
-                    n_skip += 1
-                    continue
+    # Build the worklist serially -- SQL is fast and the psycopg2 cursor is NOT thread-safe,
+    # so all DB reads happen here; only the (slow) LLM calls are parallelized below.
+    worklist = []
+    n_skip = n_resume = 0
+    for patient in patients:
+        for q in questions:
+            if (str(patient), q["id"]) in done:
+                n_resume += 1
+                continue
+            rows = _expected_rows(cur, patient, q["target_types"], q.get("auto_rule", "latest"))
+            if not rows:
+                n_skip += 1
+                continue
+            worklist.append((patient, q, rows))
+    total = len(worklist)
+    print(f"Cases to run: {total} (skipped {n_skip} empty, {n_resume} already done)")
 
-                context = _context_str(rows)
-                followup = prompts["followup"].format(user_input=q["query"], context=context)
-                answer = ai.send_message(followup)
+    lock = threading.Lock()
+    counters = {"eval": 0, "unparsed": 0}
+    logf = open(args.report, "a" if args.resume else "w", encoding="utf-8")
 
-                judge = JUDGE_PROMPT.format(
-                    question=q["query"], records=_records_str(rows), answer=answer,
-                )
-                verdict, reason = _parse_verdict(ai.send_message(judge))
-                if verdict is None:
-                    n_unparsed += 1
-                    verdict = 0
-                results[q["id"]].append(verdict)
-                n_eval += 1
+    def run_one(item):
+        patient, q, rows = item
+        context = _context_str(rows)
+        followup = prompts["followup"].format(user_input=q["query"], context=context)
+        answer = ai.send_message(followup)
+        judge = JUDGE_PROMPT.format(
+            question=q["query"], records=_records_str(rows), answer=answer,
+        )
+        verdict, reason = _parse_verdict(ai.send_message(judge))
+        rec = {
+            "patient": patient,
+            "question_id": q["id"],
+            "query": q["query"],
+            "auto_rule": q.get("auto_rule", "latest"),
+            "correct": 0 if verdict is None else verdict,
+            "reason": reason,
+            "answer": answer,
+            "records": [
+                {"measurement_ids": r[0], "type": r[1], "date": str(r[2])} for r in rows
+            ],
+        }
+        with lock:
+            counters["eval"] += 1
+            if verdict is None:
+                counters["unparsed"] += 1
+            logf.write(json.dumps(rec) + "\n")
+            logf.flush()
+            print(f"  [{counters['eval']}/{total}] {patient} {q['id']} -> {rec['correct']}")
 
-                log.write(json.dumps({
-                    "patient": patient,
-                    "question_id": q["id"],
-                    "query": q["query"],
-                    "auto_rule": rule,
-                    "correct": verdict,
-                    "reason": reason,
-                    "answer": answer,
-                    "records": [
-                        {"measurement_ids": r[0], "type": r[1], "date": str(r[2])}
-                        for r in rows
-                    ],
-                }) + "\n")
+    if args.workers > 1:
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            list(ex.map(run_one, worklist))
+    else:
+        for item in worklist:
+            run_one(item)
 
+    logf.close()
     ragdb.cleanup()
 
-    print("=" * 60)
-    print(f"{'question':22s} {'n':>3s} {'accuracy':>9s}")
-    print("-" * 60)
-    allv = []
-    for q in questions:
-        v = results[q["id"]]
-        if not v:
-            print(f"{q['id']:22s}   0")
-            continue
-        allv += v
-        print(f"{q['id']:22s} {len(v):>3d} {sum(v)/len(v):>9.3f}")
-    print("-" * 60)
-    if allv:
-        print(f"{'OVERALL':22s} {len(allv):>3d} {sum(allv)/len(allv):>9.3f}")
-    print("=" * 60)
-    print(f"evaluated {n_eval}; skipped {n_skip}; unparsed judge {n_unparsed}; "
-          f"diagnostics in {REPORT}")
+    _summarize(args.report)
+    print(f"ran {counters['eval']} this pass; unparsed judge {counters['unparsed']}; "
+          f"report {args.report}")
 
 
 if __name__ == "__main__":
