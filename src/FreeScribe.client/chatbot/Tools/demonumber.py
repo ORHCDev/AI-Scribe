@@ -257,6 +257,26 @@ def get_demo_num(user_input: str, context: WorkflowContext):
 
     return None, None
 
+def demo_number_required(user_input: str, context: WorkflowContext):
+    prompt = context.prompts.get("patient_requirement_prompt").format(user_input=user_input)
+    response = context.ai_conn.send_message(prompt)
+    response = (
+        response
+        .replace("```json", "")
+        .replace("```", "")
+        .strip()
+    )
+
+    try:
+        result = json.loads(response)
+        result_bool = result.get("patient_required", True)
+        logging.info(f"Specific patient required={'True' if result_bool else 'False'}")
+        return result_bool
+
+    except (json.JSONDecodeError, TypeError):
+        logging.warning(f"Could not parse patient requirement response: {response}")
+        return True
+
 '''@tool(
     category="patientinfo",
     description=(
