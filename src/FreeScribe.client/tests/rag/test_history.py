@@ -68,6 +68,7 @@ def history_to_json(context: WorkflowContext):
     {{
         "patient_id": null,
         "patient_name": null,
+        "most_recent_topic": null,
         "key_details": []
     }}
 

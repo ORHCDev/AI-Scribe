@@ -536,3 +536,31 @@ patient_name_correction: |
 
   Name provided by the user:
   "{patient_name}"
+
+query_resolution_prompt: |
+  Review the recent conversation and the user's latest message.
+
+  Rewrite the latest message into a standalone request that can be
+  understood without the conversation history.
+
+  Rules:
+  - Resolve references such as "it", "them", "that", "those", "the results",
+    "the measurements", etc. using the conversation.
+  - Preserve the user's intended action.
+  - Preserve the patient if the patient was established in the conversation.
+  - Preserve important details from the previous request when the latest
+    message clearly refers to them.
+  - Do not add information that was not established in the conversation.
+  - If the latest message is already standalone, return it unchanged.
+  - Return JSON only.
+
+  Format:
+  {{
+    "resolved_query": "standalone user request"
+  }}
+
+  Recent conversation:
+  {history}
+
+  Latest user message:
+  {user_input}
