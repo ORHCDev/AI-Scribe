@@ -11,7 +11,10 @@ from chatbot.Tools.utils import period_parser
         "6 months. This tool is relevant when the user asks about patients who have an ejection fraction, or EF, less "
         "than a specific amount."
     ),
-    context="Here are the names, demographic numbers, and latest EF results of the patients who have an EF percent less than given:",
+    context=(
+        "Here are the demographic numbers and EF values of the patients. Look up each patient's full name from their "
+        "demographic number, then output all three fields in a table format."
+    ),
     parameters={
         "EF_pct": "Ejection fraction percentage to filter for patient's with an EF less than it.",
         "period": "Optional. An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. I.e. '6m' would indicate 6 months."
@@ -19,7 +22,7 @@ from chatbot.Tools.utils import period_parser
 )
 def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6m") -> list[dict]:
     """
-    Queries and returns a list of dictionaries of patient's that have an ejection fraction of less than EF_pct.
+    Queries and returns a list of dictionaries of patients that have an ejection fraction of less than EF_pct.
 
     Params
     ------
@@ -35,7 +38,7 @@ def ejection_fraction_less_than(db_conn, EF_pct : float, period : str = "6m") ->
 
     Returns
     -------
-    A list of dictionaries of patient's that have an ejection fraction of less than EF_pct.
+    A list of dictionaries of patients that have an ejection fraction of less than EF_pct.
     """
 
     date = period_parser(period)

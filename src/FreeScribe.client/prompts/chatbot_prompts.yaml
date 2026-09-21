@@ -301,6 +301,10 @@ followup: |
   - Do not claim that you are unable to perform an action if a tool has already performed that action.
   - In particular, if a plotting/chart tool was executed successfully, do not say that you cannot create, display, or plot the requested data.
   - Describe the tool's result naturally and concisely.
+  - For cross-patient questions such as "Which patients have...", use the demographic numbers present in the tool results to identify the patients.
+  - If patient names are present in the tool results, include them.
+  - If only demographic numbers are present in a tool result, identify patients by looking up their demographic numbers.
+  - Do not claim that the patient information is insufficient merely because patient names are not available.
 
   User Question:
   "{user_input}"
