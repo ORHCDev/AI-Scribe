@@ -35,6 +35,7 @@ class CustomTextBox(tk.Frame):
     :param kwargs: Additional keyword arguments to pass to the `tk.Frame` constructor.
     """
     def __init__(self, parent, height=10, state='normal', **kwargs):
+        use_cancel_button = kwargs.pop("use_cancel_button", False)
         cancel_command = kwargs.pop("cancel_command", None)
         tk.Frame.__init__(self, parent, **kwargs)
         
@@ -52,16 +53,20 @@ class CustomTextBox(tk.Frame):
         )
         self.copy_button.place(relx=1.0, rely=1.0, x=-2, y=-2, anchor="se")
 
-        if cancel_command:
+        self.cancel_button = None
+        if use_cancel_button:
             # Create cancel button just above copy button
             self.cancel_button = tk.Button(
                 self.scrolled_text,
                 text="Cancel",
                 command=cancel_command,
                 relief="raised",
-                borderwidth=1
+                borderwidth=1,
+                state="disabled"
             )
-            self.cancel_button.place(relx=1.0, rely=1.0, x=-2, y=-30, anchor="se")
+            self.cancel_button.place(
+                relx=1.0, rely=1.0, x=-2, y=-30, anchor="se"
+            )
         
         # Get eForms button (optional, can be set via set_get_eforms_callback)
         self.get_eforms_button = None
@@ -265,3 +270,6 @@ class CustomTextBox(tk.Frame):
         Scroll the text widget so the specified index is visible.
         """
         self.scrolled_text.see(index)
+
+    def set_cancel_button_active(self, active):
+        self.cancel_button.config(state="normal" if active else "disabled")
