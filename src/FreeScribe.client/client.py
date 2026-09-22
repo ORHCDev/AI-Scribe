@@ -1122,6 +1122,8 @@ def generate_note(formatted_message):
                     mh_response = send_text_to_chatgpt(f"{mh_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
 
                     demo_no = info["demographic_no"]
+                    today = datetime.today().strftime("%Y-%m-%d")
+                    
                     measurement_results = {}
                     for measurement_type in ["ecg", "ECHO"]:
                         query = f"""
@@ -1234,6 +1236,14 @@ def generate_note(formatted_message):
                     ORDER BY m.type ASC;
                     """
                     lab_results = chatbot.db_conn.query_database(lab_query)
+
+                    medication_query = f"""
+                    SELECT *
+                    FROM drugs
+                    WHERE demographic_no = {demo_no}
+                    AND (end_date is NULL OR end_date >= '{today}')
+                    """
+                    medication_results = chatbot.db_conn.query_database(medication_query)
                     
                     consult_prompt = ai_prompts.get("consult")
                     consult_response = send_text_to_chatgpt(f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
@@ -1243,10 +1253,10 @@ def generate_note(formatted_message):
                     - PAST CARDIAC HISTORY
                     - PAST MEDICAL HISTORY
                     - HISTORY OF PRESENT ILLNESS
-                    - SOCIAL HISTORY
+                    - SOCIAL HISTORY *
                     - MEDICATIONS
-                    - ALLERGIES
-                    - EXAM
+                    - ALLERGIES *
+                    - EXAM *
                     - ECG
                     - STRESS ECHO
                     - LAB WORK
@@ -1265,6 +1275,7 @@ def generate_note(formatted_message):
                     - PAST CARDIAC HISTORY
                     - PAST MEDICAL HISTORY
                     - HISTORY OF PRESENT ILLNESS
+                    - MEDICATIONS
                     - ECG
                     - STRESS ECHO
                     - LAB WORK
@@ -1278,6 +1289,10 @@ def generate_note(formatted_message):
                     following information:
 
                     {mh_response}
+
+                    To complete the "MEDICATIONS" section, use the following JSON:
+
+                    {medication_results}
 
                     To complete the "ECG" section, use the following JSON:
                     
@@ -1296,6 +1311,7 @@ def generate_note(formatted_message):
                     #print(f"ECG: {measurement_results['ecg']}")
                     #print(f"ECHO: {measurement_results['ECHO']}")
                     #print(f"lab results: {lab_results}")
+                    #print(f"medications: {medication_results}")
                     master_response = send_text_to_chatgpt(master_prompt)
                     update_gui_with_response(master_response)
                 
