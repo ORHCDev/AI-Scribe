@@ -1116,6 +1116,110 @@ def generate_note(formatted_message):
                     update_gui_with_response(ai_response)
                     json_response = json.loads(ai_response)
                     eform_selection_panel.set_referral_data(json_response)
+
+                elif prompt_type == "Consult Complete":
+                    mh_prompt = ai_prompts.get("Medical History")
+                    mh_response = send_text_to_chatgpt(f"{mh_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
+
+                    demo_no = info["demographic_no"]
+                    ecg_query = f"""
+                    SELECT
+                        m.type AS "Name",
+                        m.dataField AS "Data",
+                        me.unit AS "Unit",
+                        me.min AS "MIN",
+                        me.max AS "MAX",
+                        me.abnormal AS "Flag",
+                        DATE(m.dateObserved) AS "Date Observed"
+                    FROM measurements m
+                    JOIN (
+                        SELECT
+                            type,
+                            MAX(dateObserved) AS maxDate
+                        FROM measurements
+                        WHERE demographicNo = {demo_no}
+                        AND measuringInstruction = "ecg"
+                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                        GROUP BY type
+                    ) latest
+                        ON m.type = latest.type
+                    AND m.dateObserved = latest.maxDate
+                    LEFT JOIN (
+                        SELECT
+                            me.measurement_id,
+                            MAX(CASE WHEN me.keyval = 'minimum'  THEN me.val END) AS min,
+                            MAX(CASE WHEN me.keyval = 'maximum'  THEN me.val END) AS max,
+                            MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
+                            MAX(CASE WHEN me.keyval = 'unit'     THEN me.val END) AS unit
+                        FROM measurementsExt me
+                        JOIN (
+                            SELECT
+                                id
+                            FROM measurements
+                            WHERE demographicNo = {demo_no}
+                            AND measuringInstruction = "ecg"
+                            AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                        ) relevant
+                            ON relevant.id = me.measurement_id
+                        GROUP BY me.measurement_id
+                    ) me
+                        ON me.measurement_id = m.id
+                    WHERE m.demographicNo = {demo_no}
+                    AND measuringInstruction = "ecg"
+                    GROUP BY m.type, m.dataField, me.unit, me.min, me.max, me.abnormal, DATE(m.dateObserved)
+                    ORDER BY m.type ASC;
+                    """
+                    ecg_results = chatbot.db_conn.query_database(ecg_query)
+                    
+                    consult_prompt = ai_prompts.get("consult")
+                    consult_response = send_text_to_chatgpt(f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
+
+                    """                    
+                    - RISK FACTORS
+                    - PAST CARDIAC HISTORY
+                    - PAST MEDICAL HISTORY
+                    - HISTORY OF PRESENT ILLNESS
+                    - SOCIAL HISTORY
+                    - MEDICATIONS
+                    - ALLERGIES
+                    - EXAM
+                    - ECG
+                    - LAB WORK
+                    - ASSESSMENT
+                    - PLAN
+                    """
+
+                    master_prompt = f"""
+                    The following is part of a consultation/follow-up note to a patient's primary care physician:
+
+                    {consult_response}
+
+                    Your job is to add additional information to this note, in specific locations, maintaining the existing 
+                    formatting. The resulting, complete note should have the following titled sections:
+                    - RISK FACTORS
+                    - PAST CARDIAC HISTORY
+                    - PAST MEDICAL HISTORY
+                    - HISTORY OF PRESENT ILLNESS
+                    - ECG
+                    - IMPRESSION/ASSESSMENT
+                    - PLAN
+
+                    The "HISTORY OF PRESENT ILLNESS", "IMPRESSION/ASSESSMENT" and "PLAN" sections may be kept as-is from 
+                    the existing node provided earlier.
+
+                    To complete the "RISK FACTORS", "PAST CARDIAC HISTORY" and "PAST MEDICAL HISTORY sections, use the 
+                    following information:
+
+                    {mh_response}
+
+                    To complete the ECG section, use the following JSON:
+                    
+                    {ecg_results}
+
+                    Output the complete note.
+                    """
+                    master_response = send_text_to_chatgpt(master_prompt)
+                    update_gui_with_response(master_response)
                 
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
@@ -1776,7 +1880,7 @@ dropdown_label = tk.Label(scribe_frame, text="Select Prompt", font=("Arial", 8, 
 dropdown_label.grid(row=1, column=4, pady=(8, 0), sticky='sew')
 
 selected_prompt = tk.StringVar(value="Auto")
-values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts()
+values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete"]
 prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
