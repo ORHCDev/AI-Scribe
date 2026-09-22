@@ -341,6 +341,81 @@ class VectorDB:
         return rows
 
 
+    def fetch_documents(
+        self,
+        patient_id : str | int,
+        query      : str | None = None,
+        doc_type   : str | None = None,
+        top_k      : int = 5,
+        to_dict    : bool = False,
+    ):
+        """
+        SQL/full-text document retrieval over document_chunks -- the non-vector
+        path. Returns whole documents (all chunks reassembled), ranked so that
+        the CONTENT drives selection, not the Oscar label:
+
+          - When `query` (or `doc_type`) gives search terms, documents are
+            selected by a Postgres full-text match on the OCR'd chunk_text and
+            ranked by ts_rank. `document_type` is only a soft ranking BOOST
+            (ILIKE), never a hard filter -- so a document mislabeled in Oscar
+            (e.g. tagged "discharge summary" but actually an angiogram) can still
+            be found and ranked by what it actually says.
+          - With no terms at all, returns the patient's most recent documents.
+
+        Bypasses embedding similarity entirely.
+        """
+        cols = ["document_id", "document_type", "observation_date", "full_text"]
+
+        terms = (query or doc_type or "").strip()
+
+        if not terms:
+            sql = """
+            SELECT document_id, document_type, observation_date,
+                   string_agg(chunk_text, E'\\n---\\n' ORDER BY chunk_index) AS full_text
+            FROM document_chunks
+            WHERE demographic_no = %(pid)s
+            GROUP BY document_id, document_type, observation_date
+            ORDER BY observation_date DESC
+            LIMIT %(k)s;
+            """
+            params = {"pid": patient_id, "k": top_k}
+        else:
+            # Two-step: (1) find documents whose CONTENT matches the terms, with a
+            # relevance score + whether the label happens to match; (2) pull every
+            # chunk of those documents and reassemble the full text.
+            type_like = f"%{doc_type}%" if doc_type else None
+            sql = """
+            WITH hits AS (
+                SELECT document_id,
+                       MAX(ts_rank(to_tsvector('english', chunk_text),
+                                   plainto_tsquery('english', %(terms)s))) AS content_score,
+                       bool_or(%(type_like)s IS NOT NULL
+                               AND document_type ILIKE %(type_like)s) AS type_match
+                FROM document_chunks
+                WHERE demographic_no = %(pid)s
+                  AND to_tsvector('english', chunk_text)
+                      @@ plainto_tsquery('english', %(terms)s)
+                GROUP BY document_id
+            )
+            SELECT dc.document_id, dc.document_type, dc.observation_date,
+                   string_agg(dc.chunk_text, E'\\n---\\n' ORDER BY dc.chunk_index) AS full_text
+            FROM document_chunks dc
+            JOIN hits h ON h.document_id = dc.document_id
+            GROUP BY dc.document_id, dc.document_type, dc.observation_date,
+                     h.content_score, h.type_match
+            ORDER BY h.content_score * (CASE WHEN h.type_match THEN 1.5 ELSE 1.0 END) DESC,
+                     dc.observation_date DESC
+            LIMIT %(k)s;
+            """
+            params = {"pid": patient_id, "terms": terms, "type_like": type_like, "k": top_k}
+
+        self.cursor.execute(sql, params)
+        rows = self.cursor.fetchall()
+        if to_dict:
+            return [dict(zip(cols, r)) for r in rows]
+        return rows
+
+
     def insert_measurement_chunk(self, chunk):
         query = """
         INSERT INTO measurement_chunks (
