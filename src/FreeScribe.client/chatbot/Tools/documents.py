@@ -5,6 +5,64 @@ from datetime import datetime
 import logging
 
 
+@tool(
+    category="documents",
+    description=(
+        "Searches a patient's clinical documents by content and/or type using a direct "
+        "database full-text search (no vector similarity), and returns the matching document "
+        "text with its type and date. Provide `query` with clinical keywords to find documents "
+        "that mention them (e.g. 'angiogram', 'ejection fraction', 'atrial fibrillation'), "
+        "and/or `doc_type` to restrict to a kind of document (e.g. 'discharge summary', "
+        "'consult', 'echo report'). Leave `query` empty to list the most recent documents. "
+        "Most relevant when the user asks what a report / consult note / discharge summary / "
+        "angiogram says, or to pull up a specific document."
+    ),
+    context="Here is the content of the matching patient document(s):",
+    parameters={
+        "demo_no": "Patient's demographic number",
+        "query": "Clinical keywords to search document text for (optional; empty = most recent documents)",
+        "doc_type": "Preferred document type, e.g. 'discharge summary' (optional; used as a ranking hint on the content search, NOT a hard filter, so mislabeled documents can still be found by content)",
+        "limit": "Maximum number of documents to return. Defaults to 5.",
+    },
+)
+def get_documents(vec_search, demo_no : str, query : str = "", doc_type : str = "", limit : int = 5):
+    """
+    SQL/FTS document retrieval over the pre-parsed document_chunks table (the
+    non-RAG path). Searches document CONTENT via Postgres full-text search plus
+    optional type filter, so a document mislabeled in Oscar can still be found by
+    what it actually says. Does not re-OCR and does not use vector similarity.
+    """
+    rows = vec_search.ragdb.fetch_documents(
+        patient_id=str(demo_no),
+        query=query or None,
+        doc_type=doc_type or None,
+        top_k=int(limit),
+        to_dict=True,
+    )
+
+    text = ""
+    for r in rows:
+        text += (
+            f"DOCUMENT TYPE: {r['document_type']}\n"
+            f"Observation Date: {r['observation_date']}\n\n"
+            f"{r['full_text']}\n\n"
+        )
+    if not text:
+        text = "No matching documents were found for this patient."
+
+    label = "Document search"
+    if doc_type:
+        label += f" [{doc_type}]"
+    if query:
+        label += f": {query}"
+    return tr(
+        label=label,
+        send_to_ai=True,
+        query_results=text,
+        save_results=text,
+    )
+
+
 """@tool(
     category="documents",
     description=(
