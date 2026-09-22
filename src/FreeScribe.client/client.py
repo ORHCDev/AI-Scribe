@@ -1122,54 +1122,64 @@ def generate_note(formatted_message):
                     mh_response = send_text_to_chatgpt(f"{mh_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
 
                     demo_no = info["demographic_no"]
-                    ecg_query = f"""
-                    SELECT
-                        m.type AS "Name",
-                        m.dataField AS "Data",
-                        me.unit AS "Unit",
-                        me.min AS "MIN",
-                        me.max AS "MAX",
-                        me.abnormal AS "Flag",
-                        DATE(m.dateObserved) AS "Date Observed"
-                    FROM measurements m
-                    JOIN (
+                    measurement_results = {}
+                    for measurement_type in ["ecg", "ECHO"]:
+                        query = f"""
                         SELECT
-                            type,
-                            MAX(dateObserved) AS maxDate
-                        FROM measurements
-                        WHERE demographicNo = {demo_no}
-                        AND measuringInstruction = "ecg"
-                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                        GROUP BY type
-                    ) latest
-                        ON m.type = latest.type
-                    AND m.dateObserved = latest.maxDate
-                    LEFT JOIN (
-                        SELECT
-                            me.measurement_id,
-                            MAX(CASE WHEN me.keyval = 'minimum'  THEN me.val END) AS min,
-                            MAX(CASE WHEN me.keyval = 'maximum'  THEN me.val END) AS max,
-                            MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
-                            MAX(CASE WHEN me.keyval = 'unit'     THEN me.val END) AS unit
-                        FROM measurementsExt me
+                            m.type AS "Name",
+                            m.dataField AS "Data",
+                            me.unit AS "Unit",
+                            me.min AS "MIN",
+                            me.max AS "MAX",
+                            me.abnormal AS "Flag",
+                            DATE(m.dateObserved) AS "Date Observed"
+                        FROM measurements m
                         JOIN (
                             SELECT
-                                id
+                                type,
+                                MAX(dateObserved) AS maxDate
                             FROM measurements
                             WHERE demographicNo = {demo_no}
-                            AND measuringInstruction = "ecg"
+                            AND measuringInstruction = "{measurement_type}"
                             AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                        ) relevant
-                            ON relevant.id = me.measurement_id
-                        GROUP BY me.measurement_id
-                    ) me
-                        ON me.measurement_id = m.id
-                    WHERE m.demographicNo = {demo_no}
-                    AND measuringInstruction = "ecg"
-                    GROUP BY m.type, m.dataField, me.unit, me.min, me.max, me.abnormal, DATE(m.dateObserved)
-                    ORDER BY m.type ASC;
-                    """
-                    ecg_results = chatbot.db_conn.query_database(ecg_query)
+                            GROUP BY type
+                        ) latest
+                            ON m.type = latest.type
+                            AND m.dateObserved = latest.maxDate
+                        LEFT JOIN (
+                            SELECT
+                                me.measurement_id,
+                                MAX(CASE WHEN me.keyval = 'minimum' THEN me.val END) AS min,
+                                MAX(CASE WHEN me.keyval = 'maximum' THEN me.val END) AS max,
+                                MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
+                                MAX(CASE WHEN me.keyval = 'unit' THEN me.val END) AS unit
+                            FROM measurementsExt me
+                            JOIN (
+                                SELECT
+                                    id
+                                FROM measurements
+                                WHERE demographicNo = {demo_no}
+                                AND measuringInstruction = "{measurement_type}"
+                                AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                            ) relevant
+                                ON relevant.id = me.measurement_id
+                            GROUP BY me.measurement_id
+                        ) me
+                            ON me.measurement_id = m.id
+                        WHERE m.demographicNo = {demo_no}
+                        AND m.measuringInstruction = "{measurement_type}"
+                        GROUP BY
+                            m.type,
+                            m.dataField,
+                            me.unit,
+                            me.min,
+                            me.max,
+                            me.abnormal,
+                            DATE(m.dateObserved)
+                        ORDER BY m.type ASC;
+                        """
+                        results = chatbot.db_conn.query_database(query)
+                        measurement_results[measurement_type] = results
                     
                     consult_prompt = ai_prompts.get("consult")
                     consult_response = send_text_to_chatgpt(f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
@@ -1184,6 +1194,7 @@ def generate_note(formatted_message):
                     - ALLERGIES
                     - EXAM
                     - ECG
+                    - STRESS ECHO
                     - LAB WORK
                     - ASSESSMENT
                     - PLAN
@@ -1201,6 +1212,7 @@ def generate_note(formatted_message):
                     - PAST MEDICAL HISTORY
                     - HISTORY OF PRESENT ILLNESS
                     - ECG
+                    - STRESS ECHO
                     - IMPRESSION/ASSESSMENT
                     - PLAN
 
@@ -1212,9 +1224,13 @@ def generate_note(formatted_message):
 
                     {mh_response}
 
-                    To complete the ECG section, use the following JSON:
+                    To complete the "ECG" section, use the following JSON:
                     
-                    {ecg_results}
+                    {measurement_results["ecg"]}
+
+                    To complete the "STRESS ECHO" section, use the following JSON:
+                    
+                    {measurement_results["ECHO"]}
 
                     Output the complete note.
                     """
