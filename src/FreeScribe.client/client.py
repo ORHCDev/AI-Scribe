@@ -1180,6 +1180,60 @@ def generate_note(formatted_message):
                         """
                         results = chatbot.db_conn.query_database(query)
                         measurement_results[measurement_type] = results
+
+                    lab_results = {}
+                    test_names = [
+                        "SCR", "Napl", "Kpl", "MG", "ALT", "A1C", "TG", "TCHL",
+                        "HDL", "LDL", "FBS", "EGFR", "CL", "HGB", "WBC", "INR"
+                    ]
+                    name_str = "'" + "', '".join(test_names) + "'"
+                    lab_query = f"""
+                    SELECT
+                        m.type AS "Name",
+                        m.dataField AS "Qty",
+                        me.unit AS "Unit",
+                        me.min AS "MIN",
+                        me.max AS "MAX",
+                        me.abnormal AS "Flag",
+                        DATE(m.dateObserved) AS "Date Observed"
+                    FROM measurements m
+                    JOIN (
+                        SELECT
+                            type,
+                            MAX(dateObserved) AS maxDate
+                        FROM measurements
+                        WHERE demographicNo = {demo_no}
+                        AND type IN ({name_str})
+                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                        GROUP BY type
+                    ) latest
+                        ON m.type = latest.type
+                    AND m.dateObserved = latest.maxDate
+                    LEFT JOIN (
+                        SELECT
+                            me.measurement_id,
+                            MAX(CASE WHEN me.keyval = 'minimum'  THEN me.val END) AS min,
+                            MAX(CASE WHEN me.keyval = 'maximum'  THEN me.val END) AS max,
+                            MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
+                            MAX(CASE WHEN me.keyval = 'unit'     THEN me.val END) AS unit
+                        FROM measurementsExt me
+                        JOIN (
+                            SELECT
+                                id
+                            FROM measurements
+                            WHERE demographicNo = {demo_no}
+                            AND type IN ({name_str})
+                            AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                        ) relevant
+                            ON relevant.id = me.measurement_id
+                        GROUP BY me.measurement_id
+                    ) me
+                        ON me.measurement_id = m.id
+                    WHERE m.demographicNo = {demo_no}
+                    GROUP BY m.type, m.dataField, me.unit, me.min, me.max, me.abnormal, DATE(m.dateObserved)
+                    ORDER BY m.type ASC;
+                    """
+                    lab_results = chatbot.db_conn.query_database(lab_query)
                     
                     consult_prompt = ai_prompts.get("consult")
                     consult_response = send_text_to_chatgpt(f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
@@ -1213,6 +1267,7 @@ def generate_note(formatted_message):
                     - HISTORY OF PRESENT ILLNESS
                     - ECG
                     - STRESS ECHO
+                    - LAB WORK
                     - IMPRESSION/ASSESSMENT
                     - PLAN
 
@@ -1232,8 +1287,15 @@ def generate_note(formatted_message):
                     
                     {measurement_results["ECHO"]}
 
+                    To complete the "LAB WORK" section, use the following JSON:
+
+                    {lab_results}
+
                     Output the complete note.
                     """
+                    #print(f"ECG: {measurement_results['ecg']}")
+                    #print(f"ECHO: {measurement_results['ECHO']}")
+                    #print(f"lab results: {lab_results}")
                     master_response = send_text_to_chatgpt(master_prompt)
                     update_gui_with_response(master_response)
                 
