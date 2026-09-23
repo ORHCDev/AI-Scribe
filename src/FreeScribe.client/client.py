@@ -1249,13 +1249,15 @@ def generate_note(formatted_message):
 
                     To complete the "ECG" section, use only the following JSON. Ensure to write everything in full 
                     sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON.
+                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
+                    however do NOT reference the date/time of any observations, simply what the observations actually are.
                     
                     {measurement_results["ECG"]}
 
                     To complete the "ECHO" section, use only the following JSON. Ensure to write everything in full 
                     sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON.
+                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
+                    however do NOT reference the date/time of any observations, simply what the observations actually are.
                     
                     {measurement_results["ECHO"]}
 
