@@ -1,37 +1,17 @@
 """
-Document coverage: for each patient, compare how many documents OSCAR has vs how
+For each patient, compare how many documents OSCAR has vs how
 many are in the pgvector store (document_chunks). Shows what the ingestion has
 pulled and what is still MISSING -- run it after a backfill to see how much got
 pulled and what remains.
-
-Needs Oscar access (same as daily_uploader): reuses initialize_oscardb, so it
-requires the Oscar/Selenium (or SSH) config and runs on the clinic machine.
-
-  cd src/FreeScribe.client
-
-  # coverage for specific patients:
-  python -m chatbot.RAG.eval.document_coverage --patients 12192,30534
-
-  # coverage for the N patients with the most docs already in the store:
-  python -m chatbot.RAG.eval.document_coverage --n 20
-
-  # also list the documents that are missing (type + date):
-  python -m chatbot.RAG.eval.document_coverage --patients 12192 --list-missing
-
-To measure "how many were newly pulled": run this before and after the backfill
-and compare the `store` column (or read the backfill's own "Found N to upsert").
-
-PHI: patient ids + doc metadata. Run only inside the clinic environment.
 """
 
 import os
 import sys
 import argparse
 
+
 _HERE = os.path.dirname(__file__)
-# src/FreeScribe.client so `chatbot.*` resolves:
 sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "..", "..")))
-# chatbot/ so daily_uploader's top-level imports (RAG, Oscar, SeleniumOscarQuery, SSHTunnel) resolve:
 sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "..")))
 
 import yaml
