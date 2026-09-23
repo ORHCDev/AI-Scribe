@@ -5,6 +5,10 @@ from difflib import SequenceMatcher
 from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult, workflow
 from chatbot.Tools.demonumber import get_demo_num, demo_number_required
 
+# When set to False, document and measurement search skips the RAG vector database 
+# and instead relies on the documents.py and measurements.py tools
+USE_RAG_VECTORS = True
+
 @workflow(
     name="rag_search",
     description="Patient-specific clinical queries requiring search of documents, labs, measurements, or clinical history",
@@ -132,9 +136,11 @@ class RAGWorkflow(Workflow):
             )
 
         tool_embds = embeddings["tools"]
-        doc_embds = embeddings["documents"]
-        msr_embds = embeddings["measurements"]
+        doc_embds = embeddings["documents"] if USE_RAG_VECTORS else []
+        msr_embds = embeddings["measurements"] if USE_RAG_VECTORS else []
 
+        if not USE_RAG_VECTORS:
+            logging.info("skipping vector DB document and measurement search (retrieval delegated to documents.py and measurements.py tools).")
 
         # Combine for reranking
         chunks = []

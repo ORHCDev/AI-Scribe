@@ -22,6 +22,7 @@ def main():
     ap.add_argument("--type", default="", help="Filter by document_type (ILIKE substring).")
     ap.add_argument("--find-patients", action="store_true",
                     help="Instead of listing docs, list patients who have --type.")
+    ap.add_argument("--doc-id", type=int, help="Print one document by its document_id (full text).")
     ap.add_argument("--k", type=int, default=25, help="Max rows.")
     ap.add_argument("--full", action="store_true", help="Print full text instead of a snippet.")
     args = ap.parse_args()
@@ -49,8 +50,26 @@ def main():
         db.cleanup()
         return
 
+    if args.doc_id is not None:
+        cur.execute("""
+            SELECT document_id, document_type, observation_date,
+                   string_agg(chunk_text, ' ' ORDER BY chunk_index) AS full_text
+            FROM document_chunks
+            WHERE document_id = %s
+            GROUP BY document_id, document_type, observation_date;
+        """, (args.doc_id,))
+        rows = cur.fetchall()
+        if not rows:
+            print(f"no document with document_id={args.doc_id} in the store.")
+        for doc_id, dtype, obs, text in rows:
+            text = text or ""
+            print(f"--- doc_id={doc_id} [{dtype}] {obs} (len={len(text)}) ---")
+            print(text)
+        db.cleanup()
+        return
+
     if not args.patient:
-        print("Provide --patient <demo_no> (or --find-patients --type ...).")
+        print("Provide --patient <demo_no> (or --doc-id <id>, or --find-patients --type ...).")
         db.cleanup()
         return
 
