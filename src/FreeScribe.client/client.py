@@ -25,6 +25,7 @@ import json
 import pyaudio
 import tkinter.messagebox as messagebox
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import whisper # python package is named openai-whisper
@@ -1118,25 +1119,54 @@ def generate_note(formatted_message):
                     eform_selection_panel.set_referral_data(json_response)
 
                 elif prompt_type == "Consult Complete":
-                    mh_prompt = ai_prompts.get("Medical History")
-                    mh_response = send_text_to_chatgpt(f"{mh_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
+                    total_start = time.perf_counter()
 
+                    step_start = time.perf_counter()
+                    mh_prompt = ai_prompts.get("Medical History")
+                    mh_input = f"{mh_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}"
+                    consult_prompt = ai_prompts.get("consult")
+                    consult_input = f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}"
+                    print(f"[TIMING] Prompt preparation: {time.perf_counter() - step_start:.2f}s")
+
+                    step_start = time.perf_counter()
                     demo_no = info["demographic_no"]
-                    today = datetime.today().strftime("%Y-%m-%d")
-                    
-                    measurement_results = {}
-                    for measurement_type in ["ECG", "ECHO"]:
-                        query = f"""
-                        SELECT *
-                        FROM measurements
-                        WHERE demographicNo = {demo_no}
-                        AND type LIKE '%{measurement_type}%'
-                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                        ORDER BY dateObserved DESC
-                        """
-                        results = chatbot.db_conn.query_database(query)
-                        measurement_results[measurement_type] = results
-                        print(f"{measurement_type}: {results}")
+                    measurement_query = f"""
+                    SELECT *
+                    FROM measurements
+                    WHERE demographicNo = {demo_no}
+                    AND (
+                        type LIKE '%ECG%'
+                        OR type LIKE '%ECHO%'
+                    )
+                    AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                    ORDER BY type ASC, dateObserved DESC
+                    """
+
+                    with ThreadPoolExecutor(max_workers=3) as executor:
+                        mh_future = executor.submit(send_text_to_chatgpt, mh_input)
+                        consult_future = executor.submit(send_text_to_chatgpt, consult_input)
+                        measurement_future = executor.submit(chatbot.db_conn.query_database, measurement_query)
+
+                        mh_response = mh_future.result()
+                        consult_response = consult_future.result()
+                        measurement_results = measurement_future.result()
+
+                    print(
+                        f"[TIMING] Parallel MH + Consult + DB: "
+                        f"{time.perf_counter() - step_start:.2f}s"
+                    )
+
+                    step_start = time.perf_counter()
+                    ecg_results = []
+                    echo_results = []
+                    for result in measurement_results:
+                        if "ECG" in result["type"].upper():
+                            ecg_results.append(result)
+                        elif "ECHO" in result["type"].upper():
+                            echo_results.append(result)
+                    print(f"ECG: {ecg_results}")
+                    print(f"ECHO: {echo_results}")
+                    print(f"[TIMING] ECG/ECHO processing: {time.perf_counter() - step_start:.2f}s")
 
                     '''
                     lab_results = {}
@@ -1203,9 +1233,6 @@ def generate_note(formatted_message):
                     medication_results = chatbot.db_conn.query_database(medication_query)
                     print(f"medications: {medication_results}")
                     '''
-                    
-                    consult_prompt = ai_prompts.get("consult")
-                    consult_response = send_text_to_chatgpt(f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
 
                     """                    
                     - RISK FACTORS
@@ -1223,6 +1250,7 @@ def generate_note(formatted_message):
                     - PLAN
                     """
 
+                    step_start = time.perf_counter()
                     master_prompt = f"""
                     The following is part of a consultation/follow-up note to a patient's primary care physician:
 
@@ -1252,19 +1280,28 @@ def generate_note(formatted_message):
                     Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
                     however do NOT reference the date/time of any observations, simply what the observations actually are.
                     
-                    {measurement_results["ECG"]}
+                    {ecg_results}
 
                     To complete the "ECHO" section, use only the following JSON. Ensure to write everything in full 
                     sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
                     Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
                     however do NOT reference the date/time of any observations, simply what the observations actually are.
                     
-                    {measurement_results["ECHO"]}
+                    {echo_results}
 
                     Output the complete note.
                     """
                     master_response = send_text_to_chatgpt(master_prompt)
+                    print(f"[TIMING] Master LLM: {time.perf_counter() - step_start:.2f}s")
+
+                    step_start = time.perf_counter()
                     update_gui_with_response(master_response)
+                    print(f"[TIMING] GUI update: {time.perf_counter() - step_start:.2f}s")
+
+                    print(
+                        f"[TIMING] TOTAL Consult Complete: "
+                        f"{time.perf_counter() - total_start:.2f}s"
+                    )
                 
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
