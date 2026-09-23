@@ -20,6 +20,9 @@ import chatbot.Workflows
 
 setup_daily_logger(r".\chatbot\logs", 'chatbot.log')
 
+# Total workflow attempts (initial + retries)
+MAX_VERIFICATION_ATTEMPTS = 3
+
 
 class OscarCB:
     def __init__(self, config_path : str, record : bool = True):
@@ -310,6 +313,83 @@ class OscarCB:
             prompts=self.prompts,
         )
 
+
+    def _verify_answer(self, user_input: str, result: WorkflowResult, context: WorkflowContext) -> dict:
+        """
+        Asks the LLM to judge whether a workflow response actually answers the
+        user's request.
+
+        Fails open (passes=True) on any error so a broken verifier never blocks
+        a response. Returns a dict with keys ``passes``, ``retryable`` and
+        ``reason``.
+        """
+        accepted = {"passes": True, "retryable": False, "reason": "verification skipped"}
+        try:
+            template = context.prompts.get("answer_verification_prompt")
+            if not template:
+                return accepted
+
+            evidence = ""
+            if result.metadata:
+                evidence = result.metadata.get("context") or ""
+
+            prompt = template.format(
+                user_input=user_input,
+                answer=result.response or "",
+                context=evidence[:8000],
+            )
+            raw = context.ai_conn.send_message(prompt)
+
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            if not match:
+                logging.warning(f"Verification returned no JSON: {raw!r}")
+                return accepted
+
+            parsed = json.loads(match.group(0))
+            verdict = {
+                "passes": bool(parsed.get("passes", True)),
+                "retryable": bool(parsed.get("retryable", False)),
+                "reason": str(parsed.get("reason", "")),
+            }
+            logging.info(f"Verification verdict: {verdict}")
+            return verdict
+        except Exception as e:
+            logging.warning(f"Answer verification failed, accepting response: {e}")
+            return accepted
+
+
+    def _run_with_verification(self, user_input: str, workflow_type: str, context: WorkflowContext) -> WorkflowResult:
+        """
+        Runs the selected workflow and verifies its answer, retrying with
+        previously failed tools excluded when verification says a different
+        tool could do better.
+
+        Verification is applied to every response produced here, including
+        responses that never passed through an LLM (e.g. patient-clarification
+        or error messages).
+        """
+        workflow = self.workflows[workflow_type]
+        result = workflow.run(user_input, context)
+
+        for attempt in range(1, MAX_VERIFICATION_ATTEMPTS + 1):
+            verdict = self._verify_answer(user_input, result, context)
+            if verdict["passes"] or not verdict["retryable"]:
+                break
+            if attempt == MAX_VERIFICATION_ATTEMPTS:
+                logging.info("Verification failed but retry budget exhausted")
+                break
+
+            attempted = (result.metadata or {}).get("tools_tried", []) if result.metadata else []
+            context.excluded_tools = list(set(context.excluded_tools) | set(attempted))
+            context.verification_feedback = verdict["reason"]
+            logging.info(
+                f"Verification failed (attempt {attempt}/{MAX_VERIFICATION_ATTEMPTS}): "
+                f"{verdict['reason']}. Retrying with excluded tools {context.excluded_tools}"
+            )
+            result = workflow.run(user_input, context)
+
+        return result
+
     def run(self, user_input, selected_workflow: str | None = None):
         if not user_input.strip(): return None, None, None
 
@@ -334,8 +414,9 @@ class OscarCB:
             # classify workflow
             workflow_type = WorkflowRegistry.classify(user_input, context)
 
-        # dispatch run call to respective workflow
-        result = self.workflows[workflow_type].run(user_input, context)
+        # dispatch run call to respective workflow, verifying the answer and
+        # retrying with a different tool if it does not hold up
+        result = self._run_with_verification(user_input, workflow_type, context)
 
         # Store conversation
         self.current_conversation[self.message_no] = (user_input, result.response, workflow_type, result.sources)

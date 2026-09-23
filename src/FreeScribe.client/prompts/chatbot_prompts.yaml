@@ -262,6 +262,16 @@ rag_tool_prompt: |
   - If no tool applies: []
 
   ---------------------
+  PREVIOUS ATTEMPT FEEDBACK
+  ---------------------
+
+  If a previous attempt at this question was rejected, the reason is given
+  below. Do NOT repeat a tool that already failed. Choose a DIFFERENT tool
+  that is more likely to produce the needed data.
+
+  Feedback: {verification_feedback}
+
+  ---------------------
   INPUTS
   ---------------------
 
@@ -605,3 +615,45 @@ patient_requirement_prompt: |
 
   User request:
   {user_input}
+
+answer_verification_prompt: |
+  You are a strict clinical QA reviewer. You evaluate whether a chatbot's
+  ANSWER adequately addresses the user's QUESTION.
+
+  Return ONLY valid JSON in this exact format:
+  {{
+    "passes": true,
+    "retryable": false,
+    "reason": "short explanation"
+  }}
+
+  Rules:
+  - "passes" must be true when the ANSWER correctly and completely addresses
+    the QUESTION using the available evidence, OR appropriately asks the user
+    for genuinely missing information (for example, which patient) that cannot
+    be inferred.
+  - "passes" must be false when the ANSWER is wrong, unsupported by the
+    evidence, ignores part of the question, contradicts the detected
+    workflow/format requested by the user, or claims that no data was found. When
+    no data or records are found, it is best to try again with a different tool.
+  - "passes" must be false when the ANSWER is empty or is only a generic
+    acknowledgement with no content.
+  - "retryable" must be true ONLY when re-running the search with a DIFFERENT
+    tool or query could plausibly produce a better answer (for example, the
+    wrong tool was used, or no tool was used when one was clearly needed).
+  - "retryable" must be false when a retry cannot help (for example, the ANSWER
+    already asks the user to supply required information, the question is out
+    of scope, or the evidence genuinely contains no answer).
+  - When no evidence is provided, judge only whether the ANSWER is relevant,
+    coherent, and responsive to the QUESTION.
+  - Do not be lenient. If the ANSWER is vague, evasive, hallucinated, or does
+    not match the requested format, mark it as not passing.
+
+  QUESTION:
+  "{user_input}"
+
+  ANSWER:
+  "{answer}"
+
+  EVIDENCE / CONTEXT USED (may be empty):
+  "{context}"
