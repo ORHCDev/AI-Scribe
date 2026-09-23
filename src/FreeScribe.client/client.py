@@ -1125,64 +1125,20 @@ def generate_note(formatted_message):
                     today = datetime.today().strftime("%Y-%m-%d")
                     
                     measurement_results = {}
-                    for measurement_type in ["ecg", "ECHO"]:
+                    for measurement_type in ["ECG", "ECHO"]:
                         query = f"""
-                        SELECT
-                            m.type AS "Name",
-                            m.dataField AS "Data",
-                            me.unit AS "Unit",
-                            me.min AS "MIN",
-                            me.max AS "MAX",
-                            me.abnormal AS "Flag",
-                            DATE(m.dateObserved) AS "Date Observed"
-                        FROM measurements m
-                        JOIN (
-                            SELECT
-                                type,
-                                MAX(dateObserved) AS maxDate
-                            FROM measurements
-                            WHERE demographicNo = {demo_no}
-                            AND measuringInstruction = "{measurement_type}"
-                            AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                            GROUP BY type
-                        ) latest
-                            ON m.type = latest.type
-                            AND m.dateObserved = latest.maxDate
-                        LEFT JOIN (
-                            SELECT
-                                me.measurement_id,
-                                MAX(CASE WHEN me.keyval = 'minimum' THEN me.val END) AS min,
-                                MAX(CASE WHEN me.keyval = 'maximum' THEN me.val END) AS max,
-                                MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
-                                MAX(CASE WHEN me.keyval = 'unit' THEN me.val END) AS unit
-                            FROM measurementsExt me
-                            JOIN (
-                                SELECT
-                                    id
-                                FROM measurements
-                                WHERE demographicNo = {demo_no}
-                                AND measuringInstruction = "{measurement_type}"
-                                AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                            ) relevant
-                                ON relevant.id = me.measurement_id
-                            GROUP BY me.measurement_id
-                        ) me
-                            ON me.measurement_id = m.id
-                        WHERE m.demographicNo = {demo_no}
-                        AND m.measuringInstruction = "{measurement_type}"
-                        GROUP BY
-                            m.type,
-                            m.dataField,
-                            me.unit,
-                            me.min,
-                            me.max,
-                            me.abnormal,
-                            DATE(m.dateObserved)
-                        ORDER BY m.type ASC;
+                        SELECT *
+                        FROM measurements
+                        WHERE demographicNo = {demo_no}
+                        AND type LIKE '%{measurement_type}%'
+                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                        ORDER BY dateObserved DESC
                         """
                         results = chatbot.db_conn.query_database(query)
                         measurement_results[measurement_type] = results
+                        print(f"{measurement_type}: {results}")
 
+                    '''
                     lab_results = {}
                     test_names = [
                         "SCR", "Napl", "Kpl", "MG", "ALT", "A1C", "TG", "TCHL",
@@ -1236,6 +1192,7 @@ def generate_note(formatted_message):
                     ORDER BY m.type ASC;
                     """
                     lab_results = chatbot.db_conn.query_database(lab_query)
+                    print(f"lab results: {lab_results}")
 
                     medication_query = f"""
                     SELECT *
@@ -1244,6 +1201,8 @@ def generate_note(formatted_message):
                     AND (end_date is NULL OR end_date >= '{today}')
                     """
                     medication_results = chatbot.db_conn.query_database(medication_query)
+                    print(f"medications: {medication_results}")
+                    '''
                     
                     consult_prompt = ai_prompts.get("consult")
                     consult_response = send_text_to_chatgpt(f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
@@ -1254,12 +1213,12 @@ def generate_note(formatted_message):
                     - PAST MEDICAL HISTORY
                     - HISTORY OF PRESENT ILLNESS
                     - SOCIAL HISTORY *
-                    - MEDICATIONS
+                    - MEDICATIONS *
                     - ALLERGIES *
                     - EXAM *
                     - ECG
-                    - STRESS ECHO
-                    - LAB WORK
+                    - ECHO
+                    - LAB WORK *
                     - ASSESSMENT
                     - PLAN
                     """
@@ -1275,47 +1234,33 @@ def generate_note(formatted_message):
                     - PAST CARDIAC HISTORY
                     - PAST MEDICAL HISTORY
                     - HISTORY OF PRESENT ILLNESS
-                    - MEDICATIONS
                     - ECG
-                    - STRESS ECHO
-                    - LAB WORK
+                    - ECHO
                     - IMPRESSION/ASSESSMENT
                     - PLAN
 
                     The "HISTORY OF PRESENT ILLNESS", "IMPRESSION/ASSESSMENT" and "PLAN" sections may be kept as-is from 
-                    the existing node provided earlier.
+                    the existing note provided earlier.
 
                     To complete the "RISK FACTORS", "PAST CARDIAC HISTORY" and "PAST MEDICAL HISTORY sections, use the 
                     following information. Ensure to write everything in paragraphs, rather than bullet points.
 
                     {mh_response}
 
-                    To complete the "MEDICATIONS" section, use the following JSON. Ensure to write everything in 
-                    paragraphs, rather than bullet points. If the JSON is empty, omit this section instead.
-
-                    {medication_results}
-
-                    To complete the "ECG" section, use the following JSON. Ensure to write everything in paragraphs, 
-                    rather than bullet points. If the JSON is empty, omit this section instead.
+                    To complete the "ECG" section, use only the following JSON. Ensure to write everything in full 
+                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
+                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON.
                     
-                    {measurement_results["ecg"]}
+                    {measurement_results["ECG"]}
 
-                    To complete the "STRESS ECHO" section, use the following JSON. Ensure to write everything in 
-                    paragraphs, rather than bullet points. If the JSON is empty, omit this section instead.
+                    To complete the "ECHO" section, use only the following JSON. Ensure to write everything in full 
+                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
+                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON.
                     
                     {measurement_results["ECHO"]}
 
-                    To complete the "LAB WORK" section, use the following JSON. Ensure to write everything in 
-                    paragraphs, rather than bullet points. If the JSON is empty, omit this section instead.
-
-                    {lab_results}
-
                     Output the complete note.
                     """
-                    print(f"ECG: {measurement_results['ecg']}")
-                    print(f"ECHO: {measurement_results['ECHO']}")
-                    print(f"lab results: {lab_results}")
-                    print(f"medications: {medication_results}")
                     master_response = send_text_to_chatgpt(master_prompt)
                     update_gui_with_response(master_response)
                 
