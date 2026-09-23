@@ -1302,6 +1302,143 @@ def generate_note(formatted_message):
                         f"[TIMING] TOTAL Consult Complete: "
                         f"{time.perf_counter() - total_start:.2f}s"
                     )
+
+                elif prompt_type == "Consult Complete (Fast)":
+                    total_start = time.perf_counter()
+
+                    step_start = time.perf_counter()
+                    demo_no = info["demographic_no"]
+                    measurement_query = f"""
+                    SELECT *
+                    FROM measurements
+                    WHERE demographicNo = {demo_no}
+                    AND (
+                        type LIKE '%ECG%'
+                        OR type LIKE '%ECHO%'
+                    )
+                    AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                    ORDER BY type ASC, dateObserved DESC
+                    """
+                    measurement_results = chatbot.db_conn.query_database(measurement_query)
+                    print(
+                        f"[TIMING] DB: "
+                        f"{time.perf_counter() - step_start:.2f}s"
+                    )
+
+                    step_start = time.perf_counter()
+                    ecg_results = []
+                    echo_results = []
+                    for result in measurement_results:
+                        if "ECG" in result["type"].upper():
+                            ecg_results.append(result)
+                        elif "ECHO" in result["type"].upper():
+                            echo_results.append(result)
+                    print(f"ECG: {ecg_results}")
+                    print(f"ECHO: {echo_results}")
+                    print(f"[TIMING] ECG/ECHO processing: {time.perf_counter() - step_start:.2f}s")
+
+                    """                    
+                    - RISK FACTORS
+                    - PAST CARDIAC HISTORY
+                    - PAST MEDICAL HISTORY
+                    - HISTORY OF PRESENT ILLNESS
+                    - SOCIAL HISTORY *
+                    - MEDICATIONS *
+                    - ALLERGIES *
+                    - EXAM *
+                    - ECG
+                    - ECHO
+                    - LAB WORK *
+                    - ASSESSMENT
+                    - PLAN
+                    """
+
+                    step_start = time.perf_counter()
+                    master_prompt = f"""
+                    You are a board-certified cardiologist writing a concise, professional consultation or follow-up note to a primary care 
+                    physician (family doctor) regarding a patient encounter. Synthesize the provided patient conversation transcript into a 
+                    standard cardiology note format, including a History of Present Illness (HPI), Impression/Assessment, and Plan.
+                    
+
+                    Key Instructions:
+                    
+                    Format: Structure the note clearly with the sections listed below.  Write the summary. Write in full
+                    sentences or use numbered points if not writing in full sentences. Do not use any Markdown formatting, bolding, or italics. 
+                    Do not use asterisks (*) in the final output. Use plain, flat text.
+                    
+                    Tone: Maintain a professional, concise, and objective tone suitable for communication between specialists.
+                    
+                    Tense: Use the past tense consistently (e.g., "I reviewed...", "The patient reported...", "I advised..."). Avoid future tense.
+                    
+                    Perspective: Write from the perspective of the cardiologist ("I").
+                    
+                    Audience: Assume the recipient is a primary care physician who needs a clear summary of the cardiology encounter.
+                    
+                    Content: Focus on cardiology-relevant information. Include pertinent history, exam findings, investigations (ECG, Echo, Labs), 
+                    assessment, and management plan.
+                    
+                    Conciseness: Be efficient and avoid unnecessary detail.
+                    
+                    Patient Information: Use the patient's name (if provided in the transcript, otherwise use "the patient") and relevant 
+                    demographics (age, sex if known).
+                    
+                    Medication Changes: Clearly state any medication changes made or recommended.
+                    
+                    Follow-up: Specify any planned follow-up investigations or appointments.
+                    
+
+                    Patient Conversation Transcript: [Insert the transcript of the conversation with the patient here]
+                    
+                    Synthesize the above transcript into the following format.  This should be the only output:
+
+                    - RISK FACTORS
+                    - PAST CARDIAC HISTORY
+                    - PAST MEDICAL HISTORY
+                    - HISTORY OF PRESENT ILLNESS
+                    - ECG
+                    - ECHO
+                    - ASSESSMENT
+                    - PLAN
+                    
+
+                    Post prompt:
+                    
+                    FORMATTING REQUIREMENTS: Use plain text only, no markdown, asterisks, bold, or underlining. No headers like "To:", "From:", 
+                    "Date:", "Re:", or "Subject: Separate sections with paragraph breaks. Only include the sections outlined above (HISTORY OF 
+                    PRESENT ILLNESS, IMPRESSION/ASSESSMENT and PLAN) in the output."
+
+                    To complete the "ECG" section, use only the following JSON. Ensure to write everything in full 
+                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
+                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
+                    however do NOT reference the date/time of any observations, simply what the observations actually are.
+                    
+                    {ecg_results}
+
+                    To complete the "ECHO" section, use only the following JSON. Ensure to write everything in full 
+                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
+                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
+                    however do NOT reference the date/time of any observations, simply what the observations actually are.
+                    
+                    {echo_results}
+
+                    To complete the remaining sections, use the following information. Ensure to write everything in 
+                    paragraphs, rather than bullet points.
+
+                    {formatted_message}
+
+                    Output the complete note.
+                    """
+                    master_response = send_text_to_chatgpt(master_prompt)
+                    print(f"[TIMING] Master LLM: {time.perf_counter() - step_start:.2f}s")
+
+                    step_start = time.perf_counter()
+                    update_gui_with_response(master_response)
+                    print(f"[TIMING] GUI update: {time.perf_counter() - step_start:.2f}s")
+
+                    print(
+                        f"[TIMING] TOTAL Consult Complete: "
+                        f"{time.perf_counter() - total_start:.2f}s"
+                    )
                 
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
@@ -1962,7 +2099,7 @@ dropdown_label = tk.Label(scribe_frame, text="Select Prompt", font=("Arial", 8, 
 dropdown_label.grid(row=1, column=4, pady=(8, 0), sticky='sew')
 
 selected_prompt = tk.StringVar(value="Auto")
-values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete"]
+values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete", "Consult Complete (Fast)"]
 prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
