@@ -1286,32 +1286,36 @@ def generate_note(formatted_message):
                     the existing node provided earlier.
 
                     To complete the "RISK FACTORS", "PAST CARDIAC HISTORY" and "PAST MEDICAL HISTORY sections, use the 
-                    following information:
+                    following information. Ensure to write everything in paragraphs, rather than bullet points.
 
                     {mh_response}
 
-                    To complete the "MEDICATIONS" section, use the following JSON:
+                    To complete the "MEDICATIONS" section, use the following JSON. Ensure to write everything in 
+                    paragraphs, rather than bullet points. If the JSON is empty, omit this section instead.
 
                     {medication_results}
 
-                    To complete the "ECG" section, use the following JSON:
+                    To complete the "ECG" section, use the following JSON. Ensure to write everything in paragraphs, 
+                    rather than bullet points. If the JSON is empty, omit this section instead.
                     
                     {measurement_results["ecg"]}
 
-                    To complete the "STRESS ECHO" section, use the following JSON:
+                    To complete the "STRESS ECHO" section, use the following JSON. Ensure to write everything in 
+                    paragraphs, rather than bullet points. If the JSON is empty, omit this section instead.
                     
                     {measurement_results["ECHO"]}
 
-                    To complete the "LAB WORK" section, use the following JSON:
+                    To complete the "LAB WORK" section, use the following JSON. Ensure to write everything in 
+                    paragraphs, rather than bullet points. If the JSON is empty, omit this section instead.
 
                     {lab_results}
 
                     Output the complete note.
                     """
-                    #print(f"ECG: {measurement_results['ecg']}")
-                    #print(f"ECHO: {measurement_results['ECHO']}")
-                    #print(f"lab results: {lab_results}")
-                    #print(f"medications: {medication_results}")
+                    print(f"ECG: {measurement_results['ecg']}")
+                    print(f"ECHO: {measurement_results['ECHO']}")
+                    print(f"lab results: {lab_results}")
+                    print(f"medications: {medication_results}")
                     master_response = send_text_to_chatgpt(master_prompt)
                     update_gui_with_response(master_response)
                 
