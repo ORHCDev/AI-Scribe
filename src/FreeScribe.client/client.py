@@ -1819,6 +1819,7 @@ def upload_consult_and_mh():
     popup.title("Select Options")
     popup.transient(root)
     popup.grab_set()
+    popup.geometry("800x500")
 
     # --- Variables ---
     prompts = tk.StringVar(value="Med Hist 2")
@@ -1830,10 +1831,72 @@ def upload_consult_and_mh():
         textvariable=prompts,
         values=ai_prompts.list_prompts(),
         state="readonly"
-    ).pack()
+    ).pack(padx=10, pady=(0, 10), fill="x")
 
-    docs_frame = ttk.Frame(popup)
-    docs_frame.pack(padx=10, pady=5)
+    docs_container = ttk.Frame(popup)
+    docs_container.pack(
+        fill="both",
+        expand=True,
+        padx=10,
+        pady=5
+    )
+    canvas = tk.Canvas(
+        docs_container,
+        highlightthickness=0
+    )
+    scrollbar = ttk.Scrollbar(
+        docs_container,
+        orient="vertical",
+        command=canvas.yview
+    )
+    canvas.configure(yscrollcommand=scrollbar.set)
+    scrollbar.pack(
+        side="right",
+        fill="y"
+    )
+    canvas.pack(
+        side="left",
+        fill="both",
+        expand=True
+    )
+
+    # Frame inside the canvas containing the checkboxes
+    docs_frame = ttk.Frame(canvas)
+    canvas_window = canvas.create_window(
+        (0, 0),
+        window=docs_frame,
+        anchor="nw"
+    )
+
+    def update_scroll_region(event=None):
+        canvas.configure(
+            scrollregion=canvas.bbox("all")
+        )
+
+    def resize_docs_frame(event):
+        canvas.itemconfig(
+            canvas_window,
+            width=event.width
+        )
+
+    def on_mousewheel(event):
+        canvas.yview_scroll(
+            int(-1 * (event.delta / 120)),
+            "units"
+        )
+
+    docs_frame.bind(
+        "<Configure>",
+        update_scroll_region
+    )
+    canvas.bind(
+        "<Configure>",
+        resize_docs_frame
+    )
+    canvas.bind_all(
+        "<MouseWheel>",
+        on_mousewheel
+    )
 
     cols = 2
     defaults = {"DC summary", "CATH"}
@@ -1855,12 +1918,12 @@ def upload_consult_and_mh():
             pady=2
         )
 
-
     result = {}
 
     def on_done():
         result["Prompt"] = prompts.get()
         result["Docs"] = [s for s, v in doc_cbs.items() if v.get()]
+        canvas.unbind_all("<MouseWheel>")
         popup.destroy()
 
     ttk.Button(popup, text="Done", command=on_done).pack(pady=15)
@@ -1880,10 +1943,8 @@ def upload_consult_and_mh():
     med_hist = eform_selection_panel.load_medical_history(doc_names=result["Docs"], display=False)
     med_hist_resp = chatbot.ai_conn.send_message(content=med_hist, pre_prompt=prompt)
 
-
     #generate_note(med_hist_input)
     #med_hist_resp = response_display.scrolled_text.get("1.0", tk.END).strip()
-
 
     # Generate consult note with generated medical history
     encounter_convo = "MEDICAL HISTORY:\n" + med_hist_resp + "\n\n" + encounter_convo
@@ -1898,7 +1959,10 @@ def upload_consult_and_mh():
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid, consult, med_hist_resp)
     
-
+def upload_consult_complete():
+    text = response_display.scrolled_text.get("1.0", tk.END).strip()
+    fdid = eform_selection_panel.get_most_recent_0letter()
+    oscar.insert_text_into_0letter_from_headings(fdid, text)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ROOT GRID
@@ -2089,7 +2153,6 @@ upload_button = tk.Button(
 )
 upload_button.grid(row=1, column=6, pady=(6, 2), sticky='nsew')
 
-
 open_oscar_button = tk.Button(
     scribe_frame, text="Open Oscar", command=open_oscar, height=2, width=11,
 )
@@ -2158,11 +2221,12 @@ eform_selection_panel.grid(row=0, column=11, rowspan=4, padx=(2, 5), pady=12, st
 eform_selection_panel.grid_remove()
 
 # ── Response display callbacks ────────────────────────────────────────────────
-response_display.set_get_eforms_callback(get_labs_from_response)
-response_display.set_download_callback(download_results)
 #response_display.set_med_hist_callback(upload_medical_history)
 response_display.set_consult_callback(upload_consult)
 response_display.set_consult_and_mh_callback(upload_consult_and_mh)
+response_display.set_consult_complete_callback(upload_consult_complete)
+response_display.set_get_eforms_callback(get_labs_from_response)
+response_display.set_download_callback(download_results)
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
@@ -2474,19 +2538,7 @@ chat_log_display._id = "chat_log_tbox"
 _reset_chat_log()
 
 # ── User input ────────────────────────────────────────────────────────────────
-chat_user_input = CustomTextBox(
-    chatbot_frame,
-    height=5,
-    use_cancel_button=True,
-    cancel_command=lambda: (
-        chatbot_cancel_generation()
-        if messagebox.askyesno(
-            "Cancel Generation",
-            "Are you sure you want to cancel the current prompt?"
-        )
-        else None
-    )
-)
+chat_user_input = CustomTextBox(chatbot_frame, height=5)
 chat_user_input.grid(
     row=1, column=1, columnspan=8, padx=(5, 2), pady=(4, 4), sticky='nsew',
 )
@@ -2526,6 +2578,15 @@ chat_workflow_button = tk.Button(
     chatbot_frame, text="Auto", command=chatbot_workflow_toggle, height=2, width=10,
 )
 chat_workflow_button.grid(row=2, column=4, padx=(2, 2), pady=(2, 10), sticky='nsew')
+
+chat_user_input.set_cancel_callback(lambda: (
+    chatbot_cancel_generation()
+    if messagebox.askyesno(
+        "Cancel Generation",
+        "Are you sure you want to cancel the current prompt?"
+    )
+    else None
+))
 
 # ── Chat history sidebar ──────────────────────────────────────────────────────
 chat_history_listbox = tk.Listbox(

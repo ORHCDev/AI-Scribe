@@ -447,8 +447,13 @@ class EformPanel(tk.Frame):
             return None
         res = self.db_conn.query_database(query)
 
-        fdid = res[0]["fdid"]
-        return fdid
+        try:
+            fdid = res[0]["fdid"]
+            return fdid
+        
+        except:
+            messagebox.showwarning("Missing 0letter", "Unable to open eForm. There are no 0letters to open.", parent=self)
+            return
 
     def set_referral_data(self, data):
         print(data)

@@ -12,6 +12,7 @@ values to keep the tool description aligned. No LLM answer step.
 import os
 import sys
 import json
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
@@ -92,6 +93,29 @@ def _pr(tp, fp, fn):
     return prec, rec, f1
 
 
+def _intent(phrasing, ai, prompts):
+    today = datetime.now()
+    p = prompts["date_rag_prompt"].format(
+        resp_format=prompts["resp_format"],
+        year=today.year, month=today.month, today=today.date(),
+        yesterday=(today - timedelta(days=1)).date(),
+        last_week=(today - timedelta(weeks=1)).date(),
+        last_month=(today - timedelta(days=30)).date(),
+        last_year=(datetime(year=today.year - 1, month=today.month, day=1)).date(),
+        user_input=phrasing,
+    )
+    raw = ai.send_message(p).replace("```json", "").replace("```", "").replace("**JSON only**", "").strip()
+    try:
+        j = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {"category": "general", "types": [], "mode": "none"}
+    return {
+        "category": j.get("category", "general"),
+        "types": j.get("types") or [],
+        "mode": j.get("mode", "none"),
+    }
+
+
 def main():
     with open(CONFIG, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -149,9 +173,11 @@ def main():
 
                 names, sel_types, sel_mode = [], set(), None
                 if tool_str:
+                    eval_intent = _intent(phrasing, ai, prompts)
                     prompt = prompts["rag_tool_prompt"].format(
                         tool_protocol=prompts["rag_tool_protocol"],
                         demo_no=DEMO, user_input=phrasing, tools=tool_str,
+                        verification_feedback="None", intent=eval_intent,
                     )
                     resp = ai.send_message(prompt)
                     selected = _parse_tools(resp)
