@@ -18,19 +18,20 @@ import webbrowser
         "the full history, trend, or changes of a type over time. Set mode to 'latest' "
         "for the newest record of each requested type, or 'all' for the complete "
         "history. Provide the exact measurement_type codes to fetch. Common codes: "
-        "ECHO and SECHO (echocardiogram, ejection fraction, chamber and aorta "
-        "dimensions), ECG (electrocardiogram, rhythm), EST (exercise stress test), "
-        "HOLT and HOL (Holter monitor, arrhythmia, atrial fibrillation), CATH "
-        "(catheterization, angiogram, coronary anatomy), MEDS (medications), RISK "
-        "(cardiovascular risk factors), CARD (cardiac history). Include every relevant "
-        "code, and both variants where two exist (ECHO+SECHO, HOLT+HOL). This is the "
+        "ECHO (echocardiogram: cardiac structure and function, chamber size, valves), "
+        "SECHO (stress echocardiography: cardiac function during stress testing), ECG "
+        "(electrocardiogram, rhythm), EST (exercise stress test), HOLT (Holter "
+        "interpretation) and HOL (Holter monitor results: rhythm, arrhythmia, atrial "
+        "fibrillation), CATH (catheterization, angiogram, coronary anatomy), MEDS "
+        "(medications), RISK (cardiovascular risk factors), CARD (cardiology findings "
+        "and diagnoses). Include every relevant code. This is the "
         "reliable path for time-sensitive measurement questions where the newest record "
         "must not be missed."
     ),
     context="These are the patient's measurement records:",
     parameters={
         "demo_no": "Patient's demographic number",
-        "types": "List of exact measurement_type codes, e.g. ['ECHO','SECHO'] for echo/EF, ['MEDS'] for medications, ['HOLT','HOL'] for Holter",
+        "types": "List of exact measurement_type codes, e.g. ['ECHO'] for echocardiogram, ['SECHO'] for stress echo, ['MEDS'] for medications, ['HOLT','HOL'] for Holter.",
         "mode": "'latest' for the newest record per type, 'all' for full history. Defaults to 'latest'."
     }
 )
@@ -151,9 +152,10 @@ def get_recent_lab_results(db_conn, demo_no : str):
     description=(
         "Returns the full historical record of one or more specified measurements or lab tests for a patient, "
         "including numeric values, measurement instructions, and observation dates. If the user asks to plot, " 
-        "graph, chart, or visualize those values, also set plot to true. This tool is most relevant when the user " 
-        "asks about trends, progression, stability, or historical changes in specific labs or measurements (e.g., "
-        "LDL over time, A1C trend, renal function trajectory)."
+        "graph, chart, or visualize those values, also set plot to true. Plotting only includes entries that have "
+        "numeric values; non-numeric entries are still returned in the table but omitted from the plot. This tool "
+        "is most relevant when the user asks about trends, progression, stability, or historical changes in "
+        "specific labs or measurements (e.g., LDL over time, A1C trend, renal function trajectory)."
     ),
     context="These are the patient's lab results, organize them as a table:",
     parameters={

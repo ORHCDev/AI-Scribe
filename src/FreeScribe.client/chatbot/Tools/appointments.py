@@ -24,7 +24,9 @@ from chatbot.Tools.utils import period_parser
         "Returns a list of all future-scheduled appointments for a specific patient, "
         "filtered to appointments occurring on or after the current date. "
         "Each result typically includes appointment date, time, provider, location, "
-        "status, and appointment type. "
+        "status, and appointment type. Note that all appointment statuses are returned, "
+        "including cancelled, no-show, and rescheduled entries; check the status field "
+        "before treating an appointment as active. "
         "This tool is most relevant when answering questions about a patient's "
         "next visits, upcoming care plans, scheduling reminders, or near-term follow-up."
     ),
@@ -60,12 +62,13 @@ def get_upcoming_appointments(db_conn, demo_no : str):
 @tool(
     category="appointments",
     description=(
-        "Returns a limited history of a patient's past appointments that occurred "
-        "before the current date, ordered by recency. "
+        "Returns a limited history (up to 10 records) of a patient's past appointments "
+        "that occurred before the current date. "
         "Results typically include appointment dates, providers, visit statuses, "
-        "and appointment types. "
+        "and appointment types; all statuses are included, including cancelled, "
+        "no-show, and rescheduled entries. "
         "This tool is relevant when summarizing prior visits, reviewing past care, "
-        "understanding visit frequency, or providing historical context for current complaints."
+        "understanding visit frequency, or providing historical context for current complaints. "
         "This tool is also relevant if the user asks a question pertaining to admission history, "
         "such as the date of last admission."
     ),
@@ -374,7 +377,7 @@ def get_appointment_day_sheet(
         "Return the patients as a simple list using the patient's FirstName and LastName. "
         "Do not summarize, analyze, group, or describe the dataset. "
         "Do not provide an overview, demographic breakdown, sample entries, or table. "
-        "Include every patient in the results."
+        "Include every returned patient in the results (up to 15 are returned)."
     ),
     parameters={
         "period": (
@@ -496,7 +499,7 @@ def patients_not_seen(
         "Return the patients as a simple list using the patient's FirstName and LastName. "
         "Do not summarize, analyze, group, or describe the dataset. "
         "Do not provide an overview, demographic breakdown, sample entries, or table. "
-        "Include every patient in the results."
+        "Include every returned patient in the results (up to 15 are returned)."
     ),
     parameters={}
 )
