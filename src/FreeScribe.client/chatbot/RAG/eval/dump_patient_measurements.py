@@ -1,8 +1,6 @@
 """
 List every measurement chunk stored for one patient (id, type, date, preview).
 Use it to build gold-set cases. Standalone: psycopg2 + pyyaml.
-
-    python -m chatbot.RAG.eval.dump_patient_measurements --config configs/config.yaml --patient 18931
 """
 
 from __future__ import annotations
@@ -21,6 +19,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Dump a patient's measurement chunks")
     ap.add_argument("--config", required=True)
     ap.add_argument("--patient", required=True)
+    ap.add_argument("--type", default="", help="Filter by measurement_type (ILIKE substring, e.g. ECG).")
     args = ap.parse_args(argv)
 
     import yaml
@@ -33,14 +32,19 @@ def main(argv=None):
         host=creds["host"], port=creds["port"], dbname=creds["dbname"],
         user=creds["user"], password=creds["password"],
     )
+    sql = (
+        "SELECT measurement_ids, measurement_type, observation_date, "
+        "left(chunk_text, 200) AS preview "
+        "FROM measurement_chunks WHERE demographic_no = %s "
+    )
+    params = [args.patient]
+    if args.type:
+        sql += "AND measurement_type ILIKE %s "
+        params.append(f"%{args.type}%")
+    sql += "ORDER BY observation_date DESC;"
+
     try:
-        db.cursor.execute(
-            "SELECT measurement_ids, measurement_type, observation_date, "
-            "left(chunk_text, 200) AS preview "
-            "FROM measurement_chunks WHERE demographic_no = %s "
-            "ORDER BY observation_date DESC;",
-            (args.patient,),
-        )
+        db.cursor.execute(sql, params)
         rows = db.cursor.fetchall()
     finally:
         db.cleanup()

@@ -7,7 +7,7 @@ from chatbot.Tools.demonumber import get_demo_num, demo_number_required
 
 # When set to False, document and measurement search skips the RAG vector database 
 # and instead relies on the documents.py and measurements.py tools
-USE_RAG_VECTORS = True
+USE_RAG_VECTORS = False
 
 @workflow(
     name="rag_search",
@@ -186,12 +186,36 @@ class RAGWorkflow(Workflow):
         logging.info(f"Top results: {top_k}")
         #
         # Extract tools and prompt LLM
-        tools = [elem[1] for elem in top_k if elem[1]["is_tool"]]
+        rag_tools = [elem[1] for elem in top_k if elem[1]["is_tool"]]
+
+        # On a retry let the LLM choose from the full tool registry instead
+        retrying = bool(context.verification_feedback or context.excluded_tools)
+        if retrying:
+            logging.info("Retry detected: offering full tool registry to the LLM instead of RAG candidates")
+            tools = [
+                {
+                    "tool_name": t.name,
+                    "text": t.description,
+                    "obs_date": datetime.now(timezone.utc),
+                    "args": t.parameters,
+                    "is_tool": True,
+                }
+                for t in context.tools.list()
+            ]
+        else:
+            tools = rag_tools
+
+        # Withhold tools that a previous verification attempt already failed
+        # with so a retry is forced to consider an alternative.
+        if context.excluded_tools:
+            tools = [t for t in tools if t["tool_name"] not in context.excluded_tools]
+            logging.info(f"Excluding previously failed tools: {context.excluded_tools}")
 
         # Generating sources array
         sources = []
 
         tool_context = ""
+        tools_tried = []
         if tools:
             tool_str = ""
             for t in tools:
@@ -201,6 +225,7 @@ class RAGWorkflow(Workflow):
                 demo_no=demo_no,
                 user_input=resolved_input,
                 tools=tool_str,
+                verification_feedback=context.verification_feedback or "None",
             )
             tool_resp = context.ai_conn.send_message(tool_prompt)
 
@@ -217,6 +242,12 @@ class RAGWorkflow(Workflow):
                     logging.info(f"Calling tool: {tool}")
                     name = tool.get("tool_name")
                     args = tool.get("args") or {}
+                    if name in context.excluded_tools:
+                        logging.warning(f"Skipping previously failed tool returned by LLM: {name}")
+                        continue
+                    if name not in context.tools.keys():
+                        logging.warning(f"Skipping unknown tool returned by LLM: {name}")
+                        continue
                     tool_obj = context.tools.get(name)
                     sig = inspect.signature(tool_obj.func).parameters
                     if "db_conn" in sig:
@@ -224,6 +255,7 @@ class RAGWorkflow(Workflow):
                     if "vec_search" in sig:
                         args["vec_search"] = context.vec_search
                     res = context.tools.execute_tool(name, **args)
+                    tools_tried.append(name)
                     instruction = f"{tool_obj.context}\n" if tool_obj.context else ""
                     tool_context += f"Tool: {name}\n{instruction}Results: {res}\n\n"
 
@@ -282,4 +314,8 @@ class RAGWorkflow(Workflow):
         # self._write_out(followup_prompt, "#")
         # self._write_out(resp, "$")
 
-        return WorkflowResult(response=resp, sources=sources)
+        return WorkflowResult(
+            response=resp,
+            sources=sources,
+            metadata={"tools_tried": tools_tried, "context": context_str},
+        )
