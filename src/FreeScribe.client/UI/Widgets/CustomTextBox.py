@@ -35,190 +35,230 @@ class CustomTextBox(tk.Frame):
     :param kwargs: Additional keyword arguments to pass to the `tk.Frame` constructor.
     """
     def __init__(self, parent, height=10, state='normal', **kwargs):
-        use_cancel_button = kwargs.pop("use_cancel_button", False)
-        cancel_command = kwargs.pop("cancel_command", None)
         tk.Frame.__init__(self, parent, **kwargs)
         
         # Create scrolled text widget
         self.scrolled_text = tk.scrolledtext.ScrolledText(self, wrap="word", height=height, state=state)
         self.scrolled_text.pack(side="left", fill="both", expand=True)
 
-        # Create copy button in bottom right corner
+        # Frame for button alignment
+        self.button_frame = tk.Frame(self.scrolled_text)
+        self.button_frame.place(
+            relx=1.0,
+            rely=1.0,
+            x=-2,
+            y=-2,
+            anchor="se"
+        )
+
+        # Initialize callback functions
+        self.med_hist_callback = None
+        self.consult_callback = None
+        self.consult_and_mh_callback = None
+        self.consult_complete_callback = None
+        self.get_eform_callback = None
+        self.download_callback = None
+        self.cancel_callback = None
+
+        # Buttons, in order of appearance
+
+        self.consult_button = tk.Button(
+            self.button_frame,
+            text="Insert Consult",
+            command=self._consult,
+            relief="raised",
+            borderwidth=1
+        )
+
+        self.consult_and_mh_button = tk.Button(
+            self.button_frame,
+            text="Insert Consult & MH",
+            command=self._consult_and_mh,
+            relief="raised",
+            borderwidth=1
+        )
+
+        self.consult_complete_button = tk.Button(
+            self.button_frame,
+            text="Insert Complete Consult",
+            command=self._consult_complete,
+            relief="raised",
+            borderwidth=1
+        )
+
+        self.med_hist_button = tk.Button(
+            self.button_frame,
+            text="Insert MH",
+            command=self._med_hist,
+            relief="raised",
+            borderwidth=1
+        )
+
+        self.get_eforms_button = tk.Button(
+            self.button_frame,
+            text="eForms",
+            command=self._get_eforms,
+            relief="raised",
+            borderwidth=1
+        )
+
+        self.download_button = tk.Button(
+            self.button_frame,
+            text="Download",
+            command=self._download,
+            relief="raised",
+            borderwidth=1
+        )
+
+        self.cancel_button = tk.Button(
+            self.button_frame,
+            text="Cancel",
+            command=self._cancel,
+            relief="raised",
+            borderwidth=1,
+            state="disabled"
+        )
+
         self.copy_button = tk.Button(
-            self.scrolled_text,
+            self.button_frame,
             text="Copy Text",
             command=self.copy_text,
             relief="raised",
             borderwidth=1
         )
-        self.copy_button.place(relx=1.0, rely=1.0, x=-2, y=-2, anchor="se")
 
-        self.cancel_button = None
-        if use_cancel_button:
-            # Create cancel button just above copy button
-            self.cancel_button = tk.Button(
-                self.scrolled_text,
-                text="Cancel",
-                command=cancel_command,
-                relief="raised",
-                borderwidth=1,
-                state="disabled"
-            )
-            self.cancel_button.place(
-                relx=1.0, rely=1.0, x=-2, y=-30, anchor="se"
-            )
-        
-        # Get eForms button (optional, can be set via set_get_eforms_callback)
-        self.get_eforms_button = None
-        self.get_eform_callback = None
+        # Button order
+        self._button_order = [
+            self.med_hist_button,
+            self.consult_button,
+            self.consult_and_mh_button,
+            self.consult_complete_button,
+            self.get_eforms_button,
+            self.download_button,
+            self.cancel_button,
+            self.copy_button
+        ]
 
-        # Download button. Set via set_download_callback
-        self.download_button = None
-        self.download_callback = None
+        for button in self._button_order:
+            button.pack_forget()
 
-        # Medical History button. Set via set_med_hist_callback
-        self.med_hist_button = None
-        self.med_hist_callback = None
+        self.copy_button.pack(
+            side="left",
+            padx=4
+        )
 
-        # Consult insert button. Set via set_consult_callback
-        self.consult_button = None
-        self.consult_callback = None
+    # Button visibility
+    def _show_button(self, button):
+        """Show a button while preserving the predefined button order."""
 
-        # Consult and Medical History insert button. set via set_consult_and_mh_callback
-        self.consult_and_mh_button = None
-        self.consult_and_mh_callback = None
+        button.pack_forget()
 
-        # Consult complete button. set via set_consult_complete_callback
-        self.consult_complete_button = None
-        self.consult_complete_callback = None
-    
-    def set_get_eforms_callback(self, callback):
-        """Set the callback function for the Get eForms button."""
-        self.get_eform_callback = callback
-        if self.get_eform_callback:
-            if self.get_eforms_button is None:
-                self.get_eforms_button = tk.Button(
-                    self.scrolled_text,
-                    text="eForms",
-                    command=self._get_eforms,
-                    relief="raised",
-                    borderwidth=1
+        button_index = self._button_order.index(button)
+
+        for next_button in self._button_order[button_index + 1:]:
+            if next_button.winfo_manager() == "pack":
+                button.pack(
+                    side="left",
+                    padx=4,
+                    before=next_button
                 )
-                # Place next to copy button
-                self.get_eforms_button.place(relx=1.0, rely=1.0, x=-92, y=-2, anchor="se")
-    
-    def _get_eforms(self):
-        """Internal method to call the Get eForms callback."""
-        if self.get_eform_callback:
-            self.get_eform_callback()
-    
+                return
 
-    def set_download_callback(self, callback):
-        """Sets the callback function for the download button."""
-        self.download_callback = callback
-        if self.download_callback:
-            if self.download_button is None:
-                self.download_button = tk.Button(
-                    self.scrolled_text,
-                    text="Download",
-                    command=self._download,
-                    relief="raised",
-                    borderwidth=1
-                )
-                # Place next to copy button
-                self.download_button.place(relx=1.0, rely=1.0, x=-162, y=-2, anchor="se")
+        button.pack(
+            side="left",
+            padx=4
+        )
 
-    def _download(self):
-        """Internal method to call the download callback."""
-        if self.download_callback:
-            self.download_callback()
-
-
+    # Medical history button
     def set_med_hist_callback(self, callback):
-        """Sets the callback function for the Medical History button."""
         self.med_hist_callback = callback
+
         if self.med_hist_callback:
-            if self.med_hist_button is None:
-                self.med_hist_button = tk.Button(
-                    self.scrolled_text,
-                    text="Insert MH",
-                    command=self._med_hist,
-                    relief="raised",
-                    borderwidth=1
-                )
-                # Place next to download button
-                self.med_hist_button.place(relx=1.0, rely=1.0, x=-242, y=-2, anchor="se")
+            self._show_button(self.med_hist_button)
 
     def _med_hist(self):
-        """Internal method to call the medical history callback."""
         if self.med_hist_callback:
             self.med_hist_callback()
 
-
+    # Consult button
     def set_consult_callback(self, callback):
-        """Sets the callback function for the Medical History button."""
         self.consult_callback = callback
+
         if self.consult_callback:
-            if self.consult_button is None:
-                self.consult_button = tk.Button(
-                    self.scrolled_text,
-                    text="Insert Consult",
-                    command=self._consult,
-                    relief="raised",
-                    borderwidth=1
-                )
-                # Place next to med hist button
-                self.consult_button.place(relx=1.0, rely=1.0, x=-322, y=-2, anchor="se")
+            self._show_button(self.consult_button)
 
     def _consult(self):
-        """Internal method to call the medical history callback."""
         if self.consult_callback:
             self.consult_callback()
 
+    # Consult & Medical History button
     def set_consult_and_mh_callback(self, callback):
-        """Sets the callback function for the Medical History button."""
         self.consult_and_mh_callback = callback
+
         if self.consult_and_mh_callback:
-            if self.consult_and_mh_button is None:
-                self.consult_and_mh_button = tk.Button(
-                    self.scrolled_text,
-                    text="Insert Consult & MH",
-                    command=self._consult_and_mh,
-                    relief="raised",
-                    borderwidth=1
-                )
-                # Place next to med hist button
-                self.consult_and_mh_button.place(relx=1.0, rely=1.0, x=-422, y=-2, anchor="se")
+            self._show_button(self.consult_and_mh_button)
 
     def _consult_and_mh(self):
-        """Internal method to call the medical history callback."""
         if self.consult_and_mh_callback:
             self.consult_and_mh_callback()
 
+    # Complete consult button
     def set_consult_complete_callback(self, callback):
-        """Sets the callback function for the Medical History button."""
         self.consult_complete_callback = callback
+
         if self.consult_complete_callback:
-            if self.consult_complete_button is None:
-                self.consult_complete_button = tk.Button(
-                    self.scrolled_text,
-                    text="Insert Complete Consult",
-                    command=self._consult_complete,
-                    relief="raised",
-                    borderwidth=1
-                )
-                # Place next to med hist button
-                self.consult_and_mh_button.place(relx=1.0, rely=1.0, x=-522, y=-2, anchor="se")
+            self._show_button(self.consult_complete_button)
 
     def _consult_complete(self):
-        """Internal method to call the consult complete callback."""
         if self.consult_complete_callback:
             self.consult_complete_callback()
 
+    # E-Forms button
+    def set_get_eforms_callback(self, callback):
+        self.get_eform_callback = callback
+
+        if self.get_eform_callback:
+            self._show_button(self.get_eforms_button)
+
+    def _get_eforms(self):
+        if self.get_eform_callback:
+            self.get_eform_callback()
+
     def update_eform_button_text(self, text):
-        """Update the eForm form button text."""
         if self.get_eforms_button:
             self.get_eforms_button.config(text=text)
+
+    # Download button
+    def set_download_callback(self, callback):
+        self.download_callback = callback
+
+        if self.download_callback:
+            self._show_button(self.download_button)
+
+    def _download(self):
+        if self.download_callback:
+            self.download_callback()
+
+    # Cancel button
+    def set_cancel_callback(self, callback):
+        """Sets the callback function for the cancel button."""
+
+        self.cancel_callback = callback
+
+        if self.cancel_callback:
+            self._show_button(self.cancel_button)
+
+    def _cancel(self):
+        if self.cancel_callback:
+            self.cancel_callback()
+
+    def set_cancel_button_active(self, active):
+        if self.cancel_button is not None:
+            self.cancel_button.config(
+                state="normal" if active else "disabled"
+            )
+
+    
 
     def copy_text(self):
         """
@@ -292,6 +332,3 @@ class CustomTextBox(tk.Frame):
         Scroll the text widget so the specified index is visible.
         """
         self.scrolled_text.see(index)
-
-    def set_cancel_button_active(self, active):
-        self.cancel_button.config(state="normal" if active else "disabled")

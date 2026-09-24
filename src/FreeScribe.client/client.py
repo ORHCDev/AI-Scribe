@@ -1960,8 +1960,27 @@ def upload_consult_and_mh():
     oscar.insert_text_into_0letter(fdid, consult, med_hist_resp)
     
 def upload_consult_complete():
-    # placeholder
-    return
+    text = response_display.scrolled_text.get("1.0", tk.END).strip()
+
+    sections = re.split(
+        r'(?=RISK FACTORS|PAST CARDIAC HISTORY|PAST MEDICAL HISTORY|HISTORY OF PRESENTING ILLNESS|ECG|ECHO|ASSESSMENT|PLAN)',
+        text
+    )
+    sections = [section.strip() for section in sections if section.strip()]
+
+    parsed_sections = {}
+    for section in sections:
+        heading, separator, content = section.partition("\n")
+        parsed_sections[heading.strip()] = content.strip()
+
+    fdid = eform_selection_panel.get_most_recent_0letter()
+    oscar.insert_text_into_0letter(
+        fdid,
+        text,
+        parsed_sections.get("PAST CARDIAC HISTORY", ""),
+        parsed_sections.get("ECG", ""),
+        parsed_sections.get("ECHO", "")
+    )
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ROOT GRID
@@ -2152,7 +2171,6 @@ upload_button = tk.Button(
 )
 upload_button.grid(row=1, column=6, pady=(6, 2), sticky='nsew')
 
-
 open_oscar_button = tk.Button(
     scribe_frame, text="Open Oscar", command=open_oscar, height=2, width=11,
 )
@@ -2221,12 +2239,12 @@ eform_selection_panel.grid(row=0, column=11, rowspan=4, padx=(2, 5), pady=12, st
 eform_selection_panel.grid_remove()
 
 # ── Response display callbacks ────────────────────────────────────────────────
-response_display.set_get_eforms_callback(get_labs_from_response)
-response_display.set_download_callback(download_results)
 #response_display.set_med_hist_callback(upload_medical_history)
 response_display.set_consult_callback(upload_consult)
 response_display.set_consult_and_mh_callback(upload_consult_and_mh)
 response_display.set_consult_complete_callback(upload_consult_complete)
+response_display.set_get_eforms_callback(get_labs_from_response)
+response_display.set_download_callback(download_results)
 
 if app_settings.editable_settings["Enable Scribe Template"]:
     window.create_scribe_template()
@@ -2538,19 +2556,7 @@ chat_log_display._id = "chat_log_tbox"
 _reset_chat_log()
 
 # ── User input ────────────────────────────────────────────────────────────────
-chat_user_input = CustomTextBox(
-    chatbot_frame,
-    height=5,
-    use_cancel_button=True,
-    cancel_command=lambda: (
-        chatbot_cancel_generation()
-        if messagebox.askyesno(
-            "Cancel Generation",
-            "Are you sure you want to cancel the current prompt?"
-        )
-        else None
-    )
-)
+chat_user_input = CustomTextBox(chatbot_frame, height=5)
 chat_user_input.grid(
     row=1, column=1, columnspan=8, padx=(5, 2), pady=(4, 4), sticky='nsew',
 )
@@ -2590,6 +2596,15 @@ chat_workflow_button = tk.Button(
     chatbot_frame, text="Auto", command=chatbot_workflow_toggle, height=2, width=10,
 )
 chat_workflow_button.grid(row=2, column=4, padx=(2, 2), pady=(2, 10), sticky='nsew')
+
+chat_user_input.set_cancel_callback(lambda: (
+    chatbot_cancel_generation()
+    if messagebox.askyesno(
+        "Cancel Generation",
+        "Are you sure you want to cancel the current prompt?"
+    )
+    else None
+))
 
 # ── Chat history sidebar ──────────────────────────────────────────────────────
 chat_history_listbox = tk.Listbox(

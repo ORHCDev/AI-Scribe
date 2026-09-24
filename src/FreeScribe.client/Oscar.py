@@ -370,7 +370,7 @@ class Oscar:
 
         return textarea.text.strip()
 
-    def insert_text_into_0letter(self, fdid, consult, med_hist=None):
+    def insert_text_into_0letter(self, fdid, consult, med_hist=None, ecg_info=None, echo_info=None):
         """
         Will input the given text into the most recent 0letter eform recorded
         in the patient's encounter page.
@@ -521,6 +521,14 @@ class Oscar:
             # Insert medical history if given
             if med_hist:
                 focus_and_insert("PAST CARDIAC HISTORY", med_hist)
+
+            # Insert ECG info if given
+            if ecg_info:
+                focus_and_insert("ECG", ecg_info)
+
+            # Insert ECHO info if given
+            if echo_info:
+                focus_and_insert("ECHO", echo_info)
 
             # Switch out of iframe
             self.driver.switch_to.default_content()
