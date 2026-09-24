@@ -90,6 +90,11 @@ class RAGWorkflow(Workflow):
 
         rstr = rag_json["RAG"]
         date = rag_json["date"]
+        intent = {
+            "category": rag_json.get("category", "general"),
+            "types": rag_json.get("types") or [],
+            "mode": rag_json.get("mode", "none"),
+        }
 
         #self._write_out(rag_prompt, "#")
         #self._write_out(rag_str, "$")
@@ -226,6 +231,7 @@ class RAGWorkflow(Workflow):
                 user_input=resolved_input,
                 tools=tool_str,
                 verification_feedback=context.verification_feedback or "None",
+                intent=intent,
             )
             tool_resp = context.ai_conn.send_message(tool_prompt)
 
