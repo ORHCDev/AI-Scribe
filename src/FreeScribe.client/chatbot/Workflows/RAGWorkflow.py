@@ -123,20 +123,26 @@ class RAGWorkflow(Workflow):
 
         # Perform RAG search on tool embeddings and documents
         date_rank = False
-        if date == 'old' or date == 'recent':
-            date_rank = True
-            embeddings = context.vec_search.search(
-                query=rstr,
-                patient_id=demo_no,
-                top_k=10,
-                to_dict=True
-            )
-        else:
+        try:
+            datetime.strptime(str(date), "%Y-%m-%d")
+            explicit_date = True
+        except ValueError:
+            explicit_date = False
+
+        if explicit_date:
             embeddings = context.vec_search.search(
                 query=rstr,
                 patient_id=demo_no,
                 top_k=10,
                 date=date,
+                to_dict=True
+            )
+        else:
+            date_rank = date in ('old', 'recent')
+            embeddings = context.vec_search.search(
+                query=rstr,
+                patient_id=demo_no,
+                top_k=10,
                 to_dict=True
             )
 
