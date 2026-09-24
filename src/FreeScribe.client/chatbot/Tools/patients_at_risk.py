@@ -6,10 +6,10 @@ from chatbot.Tools.utils import period_parser
 @tool(
     category="patients_at_risk",
     description=(
-        "Returns the full list of patients who have an ejection fraction less than the specified amount. The user may "
-        "specify a time period over which to narrow the search. If no time period is specified, default to the prior "
-        "6 months. This tool is relevant when the user asks about patients who have an ejection fraction, or EF, less "
-        "than a specific amount."
+        "Returns a list of patients who have an ejection fraction less than the specified amount, up to a maximum "
+        "of 100 patients (most recent first). The user may specify a time period over which to narrow the search. "
+        "If no time period is specified, default to the prior 6 months. This tool is relevant when the user asks "
+        "about patients who have an ejection fraction, or EF, less than a specific amount."
     ),
     context=(
         "Here are the names, demographic numbers and EF values of the patients. Output all three fields in a table format."

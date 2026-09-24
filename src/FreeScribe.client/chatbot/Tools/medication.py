@@ -177,7 +177,7 @@ def get_prescription_by_drug(db_conn, demo_no : str, drug_name : str):
     context="Population-level lookup of patients associated with specific medications over a recent time window",
     parameters={
         "meds": "List of medication names or partial names to search for in medication measurement entries",
-        "period": "Time window to search within, expressed as a duration such as '6m', '30d', or '1y'",
+        "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'",
     }
 )
 def medication_lookup(db_conn, meds : list[str], period : str):
