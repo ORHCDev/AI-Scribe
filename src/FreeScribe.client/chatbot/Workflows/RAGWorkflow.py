@@ -90,6 +90,11 @@ class RAGWorkflow(Workflow):
 
         rstr = rag_json["RAG"]
         date = rag_json["date"]
+        intent = {
+            "category": rag_json.get("category", "general"),
+            "types": rag_json.get("types") or [],
+            "mode": rag_json.get("mode", "none"),
+        }
 
         #self._write_out(rag_prompt, "#")
         #self._write_out(rag_str, "$")
@@ -118,20 +123,26 @@ class RAGWorkflow(Workflow):
 
         # Perform RAG search on tool embeddings and documents
         date_rank = False
-        if date == 'old' or date == 'recent':
-            date_rank = True
-            embeddings = context.vec_search.search(
-                query=rstr,
-                patient_id=demo_no,
-                top_k=10,
-                to_dict=True
-            )
-        else:
+        try:
+            datetime.strptime(str(date), "%Y-%m-%d")
+            explicit_date = True
+        except ValueError:
+            explicit_date = False
+
+        if explicit_date:
             embeddings = context.vec_search.search(
                 query=rstr,
                 patient_id=demo_no,
                 top_k=10,
                 date=date,
+                to_dict=True
+            )
+        else:
+            date_rank = date in ('old', 'recent')
+            embeddings = context.vec_search.search(
+                query=rstr,
+                patient_id=demo_no,
+                top_k=10,
                 to_dict=True
             )
 
@@ -226,6 +237,7 @@ class RAGWorkflow(Workflow):
                 user_input=resolved_input,
                 tools=tool_str,
                 verification_feedback=context.verification_feedback or "None",
+                intent=intent,
             )
             tool_resp = context.ai_conn.send_message(tool_prompt)
 
