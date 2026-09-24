@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -15,6 +15,8 @@ class WorkflowContext:
     curr_demo: str
     prompts: dict
     memory_needed: bool = True
+    excluded_tools: list[str] = field(default_factory=list)
+    verification_feedback: str = ""
 
 @dataclass
 class WorkflowEntry:
@@ -27,6 +29,7 @@ class WorkflowEntry:
 class WorkflowResult:
     response: str
     sources: list | None = None
+    metadata: dict | None = None
 
 # this class is an abstract method of the actual workflows
 class Workflow(ABC):
