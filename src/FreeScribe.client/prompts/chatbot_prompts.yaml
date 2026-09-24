@@ -232,6 +232,10 @@ rag_tool_prompt: |
   - Use ONLY tools in {tools}
   - Select the MOST relevant tool(s); minimize calls
   - Multiple tools only if intents are clearly independent
+  - The detected intent is {intent}
+  - Prefer the tool whose category matches the intent category
+  - For category measurement, call get_measurements with types set to the intent types and mode set to the intent mode
+  - For category document use get_documents; for category medication use the medication tools
 
   ---------------------
   PARAMETER RULES
@@ -411,6 +415,26 @@ date_rag_prompt: |
     is indicating 'recent' or 'old' documents.
 
   ----------------------------------
+  INTENT
+
+  category: which data the question needs.
+  - measurement: ECG, echo, holter, EF, stress, cath findings
+  - medication
+  - document: referral, discharge summary, consult, report
+  - appointment
+  - patient_info: demographics, provider
+  - general
+
+  types: for category measurement, the exact codes, otherwise [].
+  - ECG for electrocardiogram or EKG
+  - ECHO and SECHO for echocardiogram, EF, valve, aorta
+  - HOLT and HOL for holter
+  - EST for exercise stress
+  - CATH for angiogram or catheterization
+
+  mode: latest for most-recent or current, all for trend or history or over-time, none if not a measurement.
+
+  ----------------------------------
   USER QUESTION:
   "{user_input}"
 
@@ -419,7 +443,10 @@ date_rag_prompt: |
 resp_format: |
   {
     "RAG": "...",
-    "date": "..."
+    "date": "...",
+    "category": "measurement | medication | document | appointment | patient_info | general",
+    "types": ["..."],
+    "mode": "latest | all | none"
   }
 
 
