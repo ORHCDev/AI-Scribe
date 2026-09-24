@@ -233,9 +233,10 @@ rag_tool_prompt: |
   - Select the MOST relevant tool(s); minimize calls
   - Multiple tools only if intents are clearly independent
   - The detected intent is {intent}
-  - Prefer the tool whose category matches the intent category
+  - When the intent category is a specific data type and the question clearly targets that data, prefer that category's tool
   - For category measurement, call get_measurements with types set to the intent types and mode set to the intent mode
   - For category document use get_documents; for category medication use the medication tools
+  - For category general or a broad summary or overview request, do NOT force a single tool; answer from the retrieved context and call multiple tools only if each is clearly needed
 
   ---------------------
   PARAMETER RULES
@@ -423,7 +424,7 @@ date_rag_prompt: |
   - document: referral, discharge summary, consult, report
   - appointment
   - patient_info: demographics, provider
-  - general
+  - general: broad or open-ended, including summaries and overviews such as "summarize this patient" or "tell me about this patient"
 
   types: for category measurement, the exact codes, otherwise [].
   - ECG for electrocardiogram or EKG
