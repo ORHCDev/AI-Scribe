@@ -647,22 +647,28 @@ def get_patient_vitals(db_conn, demo_no : str):
 @tool(
     category="measurements",
     description=(
-        "Generates a longitudinal overview of a patient's vital signs and key physiologic measurements, "
-        "including blood pressure, heart rate, weight, renal markers, cardiac function, and medication events. "
-        "Produces visual time-series plots and returns a summarized snapshot of the most recent values "
-        "with corresponding dates. "
-        "This tool is most relevant for holistic patient review, trend assessment, "
+        "Returns a patient's vital signs and key physiologic measurements, including blood "
+        "pressure, heart rate, weight, renal markers, cardiac function (e.g. EF), and medication events. "
+        "By default returns the most recent value of each vital as a table. "
+        "Set trend to true only when the user asks to review, trend, graph, or plot these values "
+        "over time; this additionally produces visual time-series plots. "
+        "This tool is most relevant for vital sign review, trend assessment, "
         "medication impact analysis, or clinical summary preparation."
     ),
     context="These are the patient's vitals results, organize them as a table:",
     parameters={
-        "demo_no": "Patient's demographic number"
+        "demo_no": "Patient's demographic number",
+        "trend": "Set to true only when the user asks to trend, plot, graph, or review the vitals over time. Defaults to false, which returns the most recent value of each vital."
     }
 )
-def vitals_overview(db_conn, demo_no : str):
+def vitals_overview(db_conn, demo_no : str, trend : bool = False):
     """
-    Plots a historical overview of the patient's vitals.
+    Returns the most recent values of a patient's vitals, or a historical trend
+    overview with plots when ``trend`` is true.
     """
+
+    if isinstance(trend, str):
+        trend = trend.strip().lower() in ("true", "1", "yes", "trend")
 
     sections = {
         "bp" : ['BP'],
@@ -677,6 +683,47 @@ def vitals_overview(db_conn, demo_no : str):
 
     types = []
     [types.extend(n) for n in sections.values()]
+    name_str = "'" + "', '".join(types) + "'"
+
+    if not trend:
+        query = f"""
+        SELECT
+            m.type AS "Type",
+            m.dataField AS "Data",
+            DATE(m.dateObserved) AS "Date"
+        FROM measurements m
+        JOIN (
+            SELECT
+                type,
+                MAX(dateObserved) AS maxDate
+            FROM measurements
+            WHERE demographicNo = {demo_no}
+            AND type IN ({name_str})
+            GROUP BY type
+        ) latest
+            ON m.type = latest.type
+        AND m.dateObserved = latest.maxDate
+        WHERE m.demographicNo = {demo_no}
+        GROUP BY m.type, m.dataField, DATE(m.dateObserved)
+        ORDER BY m.type ASC;
+        """
+
+        res = db_conn.query_database(query)
+        to_send = [
+            {
+                "Type": row["Type"],
+                "Data": wrap_text(row["Data"]) if str(row["Type"]).upper() == "MEDS" else row["Data"],
+                "Date": row["Date"],
+            }
+            for row in res
+        ]
+
+        return tr(
+            label="Latest Vitals",
+            send_to_ai=False,
+            query_results=to_send,
+            save_results=to_send,
+        )
 
     query = f"""
     SELECT 
