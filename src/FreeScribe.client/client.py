@@ -1961,26 +1961,8 @@ def upload_consult_and_mh():
     
 def upload_consult_complete():
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
-
-    sections = re.split(
-        r'(?=RISK FACTORS|PAST CARDIAC HISTORY|PAST MEDICAL HISTORY|HISTORY OF PRESENTING ILLNESS|ECG|ECHO|ASSESSMENT|PLAN)',
-        text
-    )
-    sections = [section.strip() for section in sections if section.strip()]
-
-    parsed_sections = {}
-    for section in sections:
-        heading, separator, content = section.partition("\n")
-        parsed_sections[heading.strip()] = content.strip()
-
     fdid = eform_selection_panel.get_most_recent_0letter()
-    oscar.insert_text_into_0letter(
-        fdid,
-        text,
-        parsed_sections.get("PAST CARDIAC HISTORY", ""),
-        parsed_sections.get("ECG", ""),
-        parsed_sections.get("ECHO", "")
-    )
+    oscar.insert_text_into_0letter_from_headings(fdid, text)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ROOT GRID

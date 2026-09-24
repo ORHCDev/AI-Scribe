@@ -548,6 +548,175 @@ class Oscar:
             print(f"error: {e}")
             return
 
+    def insert_text_into_0letter_from_headings(self, fdid, full_text):
+        """
+        Will input the given text into the most recent 0letter eform recorded
+        in the patient's encounter page, according to the headings present.
+        """
+        
+        HEADINGS = [
+            "RISK FACTORS", "PAST CARDIAC HISTORY", "PAST MEDICAL HISTORY", "HISTORY OF PRESENT ILLNESS", "SOCIAL HISTORY",
+            "MEDICATIONS", "ALLERGIES", "EXAM", "ECG", "ECHO", "LAB WORK", "ASSESSMENT", "PLAN"
+        ]
+
+        def replace_section(heading, text):
+            next_headings = HEADINGS[HEADINGS.index(heading) + 1:]
+
+            script = """
+            const headingText = arguments[0];
+            const newText = arguments[1];
+            const nextHeadings = arguments[2];
+
+            const paras = Array.from(document.getElementsByTagName('p'));
+
+            const headingPara = paras.find(
+                p => p.textContent.trim().startsWith(headingText)
+            );
+
+            if (!headingPara) {
+                return false;
+            }
+
+            const nextHeadingPara = paras.find(
+                p =>
+                    nextHeadings.some(
+                        h => p.textContent.trim().startsWith(h)
+                    )
+            );
+
+            const range = document.createRange();
+
+            if (nextHeadingPara) {
+                range.setStartAfter(headingPara);
+                range.setEndBefore(nextHeadingPara);
+            } else {
+                range.setStartAfter(headingPara);
+                range.setEndAfter(headingPara);
+            }
+
+            range.deleteContents();
+
+            const textNode = document.createTextNode(newText);
+            range.insertNode(textNode);
+
+            return true;
+            """
+
+            return self.driver.execute_script(
+                script,
+                heading,
+                text,
+                next_headings
+            )
+
+        def focus_cursor_before(indicator):
+            length = len(indicator)
+            """Focus cursor to right before given indicator on 0letter note"""
+            paras = "const paras = Array.from(document.getElementsByTagName('p'));\n"
+            p = f"const p = paras.find(el => el.textContent.includes('{indicator}'));\n"
+
+            script = paras + p + f"""
+                if (!p) return;
+
+                if (!p.firstChild) {{
+                    p.appendChild(document.createTextNode(''));
+                }}
+
+                const range = document.createRange();
+                range.setStart(p.firstChild, p.firstChild.length);
+                range.collapse(true);
+
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            """
+            
+            self.driver.execute_script(script)
+        
+        def toggle_off_bold():
+            # toggle bold off
+            if  self.driver.execute_script("return document.queryCommandState('bold');"):
+                print("Toggled")
+                self.driver.execute_script("""
+                    // Force bold OFF
+                    document.execCommand('bold', false, null);
+
+                    // Normalize font weight at caret
+                    document.execCommand('removeFormat', false, null);
+                """)
+
+        def focus_and_insert(indicator, text):
+            focus_cursor_before(indicator)
+            body.send_keys(Keys.HOME)
+            for i in range(len(indicator) + 1):
+                body.send_keys(Keys.ARROW_RIGHT)
+            body.send_keys(Keys.ENTER)
+            toggle_off_bold()
+            body.send_keys(text)
+            body.send_keys(Keys.ENTER)
+
+        try:
+            # Preprocessing of text
+            HEADING_PATTERN = "|".join(re.escape(h) for h in HEADINGS)
+
+            sections = re.split(
+                rf'(?=^(?:{HEADING_PATTERN})\s*$)',
+                full_text,
+                flags=re.MULTILINE
+            )
+            sections = [section.strip() for section in sections if section.strip()]
+
+            parsed_sections = {}
+            for section in sections:
+                heading, separator, content = section.partition("\n")
+                stripped_heading = heading.strip()
+                stripped_contents = content.strip()
+                parsed_sections[stripped_heading] = stripped_contents
+                print(f"Processed section {stripped_heading}")
+                print(f"Contents: {stripped_contents}")
+
+            # Open and switch to eForm window
+            self.open_eform(fdid, switch_home=False)
+            self.driver.switch_to.window(self.driver.window_handles[-1])
+            self.driver.maximize_window()
+            time.sleep(2)
+            
+            # Switch to iframe
+            self.driver.switch_to.frame("edit")
+            # Focus on 0letter body
+            body = self.wait.until(
+                EC.presence_of_element_located((By.XPATH, "//body"))
+            )
+            body.click()
+
+            # Insert present text
+            for heading in HEADINGS:
+                if heading in parsed_sections:
+                    success = replace_section(
+                        heading,
+                        parsed_sections[heading]
+                    )
+
+                    if success:
+                        print(f"Inserted section {heading}")
+
+            # Click submit
+            self.driver.switch_to.default_content()
+            submit_btn = self.wait.until(
+                EC.presence_of_element_located((By.XPATH, "/html/body/form/div[2]/table/tbody/tr/td/input[2]"))
+            )
+            submit_btn.click()
+
+            # Close window and switch to encounter window
+            self.driver.close()
+            self.driver.switch_to.window(self.home_window)
+            
+            return
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            
 
     def get_eform_checkboxes(self, fid):
         """
