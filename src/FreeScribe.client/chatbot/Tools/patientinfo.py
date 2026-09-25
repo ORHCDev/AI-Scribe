@@ -103,6 +103,7 @@ def get_patient_summary(db_conn, oscar, demo_no : str):
         send_to_ai=True,
         query_results=text,
         save_results=text,
+        followup_prompt="Summarize the following information into two sentences: {text}"
     )
 
 @tool(
