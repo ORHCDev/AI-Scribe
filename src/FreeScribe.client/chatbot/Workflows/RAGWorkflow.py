@@ -5,14 +5,11 @@ from difflib import SequenceMatcher
 from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult, workflow
 from chatbot.Tools.demonumber import get_demo_num, demo_number_required
 
-# When set to False, document and measurement search skips the RAG vector database 
-# and instead relies on the documents.py and measurements.py tools
-USE_RAG_VECTORS = False
 
 @workflow(
     name="rag_search",
-    description="Patient-specific clinical queries requiring search of documents, labs, measurements, or clinical history",
-    keywords=["search", "query", "find", "lab values", "lab results", "lab documents", "documents"]
+    description="Patient-specific document queries requiring search of clinical documents such as reports, consult notes, discharge summaries, and referrals",
+    keywords=["document", "documents", "report", "reports", "note", "notes", "discharge summary", "consult", "referral", "find document"]
 )
 class RAGWorkflow(Workflow):
     def _resolve_query(self, user_input: str, context: WorkflowContext) -> str:
@@ -59,10 +56,10 @@ class RAGWorkflow(Workflow):
         Workflow
         --------
         1. Gets LLM to generate keyword string that will be used for vector search from user input.
-        2. Does a vector search to retrieve closest matching documents, measurements, and tools.
+        2. Does a vector search to retrieve closest matching documents and tools.
         3. Organizes returned chunks and re-ranks.
         4. If any tools are selected, execute tool(s) and save returned results.
-        5. Iterate over documents and measurements, appending chunks until maximum context is reached.
+        5. Iterate over document chunks, appending them until maximum context is reached.
         6. Send follow up to LLM to answer User's input with the attached context. 
         7. Return LLM response to follow up.
         """
@@ -147,11 +144,9 @@ class RAGWorkflow(Workflow):
             )
 
         tool_embds = embeddings["tools"]
-        doc_embds = embeddings["documents"] if USE_RAG_VECTORS else []
-        msr_embds = embeddings["measurements"] if USE_RAG_VECTORS else []
-
-        if not USE_RAG_VECTORS:
-            logging.info("skipping vector DB document and measurement search (retrieval delegated to documents.py and measurements.py tools).")
+        doc_embds = embeddings["documents"]
+        # Documents are the only retrieval source, measurements are handled by OscarWorkflow
+        msr_embds = []
 
         # Combine for reranking
         chunks = []

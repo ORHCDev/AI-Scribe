@@ -79,8 +79,8 @@ class WorkflowRegistry:
         result = context.ai_conn.send_message(prompt)
         result = result.replace("```json", "").replace("```", "").replace("**JSON only**", "").strip()
         result_json = json.loads(result)
-        workflow_type = result_json.get("workflow", "rag_search").lower()
-        return workflow_type if workflow_type in cls._registry else "rag_search"
+        workflow_type = result_json.get("workflow", "oscar_search").lower()
+        return workflow_type if workflow_type in cls._registry else "oscar_search"
 
 
 def workflow(name: str, description: str, keywords: list[str]):
