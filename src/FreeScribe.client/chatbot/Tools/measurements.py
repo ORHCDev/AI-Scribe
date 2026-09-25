@@ -750,7 +750,7 @@ def get_patient_vitals(db_conn, demo_no : str):
         )
     }
 )
-def vitals_overview(db_conn, demo_no : str, relevant_vitals : list, trend : bool = False):
+def vitals_overview(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR", "BMI", "EF_B"], trend : bool = False):
     """
     Returns the most recent values of a patient's vitals, or a historical trend
     overview with plots when ``trend`` is true.
