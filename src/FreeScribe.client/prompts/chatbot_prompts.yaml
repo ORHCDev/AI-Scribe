@@ -234,7 +234,9 @@ rag_tool_prompt: |
   - Multiple tools only if intents are clearly independent
   - The detected intent is {intent}
   - When the intent category is a specific data type and the question clearly targets that data, prefer that category's tool
-  - For category measurement, call get_measurements with types set to the intent types and mode set to the intent mode
+  - For category measurement with mode latest (most recent, current, single value), call get_measurements with types set to the intent types and mode latest
+  - For category measurement with mode all (trend, over time, graph, plot the values), call get_measurement_trend with the single measurement name; do NOT use get_measurement_trend for a latest or current value
+  - When the intent types include ECHO, SECHO, HOLT, HOL, ECG, CATH, or EST and the question asks for results, a report, findings, or details, ALSO call get_documents with the same clinical query, since the full report may live in a document; the answer should use whichever source is more complete and up to date
   - For category document use get_documents; for category medication use the medication tools
   - For category general or a broad summary or overview request, do NOT force a single tool; answer from the retrieved context and call multiple tools only if each is clearly needed
 

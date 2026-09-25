@@ -254,11 +254,13 @@ _TREND_TYPES = {
 @tool(
     category="measurements",
     description=(
-        "Trends a single NUMERIC measurement over time for a patient: returns the historical "
-        "data points (value and date) as a table AND opens Oscar's own trend graph for that "
-        "measurement. Use for questions like 'EF over time', 'A1C trend', 'graph the blood "
-        "pressure', 'plot the weight'. Only for numeric measurements such as EF, BP, HR, weight, "
-        "BMI, A1C, LDL, HDL, EGFR, INR; narrative types like ECG or echo reports have no numeric trend."
+        "Trends a single NUMERIC measurement OVER TIME for a patient: returns the historical "
+        "data points (value and date) as a table AND opens Oscar's own trend graph. Use ONLY when "
+        "the user asks to trend, graph, plot, or see values over time, e.g. 'EF over time', 'A1C "
+        "trend', 'graph the blood pressure', 'plot the weight'. Do NOT use this for the single most "
+        "recent, latest, or current value -- use get_measurements for that. Only for numeric "
+        "measurements (EF, BP, HR, weight, BMI, A1C, LDL, HDL, EGFR, INR); narrative types like ECG "
+        "or echo reports have no numeric trend."
     ),
     context="Here are the historical data points for the measurement; Oscar's trend graph has also been displayed:",
     parameters={
@@ -279,25 +281,27 @@ def get_measurement_trend(db_conn, demo_no : str, measurement : str):
     """
     res = db_conn.query_database(query)
 
-    driver = getattr(db_conn, "driver", None)
+    session = getattr(db_conn, "session", None)
     oscar_url = getattr(db_conn, "oscar_url", None)
-    if driver is not None and oscar_url:
+    if session is not None and oscar_url:
         try:
             url = f"{oscar_url}oscarEncounter/GraphMeasurements.do?demographic_no={demo_no}&type={mtype}"
-            driver.get(url)
-            png = driver.get_screenshot_as_png()
-            save_path = os.path.join(os.getcwd(), "reports")
-            os.makedirs(save_path, exist_ok=True)
-            filename = os.path.join(save_path, f"{demo_no}_{mtype}_trend.png")
-            with open(filename, "wb") as f:
-                f.write(png)
-            print(f"Trend graph saved to {filename}")
-            try:
-                webbrowser.open(os.path.abspath(filename))
-            except Exception as e:
-                print(f"Unable to open trend graph: {e}")
+            resp = session.get(url, verify=False)
+            if resp.status_code == 200 and resp.content:
+                save_path = os.path.join(os.getcwd(), "reports")
+                os.makedirs(save_path, exist_ok=True)
+                filename = os.path.join(save_path, f"{demo_no}_{mtype}_trend.png")
+                with open(filename, "wb") as f:
+                    f.write(resp.content)
+                print(f"Trend graph saved to {filename}")
+                try:
+                    webbrowser.open(os.path.abspath(filename))
+                except Exception as e:
+                    print(f"Unable to open trend graph: {e}")
+            else:
+                print(f"Trend graph request returned status {resp.status_code}")
         except Exception as e:
-            print(f"Unable to capture Oscar trend graph: {e}")
+            print(f"Unable to fetch Oscar trend graph: {e}")
 
     if not res:
         msg = f"No {mtype} measurements found for this patient."
