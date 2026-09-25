@@ -660,10 +660,18 @@ def get_patient_vitals(db_conn, demo_no : str):
     context="These are the patient's vitals results, organize them as a table:",
     parameters={
         "demo_no": "Patient's demographic number",
-        "trend": "Set to true only when the user asks to trend, plot, graph, or review the vitals over time. Defaults to false, which returns the most recent value of each vital."
+        "relevant_vitals": (
+            "A list of the specific measurements the user is asking about. "
+            "Valid values are BP, HR, WT, BMI, BSA, EF_B, EGFR, CRCL, NAPL, KPL, HGB, HCT, A1C, and MEDS. "
+            "Only include measurements relevant to the user's request."
+        ),
+        "trend": (
+            """Set to true only when the user asks to trend, plot, graph, or review the vitals over time. Defaults to """
+            """false, which returns the most recent value of each vital."""
+        )
     }
 )
-def vitals_overview(db_conn, demo_no : str, trend : bool = False):
+def vitals_overview(db_conn, demo_no : str, relevant_vitals : list, trend : bool = False):
     """
     Returns the most recent values of a patient's vitals, or a historical trend
     overview with plots when ``trend`` is true.
@@ -673,18 +681,25 @@ def vitals_overview(db_conn, demo_no : str, trend : bool = False):
         trend = trend.strip().lower() in ("true", "1", "yes", "trend")
 
     sections = {
-        "bp" : ['BP'],
-        "hr" : ['HR'],
-        "weight" : ['WT', 'BMI', 'BSA'],
-        "cardiac_func" : ['EF_B'],
-        "renal" : ['EGFR', 'CRCL', 'NAPL', 'KPL', 'HGB', 'HCT', 'A1C'],
-        "meds" : ['MEDS'],
+        "bp": ["BP"],
+        "hr": ["HR"],
+        "weight": ["WT", "BMI", "BSA"],
+        "cardiac_func": ["EF_B"],
+        "renal": ["EGFR", "CRCL", "NAPL", "KPL", "HGB", "HCT", "A1C"],
+        "meds": ["MEDS"],
     }
 
+    if isinstance(relevant_vitals, str):
+        relevant_vitals = [relevant_vitals]
 
+    relevant_vitals = [str(v).upper() for v in relevant_vitals]
 
-    types = []
-    [types.extend(n) for n in sections.values()]
+    types = [
+        vital
+        for vital in relevant_vitals
+        if any(vital in section_types for section_types in sections.values())
+    ]
+
     name_str = "'" + "', '".join(types) + "'"
 
     if not trend:
@@ -704,7 +719,7 @@ def vitals_overview(db_conn, demo_no : str, trend : bool = False):
             GROUP BY type
         ) latest
             ON m.type = latest.type
-        AND m.dateObserved = latest.maxDate
+            AND m.dateObserved = latest.maxDate
         WHERE m.demographicNo = {demo_no}
         GROUP BY m.type, m.dataField, DATE(m.dateObserved)
         ORDER BY m.type ASC;
@@ -734,9 +749,7 @@ def vitals_overview(db_conn, demo_no : str, trend : bool = False):
         DATE(dateObserved) AS dateObserved
     FROM measurements
     WHERE demographicNo = {demo_no}
-    AND type IN (
-        {"'" + "', '".join(types) + "'"}    
-        )
+    AND type IN ({name_str})
     GROUP BY type, dataField, DATE(dateObserved)
     ORDER BY type, dateObserved DESC;
     """
@@ -771,100 +784,202 @@ def vitals_overview(db_conn, demo_no : str, trend : bool = False):
 
 
     # Plot layout
-    fig = plt.figure(figsize=(14, 10))
-    gs = GridSpec(3, 2, height_ratios=[2.2, 1, 1], hspace=0.25)
+    plot_types = []
 
-    ax_top = fig.add_subplot(gs[0, :])
-    ax1 = fig.add_subplot(gs[1, 0], sharex=ax_top)
-    ax2 = fig.add_subplot(gs[1, 1], sharex=ax_top)
-    ax3 = fig.add_subplot(gs[2, 0], sharex=ax_top)
-    ax4 = fig.add_subplot(gs[2, 1], sharex=ax_top)
-    axes_small = [ax1, ax2, ax3, ax4]
+    if "BP" in types:
+        plot_types.append("BP")
+
+    if "HR" in types:
+        plot_types.append("HR")
+
+    if any(v in types for v in ["WT", "BMI", "BSA"]):
+        plot_types.append("WEIGHT")
+
+    if "EF_B" in types:
+        plot_types.append("EF_B")
+
+    if "EGFR" in types:
+        plot_types.append("EGFR")
+
+    if not plot_types:
+        return tr(
+            label="No Plot Data",
+            send_to_ai=False,
+            query_results="No plottable vitals were requested.",
+            save_results="No plottable vitals were requested.",
+        )
+
+    fig, axes = plt.subplots(
+        len(plot_types),
+        1,
+        figsize=(14, 4 * len(plot_types)),
+        squeeze=False
+    )
+
+    axes = axes.flatten()
 
     # Draw vertical boxes to highlight meds
-    med_dates = plot_vals["MEDS_dates"]
-    med_text = plot_vals["MEDS_data"]
-    box_width_days = 2
-    for d in med_dates:
-        if isinstance(d, str):
-            d = dt.date.fromisoformat(d[:10])
-        for plot in [ax_top, ax1, ax2, ax3, ax4]:
-            plot.axvspan(
-                d - dt.timedelta(days=box_width_days/2),
-                d + dt.timedelta(days=box_width_days/2),
-                color='lightgray',
-                alpha=0.3
-            )
+    if "MEDS" in types:
+        med_dates = plot_vals["MEDS_dates"]
+        med_text = plot_vals["MEDS_data"]
+        box_width_days = 2
+        for d in med_dates:
+            if isinstance(d, str):
+                d = dt.date.fromisoformat(d[:10])
+            for plot in axes:
+                plot.axvspan(
+                    d - dt.timedelta(days=box_width_days/2),
+                    d + dt.timedelta(days=box_width_days/2),
+                    color='lightgray',
+                    alpha=0.3
+                )
 
-    # For each med, add an invisible tall scatter
-    med_scatter = ax_top.scatter(
-        med_dates,
-        [ax_top.get_ylim()[1]/2] * len(med_dates),
-        s=120000,      
-        alpha=0,
-        picker=10,
-        marker='|'
-    )
+        # For each med, add an invisible tall scatter
+        med_scatter = axes[0].scatter(
+            med_dates,
+            [axes[0].get_ylim()[1]/2] * len(med_dates),
+            s=120000,      
+            alpha=0,
+            picker=10,
+            marker='|'
+        )
 
-    # Add meds annotation boxes
-    annot = ax_top.annotate(
-        "",
-        xy=(0, 0),
-        xytext=(10, 10),
-        textcoords="offset points",
-        bbox=dict(boxstyle="round", fc="w", ec="0.5"),
-        arrowprops=dict(arrowstyle="->"),
-    )
-    annot.set_wrap(True)
-    annot.set_visible(False)
+        # Add meds annotation boxes
+        annot = axes[0].annotate(
+            "",
+            xy=(0, 0),
+            xytext=(10, 10),
+            textcoords="offset points",
+            bbox=dict(boxstyle="round", fc="w", ec="0.5"),
+            arrowprops=dict(arrowstyle="->"),
+        )
+        annot.set_wrap(True)
+        annot.set_visible(False)
 
-    def on_move(event):
-        """On hover function to display meds text"""
-        if event.inaxes != ax_top:
-            if annot.get_visible():
-                annot.set_visible(False)
-                fig.canvas.draw_idle()
-            return
+        def on_move(event):
+            """On hover function to display meds text"""
+            if event.inaxes != axes[0]:
+                if annot.get_visible():
+                    annot.set_visible(False)
+                    fig.canvas.draw_idle()
+                return
 
-        cont, ind = med_scatter.contains(event)
-        if cont:
-            idx = ind["ind"][0]
-            annot.xy = (med_dates[idx], 1)
-            annot.set_text(wrap_text(med_text[idx]))
-            if not annot.get_visible():
-                annot.set_visible(True)
-                fig.canvas.draw_idle()
-        else:
-            if annot.get_visible():
-                annot.set_visible(False)
-                fig.canvas.draw_idle()
-    fig.canvas.mpl_connect("motion_notify_event", on_move)
+            cont, ind = med_scatter.contains(event)
+            if cont:
+                idx = ind["ind"][0]
+                annot.xy = (med_dates[idx], 1)
+                annot.set_text(wrap_text(med_text[idx]))
+                if not annot.get_visible():
+                    annot.set_visible(True)
+                    fig.canvas.draw_idle()
+            else:
+                if annot.get_visible():
+                    annot.set_visible(False)
+                    fig.canvas.draw_idle()
+        fig.canvas.mpl_connect("motion_notify_event", on_move)
 
 
     # Plotting
-    ax_top.plot(plot_vals["BP_dates"], plot_vals["BP_data"][0], label="SBP", color='tab:red', linewidth=2)
-    ax_top.plot(plot_vals["BP_dates"], plot_vals["BP_data"][1], label="DBP", color="tab:blue", linewidth=2)
+    for ax, plot_type in zip(axes, plot_types):
+        if plot_type == "BP":
+            ax.plot(
+                plot_vals["BP_dates"],
+                plot_vals["BP_data"][0],
+                label="Systolic"
+            )
 
-    ax1.plot(plot_vals["HR_dates"], plot_vals["HR_data"], color='tab:blue')
-    ax2.plot(plot_vals["WT_dates"], plot_vals["WT_data"], color='tab:green')
-    ax3.plot(plot_vals["EF_B_dates"], plot_vals["EF_B_data"], color='tab:orange')
-    ax4.plot(plot_vals["EGFR_dates"], plot_vals["EGFR_data"], color='tab:purple')
+            ax.plot(
+                plot_vals["BP_dates"],
+                plot_vals["BP_data"][1],
+                label="Diastolic"
+            )
 
-    ax_top.set_title("BP")
-    ax_top.set_ylabel("mmHg")
-    ax_top.legend()
+            ax.set_title("Blood Pressure")
+            ax.set_ylabel("mmHg")
+            ax.legend()
 
-    ax1.set_title("Heart Rate")
-    ax1.set_ylabel("BPM")
+        elif plot_type == "HR":
+            ax.plot(
+                plot_vals["HR_dates"],
+                plot_vals["HR_data"],
+                label="Heart Rate"
+            )
 
-    ax2.set_title("Weight")
-    ax2.set_ylabel("Kg")
+            ax.set_title("Heart Rate")
+            ax.set_ylabel("BPM")
 
-    ax3.set_title("EF")
-    ax3.set_ylabel("%")
+        elif plot_type == "WEIGHT":
+            if "WT" in types:
+                ax.plot(
+                    plot_vals["WT_dates"],
+                    plot_vals["WT_data"],
+                    label="Weight"
+                )
 
-    ax4.set_title("eGFR")
-    ax4.set_ylabel("mL/min/1.73 m²")
+            if "BMI" in types:
+                ax.plot(
+                    plot_vals["BMI_dates"],
+                    plot_vals["BMI_data"],
+                    label="BMI"
+                )
+
+            if "BSA" in types:
+                ax.plot(
+                    plot_vals["BSA_dates"],
+                    plot_vals["BSA_data"],
+                    label="BSA"
+                )
+
+            ax.set_title("Weight / BMI / BSA")
+            ax.legend()
+
+        elif plot_type == "EF_B":
+            ax.plot(
+                plot_vals["EF_B_dates"],
+                plot_vals["EF_B_data"],
+                label="Ejection Fraction"
+            )
+
+            ax.set_title("Ejection Fraction")
+            ax.set_ylabel("%")
+
+        elif plot_type == "EGFR":
+            ax.plot(
+                plot_vals["EGFR_dates"],
+                plot_vals["EGFR_data"],
+                label="eGFR"
+            )
+
+            ax.set_title("eGFR")
+            ax.set_ylabel("mL/min/1.73m²")
+
+    for ax in axes:
+        ax.set_xlabel("Date")
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    for ax, plot_type in zip(axes, plot_types):
+        if plot_type == "BP":
+            ax.set_title("BP")
+            ax.set_ylabel("mmHg")
+            ax.legend()
+
+        elif plot_type == "HR":
+            ax.set_title("Heart Rate")
+            ax.set_ylabel("BPM")
+
+        elif plot_type == "WEIGHT":
+            ax.set_title("Weight")
+            ax.set_ylabel("Kg")
+
+        elif plot_type == "EF_B":
+            ax.set_title("EF")
+            ax.set_ylabel("%")
+
+        elif plot_type == "EGFR":
+            ax.set_title("eGFR")
+            ax.set_ylabel("mL/min/1.73 m²")
 
     #for ax in axes_small:
     #    plt.setp(ax.get_xticklabels(), visible=False)
@@ -884,36 +999,43 @@ def vitals_overview(db_conn, demo_no : str, trend : bool = False):
         print(f"Unable to open plot: {e}")
 
     to_send = []
-    for key, val in sections.items():
-        for v in val:
-            print(f"{v}: {plot_vals[f'{v}_data']}")
-            if not plot_vals[f'{v}_data']:
-                continue
-            if v == "BP":
-                for i in range(len(plot_vals[f'{v}_data'][0])):
-                    to_send.append({
-                        "Type": v,
-                        "Data": f"{plot_vals[f'{v}_data'][0][i]}/{plot_vals[f'{v}_data'][1][i]}",
-                        "Date": plot_vals[f'{v}_dates'][i],
-                    })
-            elif v == "MEDS":
-                for i in range(len(plot_vals[f'{v}_data'])):
-                    to_send.append({
-                        "Type": v,
-                        "Data": wrap_text(plot_vals[f'{v}_data'][i]),
-                        "Date": plot_vals[f'{v}_dates'][i],
-                    })
-            else:
-                for i in range(len(plot_vals[f'{v}_data'])):
-                    to_send.append({
-                        "Type": v,
-                        "Data": plot_vals[f'{v}_data'][i],
-                        "Date": plot_vals[f'{v}_dates'][i],
-                    })
+
+    for v in types:
+        print(f"{v}: {plot_vals[f'{v}_data']}")
+
+        if not plot_vals[f"{v}_data"]:
+            continue
+
+        if v == "BP":
+            for i in range(len(plot_vals["BP_data"][0])):
+                to_send.append({
+                    "Type": v,
+                    "Data": (
+                        f"{plot_vals['BP_data'][0][i]}/"
+                        f"{plot_vals['BP_data'][1][i]}"
+                    ),
+                    "Date": plot_vals["BP_dates"][i],
+                })
+
+        elif v == "MEDS":
+            for i in range(len(plot_vals["MEDS_data"])):
+                to_send.append({
+                    "Type": v,
+                    "Data": wrap_text(plot_vals["MEDS_data"][i]),
+                    "Date": plot_vals["MEDS_dates"][i],
+                })
+
+        else:
+            for i in range(len(plot_vals[f"{v}_data"])):
+                to_send.append({
+                    "Type": v,
+                    "Data": plot_vals[f"{v}_data"][i],
+                    "Date": plot_vals[f"{v}_dates"][i],
+                })
 
     return tr(
         label="Vitals Overview",
-        send_to_ai=False,
+        send_to_ai=True,
         query_results=to_send,
         save_results=to_send
     )
