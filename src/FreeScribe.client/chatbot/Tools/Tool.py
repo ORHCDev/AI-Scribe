@@ -94,6 +94,7 @@ class ToolReturn:
     send_to_ai: bool
     query_results: list[dict[str, str | int]] | str
     save_results: list[dict[str, str | int]] | str
+    followup_prompt: str | None = None
     
     def results_to_text(self, choice="query") -> str:
         """
