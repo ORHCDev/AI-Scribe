@@ -12,17 +12,28 @@ The chatbot currently runs each user query through a workflow. Each prompt is cl
 
 ### RAG Workflow
 
-The Retrieval Augmented Generation (RAG) architecture gives the LLM patient context to create a better response. The retrieved context comes from patient documents and measurements, along with results from tool calls.
+The Retrieval Augmented Generation (RAG) architecture gives the LLM patient context to create a better response. This workflow is now exclusive to document-related queries; structured data such as measurements is handled by the Oscar workflow.
 
 The process from querying the chatbot to getting a response flows like:
  1. Query chatbot.
  2. LLM is queried to create a string of keywords based on input and also identify the date relevancy.
- 3. Returned keyword string is used to do a vector search on the tool, document, and measurement embeddings.
+ 3. Returned keyword string is used to do a vector search on the tool and document embeddings.
  4. The highest scored embeddings are returned and re-ranked to find closest matching chunks (date relevancy is also weighed into new rank).
- 5. If any tools have been selected, execute them and save response. 
- 6. From the highest scoring to lowest, chunks are continually added to a follow up prompt until a context max limit is reached.
+ 5. If any tools have been selected, execute them and save response; tool selection is not restricted by category. 
+ 6. From the highest scoring to lowest, document chunks are continually added to a follow up prompt until a context max limit is reached.
  7. Send follow up to LLM that contains original User input and the highest scoring patient context. 
  8. LLM returns finally response which gets added to the chatbot log. 
+
+### Oscar Workflow
+
+The Oscar workflow handles patient-specific queries that require structured EMR data, such as measurements, laboratory results, vitals, trends, medications, appointments, demographics, and population lookups. Unlike the RAG workflow, it does not use the vector database at all.
+
+The process from querying the chatbot to getting a response flows like:
+ 1. Query chatbot.
+ 2. LLM is queried to classify the question into a data category, measurement types, and mode.
+ 3. The full tool registry is offered to the LLM, which selects and calls the tools it needs.
+ 4. Tool results are collected and sent to a follow up LLM call along with the original User input.
+ 5. LLM returns the final response which gets added to the chatbot log.
 
 ### General Workflow
 
