@@ -266,6 +266,8 @@ class RAGWorkflow(Workflow):
                         args["db_conn"] = context.db_conn
                     if "vec_search" in sig:
                         args["vec_search"] = context.vec_search
+                    if "oscar" in sig:
+                        args["oscar"] = context.oscar
                     res = context.tools.execute_tool(name, **args)
                     tools_tried.append(name)
                     instruction = f"{tool_obj.context}\n" if tool_obj.context else ""
