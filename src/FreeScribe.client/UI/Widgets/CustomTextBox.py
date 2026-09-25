@@ -55,7 +55,8 @@ class CustomTextBox(tk.Frame):
         self.med_hist_callback = None
         self.consult_callback = None
         self.consult_and_mh_callback = None
-        self.consult_complete_callback = None
+        self.consult_complete_append_callback = None
+        self.consult_complete_overwrite_callback = None
         self.get_eform_callback = None
         self.download_callback = None
         self.cancel_callback = None
@@ -78,10 +79,18 @@ class CustomTextBox(tk.Frame):
             borderwidth=1
         )
 
-        self.consult_complete_button = tk.Button(
+        self.consult_complete_append_button = tk.Button(
             self.button_frame,
-            text="Insert Complete Consult",
-            command=self._consult_complete,
+            text="Append Complete Consult",
+            command=self._consult_complete_append,
+            relief="raised",
+            borderwidth=1
+        )
+
+        self.consult_complete_overwrite_button = tk.Button(
+            self.button_frame,
+            text="Overwrite Complete Consult",
+            command=self._consult_complete_overwrite,
             relief="raised",
             borderwidth=1
         )
@@ -132,7 +141,8 @@ class CustomTextBox(tk.Frame):
             self.med_hist_button,
             self.consult_button,
             self.consult_and_mh_button,
-            self.consult_complete_button,
+            self.consult_complete_append_button,
+            self.consult_complete_overwrite_button,
             self.get_eforms_button,
             self.download_button,
             self.cancel_button,
@@ -202,16 +212,27 @@ class CustomTextBox(tk.Frame):
         if self.consult_and_mh_callback:
             self.consult_and_mh_callback()
 
-    # Complete consult button
-    def set_consult_complete_callback(self, callback):
-        self.consult_complete_callback = callback
+    # Append complete consult button
+    def set_consult_complete_append_callback(self, callback):
+        self.consult_complete_append_callback = callback
 
-        if self.consult_complete_callback:
-            self._show_button(self.consult_complete_button)
+        if self.consult_complete_append_callback:
+            self._show_button(self.consult_complete_append_button)
 
-    def _consult_complete(self):
-        if self.consult_complete_callback:
-            self.consult_complete_callback()
+    def _consult_complete_append(self):
+        if self.consult_complete_append_callback:
+            self.consult_complete_append_callback()
+
+    # Overwrite complete consult button
+    def set_consult_complete_overwrite_callback(self, callback):
+        self.consult_complete_overwrite_callback = callback
+
+        if self.consult_complete_overwrite_callback:
+            self._show_button(self.consult_complete_overwrite_button)
+
+    def _consult_complete_overwrite(self):
+        if self.consult_complete_overwrite_callback:
+            self.consult_complete_overwrite_callback()
 
     # E-Forms button
     def set_get_eforms_callback(self, callback):
