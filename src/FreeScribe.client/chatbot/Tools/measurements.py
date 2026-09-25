@@ -236,6 +236,81 @@ def get_measurement_history(db_conn, demo_no : str, test_names : list[str], plot
     )
 
 
+_TREND_TYPES = {
+    "ef": "EF_B", "ejection fraction": "EF_B", "ef_b": "EF_B", "lvef": "EF_B",
+    "bp": "BP", "blood pressure": "BP",
+    "hr": "HR", "heart rate": "HR", "pulse": "HR",
+    "weight": "WT", "wt": "WT", "bmi": "BMI", "bsa": "BSA",
+    "a1c": "A1C", "hba1c": "A1C",
+    "ldl": "LDL", "hdl": "HDL", "tg": "TG", "triglycerides": "TG",
+    "cholesterol": "TCHL", "tchl": "TCHL", "total cholesterol": "TCHL",
+    "egfr": "EGFR", "crcl": "CRCL", "creatinine clearance": "CRCL",
+    "hgb": "HGB", "hemoglobin": "HGB", "hct": "HCT", "hematocrit": "HCT",
+    "inr": "INR", "fbs": "FBS", "glucose": "FBS",
+    "potassium": "KPL", "sodium": "NAPL",
+}
+
+
+@tool(
+    category="measurements",
+    description=(
+        "Trends a single NUMERIC measurement over time for a patient: returns the historical "
+        "data points (value and date) as a table AND opens Oscar's own trend graph for that "
+        "measurement. Use for questions like 'EF over time', 'A1C trend', 'graph the blood "
+        "pressure', 'plot the weight'. Only for numeric measurements such as EF, BP, HR, weight, "
+        "BMI, A1C, LDL, HDL, EGFR, INR; narrative types like ECG or echo reports have no numeric trend."
+    ),
+    context="Here are the historical data points for the measurement; Oscar's trend graph has also been displayed:",
+    parameters={
+        "demo_no": "Patient's demographic number",
+        "measurement": "The numeric measurement to trend, e.g. 'EF', 'BP', 'A1C', 'LDL'",
+    },
+)
+def get_measurement_trend(db_conn, demo_no : str, measurement : str):
+    key = str(measurement).strip().lower()
+    mtype = _TREND_TYPES.get(key, str(measurement).strip().upper())
+
+    query = f"""
+    SELECT type AS "Type", dataField AS "Data", DATE(dateObserved) AS "Date"
+    FROM measurements
+    WHERE demographicNo = {demo_no} AND type = '{mtype}'
+    GROUP BY type, dataField, DATE(dateObserved)
+    ORDER BY dateObserved DESC;
+    """
+    res = db_conn.query_database(query)
+
+    driver = getattr(db_conn, "driver", None)
+    oscar_url = getattr(db_conn, "oscar_url", None)
+    if driver is not None and oscar_url:
+        try:
+            url = f"{oscar_url}oscarEncounter/GraphMeasurements.do?demographic_no={demo_no}&type={mtype}"
+            driver.get(url)
+            png = driver.get_screenshot_as_png()
+            save_path = os.path.join(os.getcwd(), "reports")
+            os.makedirs(save_path, exist_ok=True)
+            filename = os.path.join(save_path, f"{demo_no}_{mtype}_trend.png")
+            with open(filename, "wb") as f:
+                f.write(png)
+            print(f"Trend graph saved to {filename}")
+            try:
+                webbrowser.open(os.path.abspath(filename))
+            except Exception as e:
+                print(f"Unable to open trend graph: {e}")
+        except Exception as e:
+            print(f"Unable to capture Oscar trend graph: {e}")
+
+    if not res:
+        msg = f"No {mtype} measurements found for this patient."
+        return tr(label=f"Trend for {mtype}", send_to_ai=True, query_results=msg, save_results=msg)
+
+    return tr(
+        label=f"Trend for {mtype}",
+        send_to_ai=False,
+        query_results=res,
+        save_results=res,
+    )
+
+
 """@tool(
     category="measurements",
     description=(
