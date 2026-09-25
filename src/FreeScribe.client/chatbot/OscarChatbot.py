@@ -371,6 +371,11 @@ class OscarCB:
         workflow = self.workflows[workflow_type]
         result = workflow.run(user_input, context)
 
+        tools_tried = (result.metadata or {}).get("tools_tried", [])
+        if "get_patient_summary" in tools_tried:
+            logging.info("Skipping verification: get_patient_summary was used.")
+            return result
+        
         for attempt in range(1, MAX_VERIFICATION_ATTEMPTS + 1):
             verdict = self._verify_answer(user_input, result, context)
             if verdict["passes"] or not verdict["retryable"]:

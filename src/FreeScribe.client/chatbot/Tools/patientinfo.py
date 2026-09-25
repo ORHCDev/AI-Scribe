@@ -1,5 +1,109 @@
 from chatbot.Tools.Tool import tool, ToolReturn as tr
+from utils.read_files import pdf_image_to_text
 
+@tool(
+    category="patientinfo",
+    description=(
+        "Summarizes a specific patient."
+    ),
+    context="Summary of patient",
+    parameters={
+        "demo_no": "Patient demographic number used to uniquely identify the patient in the EMR"
+    }
+)
+def get_patient_summary(db_conn, oscar, demo_no : str):
+    query = f"""
+    SELECT 
+        cd.document_no,
+        d.doctype,
+        d.docdesc,
+        d.observationdate
+    FROM ctl_document AS cd
+    LEFT JOIN document AS d
+        ON cd.document_no = d.document_no
+    WHERE cd.module = "demographic"
+        AND cd.module_id = {demo_no}
+    ORDER BY d.observationdate DESC;
+    """
+
+    res = db_conn.query_database(query)
+
+    # Use default document types
+    doc_names = ["DC summary", "CATH"]
+
+    # Find most recent matching document of each requested type
+    doc_nos = []
+    doc_data = {}
+
+    for doc in doc_names:
+        for row in res:
+            row_type = row.get("doctype")
+            doc_no = row.get("document_no")
+            obs_date = row.get("observationdate")
+
+            if row_type and doc.lower() == row_type.lower():
+                if doc_no not in doc_nos:
+                    doc_nos.append(doc_no)
+                    doc_data[doc_no] = (row_type, obs_date)
+                    break
+
+    text = ""
+
+    # Extract document text
+    for doc_no in doc_nos:
+        try:
+            pdf_bytes = oscar.get_document_bytes(doc_no)
+            doc_text = pdf_image_to_text(
+                pdf_bytes=pdf_bytes,
+                last_page=3
+            )
+
+            doc_type, obs_date = doc_data[doc_no]
+
+            text += (
+                f"DOCUMENT TYPE: {doc_type}\n"
+                f"OBSERVATION DATE: {obs_date}\n"
+                f"{doc_text}\n"
+            )
+
+        except Exception as e:
+            print(f"Error when reading text from {doc_no}: {e}")
+
+    # Get most recent 0letter
+    query = f"""
+    SELECT
+        fdid,
+        fid,
+        form_name,
+        form_date,
+        demographic_no
+    FROM eform_data
+    WHERE demographic_no = {demo_no}
+      AND form_name LIKE '%letter%'
+    ORDER BY form_date DESC
+    LIMIT 1;
+    """
+
+    res = db_conn.query_database(query)
+
+    if res:
+        fdid = res[0]["fdid"]
+        date = res[0]["form_date"]
+
+        letter_text = oscar.get_0letter_text(fdid)
+
+        text += (
+            f"LETTER\n"
+            f"LETTER DATE: {date}\n"
+            f"{letter_text}\n"
+        )
+    
+    return tr(
+        label="Patient Summary",
+        send_to_ai=True,
+        query_results=text,
+        save_results=text,
+    )
 
 @tool(
     category="patientinfo",
@@ -12,7 +116,6 @@ from chatbot.Tools.Tool import tool, ToolReturn as tr
         "This tool is most relevant when answering questions about who the patient is, confirming identity details, "
         "verifying demographic attributes, retrieving contact information, or establishing patient context prior to "
         "reviewing clinical data such as medications, documents, or encounters. "
-        "This tool should be used when the user requests a general or overall summary of a certain patient."
     ),
     context="Patient demographic and registration-level information",
     parameters={
