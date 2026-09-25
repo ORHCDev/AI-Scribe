@@ -1118,206 +1118,238 @@ def generate_note(formatted_message):
                     json_response = json.loads(ai_response)
                     eform_selection_panel.set_referral_data(json_response)
 
-                elif prompt_type == "Consult Complete":
-                    total_start = time.perf_counter()
+                # elif prompt_type == "Consult Complete": # Old consult complete prompt; required more LLM calls
+                #     total_start = time.perf_counter()
 
-                    step_start = time.perf_counter()
-                    mh_prompt = ai_prompts.get("Medical History")
-                    mh_input = f"{mh_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}"
-                    consult_prompt = ai_prompts.get("consult")
-                    consult_input = f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}"
-                    print(f"[TIMING] Prompt preparation: {time.perf_counter() - step_start:.2f}s")
+                #     step_start = time.perf_counter()
+                #     mh_prompt = ai_prompts.get("Medical History")
+                #     mh_input = f"{mh_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}"
+                #     consult_prompt = ai_prompts.get("consult")
+                #     consult_input = f"{consult_prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}"
+                #     print(f"[TIMING] Prompt preparation: {time.perf_counter() - step_start:.2f}s")
+
+                #     step_start = time.perf_counter()
+                #     demo_no = info["demographic_no"]
+                #     measurement_query = f"""
+                #     SELECT *
+                #     FROM measurements
+                #     WHERE demographicNo = {demo_no}
+                #     AND (
+                #         type LIKE '%ECG%'
+                #         OR type LIKE '%ECHO%'
+                #     )
+                #     AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                #     ORDER BY type ASC, dateObserved DESC
+                #     """
+
+                #     with ThreadPoolExecutor(max_workers=3) as executor:
+                #         mh_future = executor.submit(send_text_to_chatgpt, mh_input)
+                #         consult_future = executor.submit(send_text_to_chatgpt, consult_input)
+                #         measurement_future = executor.submit(chatbot.db_conn.query_database, measurement_query)
+
+                #         mh_response = mh_future.result()
+                #         consult_response = consult_future.result()
+                #         measurement_results = measurement_future.result()
+
+                #     print(
+                #         f"[TIMING] Parallel MH + Consult + DB: "
+                #         f"{time.perf_counter() - step_start:.2f}s"
+                #     )
+
+                #     step_start = time.perf_counter()
+                #     ecg_results = []
+                #     echo_results = []
+                #     for result in measurement_results:
+                #         if "ECG" in result["type"].upper():
+                #             ecg_results.append(result)
+                #         elif "ECHO" in result["type"].upper():
+                #             echo_results.append(result)
+                #     print(f"ECG: {ecg_results}")
+                #     print(f"ECHO: {echo_results}")
+                #     print(f"[TIMING] ECG/ECHO processing: {time.perf_counter() - step_start:.2f}s")
+
+                #     '''
+                #     lab_results = {}
+                #     test_names = [
+                #         "SCR", "Napl", "Kpl", "MG", "ALT", "A1C", "TG", "TCHL",
+                #         "HDL", "LDL", "FBS", "EGFR", "CL", "HGB", "WBC", "INR"
+                #     ]
+                #     name_str = "'" + "', '".join(test_names) + "'"
+                #     lab_query = f"""
+                #     SELECT
+                #         m.type AS "Name",
+                #         m.dataField AS "Qty",
+                #         me.unit AS "Unit",
+                #         me.min AS "MIN",
+                #         me.max AS "MAX",
+                #         me.abnormal AS "Flag",
+                #         DATE(m.dateObserved) AS "Date Observed"
+                #     FROM measurements m
+                #     JOIN (
+                #         SELECT
+                #             type,
+                #             MAX(dateObserved) AS maxDate
+                #         FROM measurements
+                #         WHERE demographicNo = {demo_no}
+                #         AND type IN ({name_str})
+                #         AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                #         GROUP BY type
+                #     ) latest
+                #         ON m.type = latest.type
+                #     AND m.dateObserved = latest.maxDate
+                #     LEFT JOIN (
+                #         SELECT
+                #             me.measurement_id,
+                #             MAX(CASE WHEN me.keyval = 'minimum'  THEN me.val END) AS min,
+                #             MAX(CASE WHEN me.keyval = 'maximum'  THEN me.val END) AS max,
+                #             MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
+                #             MAX(CASE WHEN me.keyval = 'unit'     THEN me.val END) AS unit
+                #         FROM measurementsExt me
+                #         JOIN (
+                #             SELECT
+                #                 id
+                #             FROM measurements
+                #             WHERE demographicNo = {demo_no}
+                #             AND type IN ({name_str})
+                #             AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                #         ) relevant
+                #             ON relevant.id = me.measurement_id
+                #         GROUP BY me.measurement_id
+                #     ) me
+                #         ON me.measurement_id = m.id
+                #     WHERE m.demographicNo = {demo_no}
+                #     GROUP BY m.type, m.dataField, me.unit, me.min, me.max, me.abnormal, DATE(m.dateObserved)
+                #     ORDER BY m.type ASC;
+                #     """
+                #     lab_results = chatbot.db_conn.query_database(lab_query)
+                #     print(f"lab results: {lab_results}")
+
+                #     medication_query = f"""
+                #     SELECT *
+                #     FROM drugs
+                #     WHERE demographic_no = {demo_no}
+                #     AND (end_date is NULL OR end_date >= '{today}')
+                #     """
+                #     medication_results = chatbot.db_conn.query_database(medication_query)
+                #     print(f"medications: {medication_results}")
+                #     '''
+
+                #     """                    
+                #     - RISK FACTORS
+                #     - PAST CARDIAC HISTORY
+                #     - PAST MEDICAL HISTORY
+                #     - HISTORY OF PRESENT ILLNESS
+                #     - SOCIAL HISTORY *
+                #     - MEDICATIONS *
+                #     - ALLERGIES *
+                #     - EXAM *
+                #     - ECG
+                #     - ECHO
+                #     - LAB WORK *
+                #     - ASSESSMENT
+                #     - PLAN
+                #     """
+
+                #     step_start = time.perf_counter()
+                #     master_prompt = f"""
+                #     The following is part of a consultation/follow-up note to a patient's primary care physician:
+
+                #     {consult_response}
+
+                #     Your job is to add additional information to this note, in specific locations, maintaining the existing 
+                #     formatting. The resulting, complete note should have the following titled sections:
+                #     - RISK FACTORS
+                #     - PAST CARDIAC HISTORY
+                #     - PAST MEDICAL HISTORY
+                #     - HISTORY OF PRESENT ILLNESS
+                #     - ECG
+                #     - ECHO
+                #     - IMPRESSION/ASSESSMENT
+                #     - PLAN
+
+                #     The "HISTORY OF PRESENT ILLNESS", "IMPRESSION/ASSESSMENT" and "PLAN" sections may be kept as-is from 
+                #     the existing note provided earlier.
+
+                #     To complete the "RISK FACTORS", "PAST CARDIAC HISTORY" and "PAST MEDICAL HISTORY sections, use the 
+                #     following information. Ensure to write everything in paragraphs, rather than bullet points.
+
+                #     {mh_response}
+
+                #     To complete the "ECG" section, use only the following JSON. Ensure to write everything in full 
+                #     sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
+                #     Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
+                #     however do NOT reference the date/time of any observations, simply what the observations actually are.
+                    
+                #     {ecg_results}
+
+                #     To complete the "ECHO" section, use only the following JSON. Ensure to write everything in full 
+                #     sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
+                #     Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
+                #     however do NOT reference the date/time of any observations, simply what the observations actually are.
+                    
+                #     {echo_results}
+
+                #     Output the complete note.
+                #     """
+                #     master_response = send_text_to_chatgpt(master_prompt)
+                #     print(f"[TIMING] Master LLM: {time.perf_counter() - step_start:.2f}s")
+
+                #     step_start = time.perf_counter()
+                #     update_gui_with_response(master_response)
+                #     print(f"[TIMING] GUI update: {time.perf_counter() - step_start:.2f}s")
+
+                #     print(
+                #         f"[TIMING] TOTAL Consult Complete: "
+                #         f"{time.perf_counter() - total_start:.2f}s"
+                #     )
+
+                elif prompt_type == "Consult Complete" or prompt_type == "Consult Complete + MH":
+                    total_start = time.perf_counter()
 
                     step_start = time.perf_counter()
                     demo_no = info["demographic_no"]
                     measurement_query = f"""
-                    SELECT *
-                    FROM measurements
-                    WHERE demographicNo = {demo_no}
-                    AND (
-                        type LIKE '%ECG%'
-                        OR type LIKE '%ECHO%'
-                    )
-                    AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                    ORDER BY type ASC, dateObserved DESC
-                    """
-
-                    with ThreadPoolExecutor(max_workers=3) as executor:
-                        mh_future = executor.submit(send_text_to_chatgpt, mh_input)
-                        consult_future = executor.submit(send_text_to_chatgpt, consult_input)
-                        measurement_future = executor.submit(chatbot.db_conn.query_database, measurement_query)
-
-                        mh_response = mh_future.result()
-                        consult_response = consult_future.result()
-                        measurement_results = measurement_future.result()
-
-                    print(
-                        f"[TIMING] Parallel MH + Consult + DB: "
-                        f"{time.perf_counter() - step_start:.2f}s"
-                    )
-
-                    step_start = time.perf_counter()
-                    ecg_results = []
-                    echo_results = []
-                    for result in measurement_results:
-                        if "ECG" in result["type"].upper():
-                            ecg_results.append(result)
-                        elif "ECHO" in result["type"].upper():
-                            echo_results.append(result)
-                    print(f"ECG: {ecg_results}")
-                    print(f"ECHO: {echo_results}")
-                    print(f"[TIMING] ECG/ECHO processing: {time.perf_counter() - step_start:.2f}s")
-
-                    '''
-                    lab_results = {}
-                    test_names = [
-                        "SCR", "Napl", "Kpl", "MG", "ALT", "A1C", "TG", "TCHL",
-                        "HDL", "LDL", "FBS", "EGFR", "CL", "HGB", "WBC", "INR"
-                    ]
-                    name_str = "'" + "', '".join(test_names) + "'"
-                    lab_query = f"""
-                    SELECT
-                        m.type AS "Name",
-                        m.dataField AS "Qty",
-                        me.unit AS "Unit",
-                        me.min AS "MIN",
-                        me.max AS "MAX",
-                        me.abnormal AS "Flag",
-                        DATE(m.dateObserved) AS "Date Observed"
+                    SELECT m.*
                     FROM measurements m
                     JOIN (
                         SELECT
-                            type,
-                            MAX(dateObserved) AS maxDate
-                        FROM measurements
-                        WHERE demographicNo = {demo_no}
-                        AND type IN ({name_str})
-                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                        GROUP BY type
-                    ) latest
-                        ON m.type = latest.type
-                    AND m.dateObserved = latest.maxDate
-                    LEFT JOIN (
-                        SELECT
-                            me.measurement_id,
-                            MAX(CASE WHEN me.keyval = 'minimum'  THEN me.val END) AS min,
-                            MAX(CASE WHEN me.keyval = 'maximum'  THEN me.val END) AS max,
-                            MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
-                            MAX(CASE WHEN me.keyval = 'unit'     THEN me.val END) AS unit
-                        FROM measurementsExt me
-                        JOIN (
+                            type_group,
+                            MAX(DATE(dateObserved)) AS latest_date
+                        FROM (
                             SELECT
-                                id
+                                CASE
+                                    WHEN type REGEXP 'ECG' THEN 'ECG'
+                                    WHEN type REGEXP 'ECHO' THEN 'ECHO'
+                                END AS type_group,
+                                dateObserved
                             FROM measurements
                             WHERE demographicNo = {demo_no}
-                            AND type IN ({name_str})
+                            AND (
+                                type REGEXP 'ECG'
+                                OR type REGEXP 'ECHO'
+                            )
                             AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                        ) relevant
-                            ON relevant.id = me.measurement_id
-                        GROUP BY me.measurement_id
-                    ) me
-                        ON me.measurement_id = m.id
+                        ) grouped
+                        GROUP BY type_group
+                    ) latest
+                        ON (
+                            (m.type REGEXP 'ECG' AND latest.type_group = 'ECG')
+                            OR
+                            (m.type REGEXP 'ECHO' AND latest.type_group = 'ECHO')
+                        )
+                        AND DATE(m.dateObserved) = latest.latest_date
                     WHERE m.demographicNo = {demo_no}
-                    GROUP BY m.type, m.dataField, me.unit, me.min, me.max, me.abnormal, DATE(m.dateObserved)
-                    ORDER BY m.type ASC;
-                    """
-                    lab_results = chatbot.db_conn.query_database(lab_query)
-                    print(f"lab results: {lab_results}")
-
-                    medication_query = f"""
-                    SELECT *
-                    FROM drugs
-                    WHERE demographic_no = {demo_no}
-                    AND (end_date is NULL OR end_date >= '{today}')
-                    """
-                    medication_results = chatbot.db_conn.query_database(medication_query)
-                    print(f"medications: {medication_results}")
-                    '''
-
-                    """                    
-                    - RISK FACTORS
-                    - PAST CARDIAC HISTORY
-                    - PAST MEDICAL HISTORY
-                    - HISTORY OF PRESENT ILLNESS
-                    - SOCIAL HISTORY *
-                    - MEDICATIONS *
-                    - ALLERGIES *
-                    - EXAM *
-                    - ECG
-                    - ECHO
-                    - LAB WORK *
-                    - ASSESSMENT
-                    - PLAN
-                    """
-
-                    step_start = time.perf_counter()
-                    master_prompt = f"""
-                    The following is part of a consultation/follow-up note to a patient's primary care physician:
-
-                    {consult_response}
-
-                    Your job is to add additional information to this note, in specific locations, maintaining the existing 
-                    formatting. The resulting, complete note should have the following titled sections:
-                    - RISK FACTORS
-                    - PAST CARDIAC HISTORY
-                    - PAST MEDICAL HISTORY
-                    - HISTORY OF PRESENT ILLNESS
-                    - ECG
-                    - ECHO
-                    - IMPRESSION/ASSESSMENT
-                    - PLAN
-
-                    The "HISTORY OF PRESENT ILLNESS", "IMPRESSION/ASSESSMENT" and "PLAN" sections may be kept as-is from 
-                    the existing note provided earlier.
-
-                    To complete the "RISK FACTORS", "PAST CARDIAC HISTORY" and "PAST MEDICAL HISTORY sections, use the 
-                    following information. Ensure to write everything in paragraphs, rather than bullet points.
-
-                    {mh_response}
-
-                    To complete the "ECG" section, use only the following JSON. Ensure to write everything in full 
-                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations, simply what the observations actually are.
-                    
-                    {ecg_results}
-
-                    To complete the "ECHO" section, use only the following JSON. Ensure to write everything in full 
-                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations, simply what the observations actually are.
-                    
-                    {echo_results}
-
-                    Output the complete note.
-                    """
-                    master_response = send_text_to_chatgpt(master_prompt)
-                    print(f"[TIMING] Master LLM: {time.perf_counter() - step_start:.2f}s")
-
-                    step_start = time.perf_counter()
-                    update_gui_with_response(master_response)
-                    print(f"[TIMING] GUI update: {time.perf_counter() - step_start:.2f}s")
-
-                    print(
-                        f"[TIMING] TOTAL Consult Complete: "
-                        f"{time.perf_counter() - total_start:.2f}s"
-                    )
-
-                elif prompt_type == "Consult Complete (Fast)":
-                    total_start = time.perf_counter()
-
-                    step_start = time.perf_counter()
-                    demo_no = info["demographic_no"]
-                    measurement_query = f"""
-                    SELECT *
-                    FROM measurements
-                    WHERE demographicNo = {demo_no}
                     AND (
-                        type LIKE '%ECG%'
-                        OR type LIKE '%ECHO%'
+                        m.type REGEXP 'ECG'
+                        OR m.type REGEXP 'ECHO'
                     )
-                    AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                    ORDER BY type ASC, dateObserved DESC
+                    AND m.dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                    ORDER BY
+                        CASE
+                            WHEN m.type REGEXP 'ECG' THEN 1
+                            WHEN m.type REGEXP 'ECHO' THEN 2
+                        END,
+                        m.dateObserved DESC
                     """
                     measurement_results = chatbot.db_conn.query_database(measurement_query)
                     print(
@@ -1337,23 +1369,11 @@ def generate_note(formatted_message):
                     print(f"ECHO: {echo_results}")
                     print(f"[TIMING] ECG/ECHO processing: {time.perf_counter() - step_start:.2f}s")
 
-                    """                    
-                    - RISK FACTORS
-                    - PAST CARDIAC HISTORY
-                    - PAST MEDICAL HISTORY
-                    - HISTORY OF PRESENT ILLNESS
-                    - SOCIAL HISTORY *
-                    - MEDICATIONS *
-                    - ALLERGIES *
-                    - EXAM *
-                    - ECG
-                    - ECHO
-                    - LAB WORK *
-                    - ASSESSMENT
-                    - PLAN
-                    """
-
                     step_start = time.perf_counter()
+                    if prompt_type == "Consult Complete + MH":
+                        mh_sections = "\n- RISK FACTORS\n- PAST CARDIAC HISTORY\n- PAST MEDICAL HISTORY"
+                    else:
+                        mh_sections = ""
                     master_prompt = f"""
                     You are a board-certified cardiologist writing a concise, professional consultation or follow-up note to a primary care 
                     physician (family doctor) regarding a patient encounter. Synthesize the provided patient conversation transcript into a 
@@ -1389,11 +1409,9 @@ def generate_note(formatted_message):
 
                     Patient Conversation Transcript: [Insert the transcript of the conversation with the patient here]
                     
-                    Synthesize the above transcript into the following format.  This should be the only output:
-
-                    - RISK FACTORS
-                    - PAST CARDIAC HISTORY
-                    - PAST MEDICAL HISTORY
+                    Synthesize the above transcript into the following format.  Do not include any section that is not listed 
+                    below:
+                    {mh_sections}
                     - HISTORY OF PRESENT ILLNESS
                     - ECG
                     - ECHO
@@ -1407,22 +1425,24 @@ def generate_note(formatted_message):
                     "Date:", "Re:", or "Subject: Separate sections with paragraph breaks. Only include the sections outlined above (HISTORY OF 
                     PRESENT ILLNESS, IMPRESSION/ASSESSMENT and PLAN) in the output."
 
-                    To complete the "ECG" section, use only the following JSON. Ensure to write everything in full 
+                    To complete the "ECG" section, use ONLY the following JSON. Ensure to write everything in full 
                     sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
                     Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations, simply what the observations actually are.
+                    however do NOT reference the date/time of any observations or say "the ECG revealed...", simply what the 
+                    observations actually are.
                     
                     {ecg_results}
 
-                    To complete the "ECHO" section, use only the following JSON. Ensure to write everything in full 
+                    To complete the "ECHO" section, use ONLY the following JSON. Ensure to write everything in full 
                     sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
                     Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations, simply what the observations actually are.
+                    however do NOT reference the date/time of any observations or say "the echo revealed...", simply what the 
+                    observations actually are.
                     
                     {echo_results}
 
                     To complete the remaining sections, use the following information. Ensure to write everything in 
-                    paragraphs, rather than bullet points.
+                    paragraphs, rather than bullet points. Do NOT invent new sections that were not listed above.
 
                     {formatted_message}
 
@@ -1959,10 +1979,10 @@ def upload_consult_and_mh():
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid, consult, med_hist_resp)
     
-def upload_consult_complete():
+def upload_consult_complete(overwrite):
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     fdid = eform_selection_panel.get_most_recent_0letter()
-    oscar.insert_text_into_0letter_from_headings(fdid, text)
+    oscar.insert_text_into_0letter_from_headings(fdid, text, overwrite)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ROOT GRID
@@ -2162,7 +2182,7 @@ dropdown_label = tk.Label(scribe_frame, text="Select Prompt", font=("Arial", 8, 
 dropdown_label.grid(row=1, column=4, pady=(8, 0), sticky='sew')
 
 selected_prompt = tk.StringVar(value="Auto")
-values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete", "Consult Complete (Fast)"]
+values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete", "Consult Complete + MH"]
 prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
@@ -2224,7 +2244,8 @@ eform_selection_panel.grid_remove()
 #response_display.set_med_hist_callback(upload_medical_history)
 response_display.set_consult_callback(upload_consult)
 response_display.set_consult_and_mh_callback(upload_consult_and_mh)
-response_display.set_consult_complete_callback(upload_consult_complete)
+response_display.set_consult_complete_append_callback(lambda: upload_consult_complete(False))
+response_display.set_consult_complete_overwrite_callback(lambda: upload_consult_complete(True))
 response_display.set_get_eforms_callback(get_labs_from_response)
 response_display.set_download_callback(download_results)
 

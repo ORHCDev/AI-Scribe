@@ -548,7 +548,7 @@ class Oscar:
             print(f"error: {e}")
             return
 
-    def insert_text_into_0letter_from_headings(self, fdid, full_text):
+    def insert_text_into_0letter_from_headings(self, fdid, full_text, overwrite_existing):
         """
         Will input the given text into the most recent 0letter eform recorded
         in the patient's encounter page, according to the headings present.
@@ -562,10 +562,20 @@ class Oscar:
         def replace_section(heading, text):
             next_headings = HEADINGS[HEADINGS.index(heading) + 1:]
 
+            if not overwrite_existing:
+                focus_and_insert(heading, f"{heading}\n{text}")
+                return True
+
+            # When overwriting the final section, use the signature as the boundary
+            next_headings = HEADINGS[HEADINGS.index(heading) + 1:]
+            if not next_headings:
+                next_headings = ["Yours Sincerely,"]
+
             script = """
             const headingText = arguments[0];
             const newText = arguments[1];
             const nextHeadings = arguments[2];
+            const overwrite = arguments[3];
 
             const paras = Array.from(document.getElementsByTagName('p'));
 
@@ -577,27 +587,88 @@ class Oscar:
                 return false;
             }
 
-            const nextHeadingPara = paras.find(
-                p =>
+            // Append text only
+            if (!overwrite) {
+                const range = document.createRange();
+                range.selectNodeContents(headingPara);
+                range.collapse(false);
+
+                range.insertNode(document.createTextNode(newText));
+
+                return true;
+            }
+
+            // Overwrite existing text
+            const headingTextContent = headingPara.textContent;
+            const colonIndex = headingTextContent.indexOf(":");
+
+            if (colonIndex === -1) {
+                return false;
+            }
+
+            // Find next heading/signature
+            const headingIndex = paras.indexOf(headingPara);
+
+            let nextHeadingPara = null;
+
+            for (let i = headingIndex + 1; i < paras.length; i++) {
+                const paragraphText = paras[i].textContent.trim();
+
+                if (
                     nextHeadings.some(
-                        h => p.textContent.trim().startsWith(h)
+                        h => paragraphText.startsWith(h.trim())
                     )
+                ) {
+                    nextHeadingPara = paras[i];
+                    break;
+                }
+            }
+
+            // Find colon in current paragraph
+            const walker = document.createTreeWalker(
+                headingPara,
+                NodeFilter.SHOW_TEXT
             );
+
+            let node;
+            let currentOffset = 0;
+            let startNode = null;
+            let startOffset = 0;
+
+            while (node = walker.nextNode()) {
+                const colonPosition = node.textContent.indexOf(":");
+
+                if (colonPosition !== -1) {
+                    startNode = node;
+                    startOffset = colonPosition + 1;
+                    break;
+                }
+
+                currentOffset += node.textContent.length;
+            }
+
+            if (!startNode) {
+                return false;
+            }
 
             const range = document.createRange();
 
+            // Start immediately after the colon
+            range.setStart(startNode, startOffset);
+
+            // End immediately before the next heading/signature
             if (nextHeadingPara) {
-                range.setStartAfter(headingPara);
                 range.setEndBefore(nextHeadingPara);
             } else {
-                range.setStartAfter(headingPara);
+                // Expected boundary was not found
                 range.setEndAfter(headingPara);
             }
 
+            // Remove old section contents
             range.deleteContents();
 
-            const textNode = document.createTextNode(newText);
-            range.insertNode(textNode);
+            // Insert new section contents
+            range.insertNode(document.createTextNode(newText));
 
             return true;
             """
@@ -606,7 +677,8 @@ class Oscar:
                 script,
                 heading,
                 text,
-                next_headings
+                next_headings,
+                overwrite_existing
             )
 
         def focus_cursor_before(indicator):
@@ -692,11 +764,7 @@ class Oscar:
             # Insert present text
             for heading in HEADINGS:
                 if heading in parsed_sections:
-                    success = replace_section(
-                        heading,
-                        parsed_sections[heading]
-                    )
-
+                    success = replace_section(heading, parsed_sections[heading])
                     if success:
                         print(f"Inserted section {heading}")
 
