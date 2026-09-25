@@ -1,17 +1,7 @@
 from chatbot.Tools.Tool import tool, ToolReturn as tr
 from utils.read_files import pdf_image_to_text
 
-@tool(
-    category="patientinfo",
-    description=(
-        "Summarizes a specific patient."
-    ),
-    context="Summary of patient",
-    parameters={
-        "demo_no": "Patient demographic number used to uniquely identify the patient in the EMR"
-    }
-)
-def get_patient_summary(db_conn, oscar, demo_no : str):
+def get_patient_mh(db_conn, oscar, demo_no : str):
     query = f"""
     SELECT 
         cd.document_no,
@@ -97,13 +87,43 @@ def get_patient_summary(db_conn, oscar, demo_no : str):
             f"LETTER DATE: {date}\n"
             f"{letter_text}\n"
         )
-    
+
+    return text
+
+@tool(
+    category="patientinfo",
+    description="Summarizes a specific patient.",
+    context="Summary of patient",
+    parameters={
+        "demo_no": "Patient demographic number used to uniquely identify the patient in the EMR"
+    }
+)
+def get_patient_summary(db_conn, oscar, demo_no : str):
+    text = get_patient_mh(db_conn, oscar, demo_no)
     return tr(
         label="Patient Summary",
         send_to_ai=True,
         query_results=text,
         save_results=text,
         followup_prompt="Summarize the following information into two sentences: {text}"
+    )
+
+@tool(
+    category="patientinfo",
+    description="Gets a specific patient's active cardiac issues.",
+    context="Patient's cardiac issues",
+    parameters={
+        "demo_no": "Patient demographic number used to uniquely identify the patient in the EMR"
+    }
+)
+def get_patient_cardiac_issues(db_conn, oscar, demo_no : str):
+    text = get_patient_mh(db_conn, oscar, demo_no)
+    return tr(
+        label="Patient Summary",
+        send_to_ai=True,
+        query_results=text,
+        save_results=text,
+        followup_prompt="Extract the patient's active cardiac issues from this text: {text}"
     )
 
 @tool(
