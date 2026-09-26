@@ -108,6 +108,91 @@ def get_patient_summary(db_conn, oscar, demo_no : str):
         followup_prompt="Summarize the following information into two sentences: {text}"
     )
 
+
+@tool(
+    category="patientinfo",
+    description=(
+        "Summarizes what is NEW or has CHANGED for a patient since a given date or "
+        "since their previous visit: new lab/measurement results and newly uploaded "
+        "documents. Use this when the user asks what changed, what is new, what "
+        "happened, or what to review since the last time they saw the patient, or "
+        "since a specific date. Not a full patient summary and not a single latest value."
+    ),
+    context=(
+        "Here is what is new for the patient since the reference date. Group the answer "
+        "by New Measurements and New Documents, be concise, and state the reference date used."
+    ),
+    parameters={
+        "demo_no": "Patient demographic number",
+        "since_date": (
+            "Optional date in YYYY-MM-DD format. If omitted, the patient's most recent "
+            "past appointment date is used as the reference point."
+        ),
+    }
+)
+def get_patient_changes_since(db_conn, demo_no : str, since_date : str = ""):
+    """
+    Returns new measurements and documents recorded for a patient after a reference
+    date. The reference date is the caller-supplied since_date, else the patient's
+    most recent past appointment, else three months ago as a fallback.
+    """
+    anchor = str(since_date).strip()
+    anchor_source = "the date you specified"
+
+    if not anchor:
+        anchor_rows = db_conn.query_database(f"""
+        SELECT MAX(appointment_date) AS anchor
+        FROM appointment
+        WHERE demographic_no = {demo_no}
+          AND appointment_date < CURDATE();
+        """)
+        anchor = ""
+        if anchor_rows:
+            anchor = str(anchor_rows[0].get("anchor") or "").strip()
+        if anchor and anchor.lower() != "none":
+            anchor_source = "the patient's most recent past appointment"
+        else:
+            fallback_rows = db_conn.query_database(
+                "SELECT DATE_SUB(CURDATE(), INTERVAL 3 MONTH) AS anchor;"
+            )
+            anchor = str(fallback_rows[0].get("anchor")).strip() if fallback_rows else ""
+            anchor_source = "the last 3 months (no prior appointment on record)"
+
+    measurements = db_conn.query_database(f"""
+    SELECT type AS "Type", dataField AS "Value", DATE(dateObserved) AS "Date"
+    FROM measurements
+    WHERE demographicNo = {demo_no}
+      AND dateObserved > '{anchor}'
+    ORDER BY dateObserved DESC
+    LIMIT 10;
+    """)
+
+    documents = db_conn.query_database(f"""
+    SELECT d.doctype AS "Type", d.docdesc AS "Description", d.observationdate AS "Date"
+    FROM ctl_document AS cd
+    LEFT JOIN document AS d
+        ON cd.document_no = d.document_no
+    WHERE cd.module = "demographic"
+        AND cd.module_id = {demo_no}
+        AND d.observationdate > '{anchor}'
+    ORDER BY d.observationdate DESC
+    LIMIT 10;
+    """)
+
+    text = f"Reference date: {anchor} ({anchor_source}).\n\n"
+    text += "New Measurements:\n"
+    text += f"{measurements}\n\n" if measurements else "None since the reference date.\n\n"
+    text += "New Documents:\n"
+    text += f"{documents}\n" if documents else "None since the reference date.\n"
+
+    return tr(
+        label="Changes Since Last Visit",
+        send_to_ai=True,
+        query_results=text,
+        save_results=text
+    )
+
+
 @tool(
     category="patientinfo",
     description="Gets a specific patient's active cardiac issues.",
