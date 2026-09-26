@@ -6,7 +6,6 @@ print("Established chatbot")
 query = """
 SELECT type, COUNT(*) AS count
 FROM measurements
-WHERE type LIKE '%MEDS%'
 GROUP BY type
 ORDER BY type
 """
