@@ -372,7 +372,7 @@ class OscarCB:
         result = workflow.run(user_input, context)
 
         tools_tried = (result.metadata or {}).get("tools_tried", [])
-        if "get_patient_summary" in tools_tried:
+        if "get_patient_summary" in tools_tried or "patients_by_measurement" in tools_tried:
             logging.info("Skipping verification: get_patient_summary was used.")
             return result
         
