@@ -364,6 +364,9 @@ class OscarCB:
         previously failed tools excluded when verification says a different
         tool could do better.
 
+        A failed RAG search is retried through OscarWorkflow, since RAG itself
+        is single-pass and only handles documents.
+
         Verification is applied to every response produced here, including
         responses that never passed through an LLM (e.g. patient-clarification
         or error messages).
@@ -387,6 +390,13 @@ class OscarCB:
             attempted = (result.metadata or {}).get("tools_tried", []) if result.metadata else []
             context.excluded_tools = list(set(context.excluded_tools) | set(attempted))
             context.verification_feedback = verdict["reason"]
+
+            # RAGWorkflow is single-pass and document-only
+            if workflow_type == "rag_search":
+                workflow_type = "oscar_search"
+                workflow = self.workflows[workflow_type]
+                logging.info("RAG retry: routing to OscarWorkflow")
+
             logging.info(
                 f"Verification failed (attempt {attempt}/{MAX_VERIFICATION_ATTEMPTS}): "
                 f"{verdict['reason']}. Retrying with excluded tools {context.excluded_tools}"
