@@ -641,124 +641,29 @@ def get_recent_est_results(db_conn, demo_no : str):
     )
 
 
-'''@tool(
-    category="measurements",
-    description="Fetches and returns the patient's vitals.",
-    context="These are the patient's vitals results, organize them as a table:",
-    parameters={
-        "demo_no": "Patient's demographic number"
-    }
-)
-def get_patient_vitals(db_conn, demo_no : str):
-    """
-    Fetches and returns the patient's vitals like Blood Pressure, Heart Rate, Weight, and Height.
-
-    Params
-    ------
-    db_conn : SOQ | OscarDB
-        Database connection
-
-    demo_no : str
-        Patient's demographic number.
-    """
-
-    # Vitals to grab
-    names = [
-        'BP', 'HR', 'WT',
-        'HT', 
-    ]
-    name_str = "'" + "', '".join(names) + "'"
-
-    query = f"""
-    SELECT
-        m.type AS "Name",
-        m.dataField AS "Qty",
-        me.unit AS "Unit",
-        me.min AS "MIN",
-        me.max AS "MAX",
-        me.abnormal AS "Flag",
-        DATE(m.dateObserved) AS "Date Observed"
-    FROM measurements m
-    JOIN (
-        SELECT
-            type,
-            MAX(dateObserved) AS maxDate
-        FROM measurements
-        WHERE demographicNo = {demo_no}
-        AND type IN ({name_str})
-        GROUP BY type
-    ) latest
-        ON m.type = latest.type
-    AND m.dateObserved = latest.maxDate
-    LEFT JOIN (
-        SELECT
-            me.measurement_id,
-            MAX(CASE WHEN me.keyval = 'minimum'  THEN me.val END) AS min,
-            MAX(CASE WHEN me.keyval = 'maximum'  THEN me.val END) AS max,
-            MAX(CASE WHEN me.keyval = 'abnormal' THEN me.val END) AS abnormal,
-            MAX(CASE WHEN me.keyval = 'unit'     THEN me.val END) AS unit
-        FROM measurementsExt me
-        JOIN (
-            SELECT
-                id
-            FROM measurements
-            WHERE demographicNo = {demo_no}
-            AND type IN ({name_str})
-        ) relevant
-            ON relevant.id = me.measurement_id
-        GROUP BY me.measurement_id
-    ) me
-        ON me.measurement_id = m.id
-    WHERE m.demographicNo = {demo_no}
-    GROUP BY m.type, m.dataField, me.unit, me.min, me.max, me.abnormal, DATE(m.dateObserved)
-    ORDER BY m.type ASC;
-    """
-    
-    res = db_conn.query_database(query)
-    return tr(
-        label="Patient Vitals",
-        send_to_ai=False,
-        query_results=res,
-        save_results=res
-    )
-
-'''
-
-
 @tool(
     category="measurements",
     description=(
-        "Returns a patient's vital signs and key physiologic measurements, including blood "
+        "Lists a patient's vital signs and key physiologic measurements, including blood "
         "pressure, heart rate, weight, renal markers, cardiac function (e.g. EF), and medication events. "
         "By default returns the most recent value of each vital as a table. "
-        "Set trend to true only when the user asks to review, trend, graph, or plot these values "
-        "over time; this additionally produces visual time-series plots. "
         "This tool is most relevant for vital sign review, trend assessment, "
         "medication impact analysis, or clinical summary preparation."
     ),
-    context="These are the patient's vitals results, organize them as a table:",
+    context="List of the patient's vitals results",
     parameters={
         "demo_no": "Patient's demographic number",
         "relevant_vitals": (
             "A list of the specific measurements the user is asking about. "
             "Valid values are BP, HR, WT, BMI, BSA, EF_B, EGFR, CRCL, NAPL, KPL, HGB, HCT, A1C, and MEDS. "
             "Only include measurements relevant to the user's request."
-        ),
-        "trend": (
-            """Set to true only when the user asks to trend, plot, graph, or review the vitals over time. Defaults to """
-            """false, which returns the most recent value of each vital."""
         )
     }
 )
-def vitals_overview(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR", "BMI", "EF_B"], trend : bool = False):
+def get_patient_vitals(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR", "BMI", "EF_B"]):
     """
-    Returns the most recent values of a patient's vitals, or a historical trend
-    overview with plots when ``trend`` is true.
+    Returns the most recent values of a patient's vitals
     """
-
-    if isinstance(trend, str):
-        trend = trend.strip().lower() in ("true", "1", "yes", "trend")
-
     sections = {
         "bp": ["BP"],
         "hr": ["HR"],
@@ -781,45 +686,88 @@ def vitals_overview(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR"
 
     name_str = "'" + "', '".join(types) + "'"
 
-    if not trend:
-        query = f"""
+    query = f"""
+    SELECT
+        m.type AS "Type",
+        m.dataField AS "Data",
+        DATE(m.dateObserved) AS "Date"
+    FROM measurements m
+    JOIN (
         SELECT
-            m.type AS "Type",
-            m.dataField AS "Data",
-            DATE(m.dateObserved) AS "Date"
-        FROM measurements m
-        JOIN (
-            SELECT
-                type,
-                MAX(dateObserved) AS maxDate
-            FROM measurements
-            WHERE demographicNo = {demo_no}
-            AND type IN ({name_str})
-            GROUP BY type
-        ) latest
-            ON m.type = latest.type
-            AND m.dateObserved = latest.maxDate
-        WHERE m.demographicNo = {demo_no}
-        GROUP BY m.type, m.dataField, DATE(m.dateObserved)
-        ORDER BY m.type ASC;
-        """
+            type,
+            MAX(dateObserved) AS maxDate
+        FROM measurements
+        WHERE demographicNo = {demo_no}
+        AND type IN ({name_str})
+        GROUP BY type
+    ) latest
+        ON m.type = latest.type
+        AND m.dateObserved = latest.maxDate
+    WHERE m.demographicNo = {demo_no}
+    GROUP BY m.type, m.dataField, DATE(m.dateObserved)
+    ORDER BY m.type ASC;
+    """
 
-        res = db_conn.query_database(query)
-        to_send = [
-            {
-                "Type": row["Type"],
-                "Data": wrap_text(row["Data"]) if str(row["Type"]).upper() == "MEDS" else row["Data"],
-                "Date": row["Date"],
-            }
-            for row in res
-        ]
+    res = db_conn.query_database(query)
+    to_send = [
+        {
+            "Type": row["Type"],
+            "Data": wrap_text(row["Data"]) if str(row["Type"]).upper() == "MEDS" else row["Data"],
+            "Date": row["Date"],
+        }
+        for row in res
+    ]
 
-        return tr(
-            label="Latest Vitals",
-            send_to_ai=False,
-            query_results=to_send,
-            save_results=to_send,
+    return tr(
+        label="Latest Vitals",
+        send_to_ai=False,
+        query_results=to_send,
+        save_results=to_send,
+    )
+
+@tool(
+    category="measurements",
+    description=(
+        "Plots a patient's vital signs and key physiologic measurements, including blood "
+        "pressure, heart rate, weight, renal markers, cardiac function (e.g. EF), and medication events. "
+        "This tool is most relevant for vital sign review, trend assessment, "
+        "medication impact analysis, or clinical summary preparation."
+    ),
+    context="Patient's vital results",
+    parameters={
+        "demo_no": "Patient's demographic number",
+        "relevant_vitals": (
+            "A list of the specific measurements the user is asking about. "
+            "Valid values are BP, HR, WT, BMI, BSA, EF_B, EGFR, CRCL, NAPL, KPL, HGB, HCT, A1C, and MEDS. "
+            "Only include measurements relevant to the user's request."
         )
+    }
+)
+def plot_patient_vitals(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR", "BMI", "EF_B"]):
+    """
+    Returns a historical trend overview with plots of a patient's vitals.
+    """
+    sections = {
+        "bp": ["BP"],
+        "hr": ["HR"],
+        "weight": ["WT", "BMI", "BSA"],
+        "cardiac_func": ["EF_B"],
+        "renal": ["EGFR", "CRCL", "NAPL", "KPL", "HGB", "HCT", "A1C"],
+        "meds": ["MEDS"],
+    }
+
+    if isinstance(relevant_vitals, str):
+        relevant_vitals = [relevant_vitals]
+
+    relevant_vitals = [str(v).upper() for v in relevant_vitals]
+
+    types = [
+        vital
+        for vital in relevant_vitals
+        if any(vital in section_types for section_types in sections.values())
+    ]
+
+    name_str = "'" + "', '".join(types) + "'"
 
     query = f"""
     SELECT 
@@ -876,9 +824,6 @@ def vitals_overview(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR"
 
     if "EF_B" in types:
         plot_types.append("EF_B")
-
-    if "EGFR" in types:
-        plot_types.append("EGFR")
 
     if not plot_types:
         return tr(
@@ -1022,16 +967,6 @@ def vitals_overview(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR"
             ax.set_title("Ejection Fraction")
             ax.set_ylabel("%")
 
-        elif plot_type == "EGFR":
-            ax.plot(
-                plot_vals["EGFR_dates"],
-                plot_vals["EGFR_data"],
-                label="eGFR"
-            )
-
-            ax.set_title("eGFR")
-            ax.set_ylabel("mL/min/1.73m²")
-
     for ax in axes:
         ax.set_xlabel("Date")
         ax.grid(True, alpha=0.3)
@@ -1055,10 +990,6 @@ def vitals_overview(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR"
         elif plot_type == "EF_B":
             ax.set_title("EF")
             ax.set_ylabel("%")
-
-        elif plot_type == "EGFR":
-            ax.set_title("eGFR")
-            ax.set_ylabel("mL/min/1.73 m²")
 
     #for ax in axes_small:
     #    plt.setp(ax.get_xticklabels(), visible=False)
@@ -1115,8 +1046,9 @@ def vitals_overview(db_conn, demo_no : str, relevant_vitals : list = ["BP", "HR"
     return tr(
         label="Vitals Overview",
         send_to_ai=True,
-        query_results=to_send,
-        save_results=to_send
+        query_results=None,
+        save_results=None,
+        followup_prompt="State that the results have been plotted"
     )
 
 
