@@ -317,7 +317,7 @@ class RAGWorkflow(Workflow):
             convo_history = resolved_input
 
         if unique_followup:
-            followup_prompt = unique_followup.format(text=context_str)
+            followup_prompt = unique_followup.format(user_input=user_input, context=context_str)
         else:
             followup_prompt = context.prompts.get("followup").format(
                 user_input=convo_history,
