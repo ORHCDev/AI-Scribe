@@ -162,6 +162,7 @@ class OscarWorkflow(Workflow):
             tool_resp = context.ai_conn.send_message(tool_prompt)
 
             tool_select = tool_resp.replace("```json", "").replace("```", "").replace("**JSON only**", "").strip()
+            unique_followup = None
             if tool_select.startswith("["):
                 tool_call = json.loads(tool_select)
                 for tool in tool_call:
@@ -183,6 +184,8 @@ class OscarWorkflow(Workflow):
                     if "oscar" in sig:
                         args["oscar"] = context.oscar
                     res = context.tools.execute_tool(name, **args)
+                    if res.followup_prompt and not unique_followup:
+                        unique_followup = res.followup_prompt
                     tools_tried.append(name)
                     instruction = f"{tool_obj.context}\n" if tool_obj.context else ""
                     tool_context += f"Tool: {name}\n{instruction}Results: {res}\n\n"
@@ -208,10 +211,13 @@ class OscarWorkflow(Workflow):
         else:
             convo_history = resolved_input
 
-        followup_prompt = context.prompts.get("oscar_followup").format(
-            user_input=convo_history,
-            context=context_str
-        )
+        if unique_followup:
+            followup_prompt = unique_followup.format(user_input=user_input, context=context_str)
+        else:
+            followup_prompt = context.prompts.get("oscar_followup").format(
+                user_input=convo_history,
+                context=context_str
+            )
         logging.info(f"Followup: {followup_prompt}")
         resp = context.ai_conn.send_message(followup_prompt)
 
