@@ -208,14 +208,27 @@ def medication_lookup(db_conn, meds : list[str], period : str):
         I.e. '6m' would indicate 6 months.
     """
 
+    if isinstance(meds, str):
+        meds = [meds]
+
+    if not meds:
+        return tr(
+            label="Medication Lookup",
+            send_to_ai=True,
+            query_results="No medications were provided to search for.",
+            save_results="No medications were provided to search for."
+        )
+
     date = period_parser(period)
 
-    med_filter = " OR ".join(f"m.dataField LIKE '%{med}%'" for med in meds)
+    list_of_meds = [str(med).replace("'", "''") for med in meds]
+    med_filter = " AND ".join(f"LOWER(m.dataField) LIKE LOWER('%{med}%')" for med in list_of_meds)
 
-    print(f"MED FILTER: {med_filter}")
+    MAX_RESULTS = 10
 
     query = f"""
     SELECT DISTINCT
+        d.demographic_no,
         d.last_name,
         d.first_name,
         m.type,
@@ -227,7 +240,7 @@ def medication_lookup(db_conn, meds : list[str], period : str):
         ON m.demographicNo = d.demographic_no
     WHERE m.type = 'MEDS'
     AND d.patient_status = 'AC'
-    AND m.dateObserved >= '{date}'
+    AND m.dateObserved > '{date}'
     AND (
         {med_filter}
         )
@@ -240,12 +253,21 @@ def medication_lookup(db_conn, meds : list[str], period : str):
     ORDER BY
         d.last_name,
         d.first_name
-    LIMIT 10;
+    LIMIT {MAX_RESULTS + 1};
     """
 
     res = db_conn.query_database(query)
+
+    truncated = len(res) > MAX_RESULTS
+    res = res[:MAX_RESULTS]
+
+    if truncated:
+        label = f"First {MAX_RESULTS} patients on {meds} within {period}; more results exist"
+    else:
+        label = f"Patients on {meds} within {period} ({len(res)} found)"
+
     return tr(
-        label=f"Patients' on at least one of {meds}",
+        label=label,
         send_to_ai=True,
         query_results=res,
         save_results=res
