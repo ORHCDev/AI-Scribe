@@ -171,7 +171,7 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
         cond = f"{num} {op} {float(value)}"
         desc = f"{mtype} {op} {float(value)}"
 
-    MAX_RESULTS = 100
+    MAX_RESULTS = 15
 
     query = f"""
     SELECT m.demographicNo, m.dataField, DATE(m.dateObserved) AS dateObserved
@@ -213,7 +213,10 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
             "date_observed": entry["dateObserved"],
         })
 
-    label = f"Patients with {desc}" + ("; more results exist" if truncated else "")
+    if truncated:
+        label = f"Top {MAX_RESULTS} patients with {desc} (showing the closest matches)"
+    else:
+        label = f"Patients with {desc} ({len(mapped_results)} found)"
     return tr(
         label=label,
         send_to_ai=True,
