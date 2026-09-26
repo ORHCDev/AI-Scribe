@@ -18,6 +18,8 @@ from chatbot.Tools.utils import period_parser
 # C: Cancelled
 # B: Billed
 
+MAX_RESULTS = 100
+
 @tool(
     category="appointments",
     description=(
@@ -92,15 +94,30 @@ def get_appointment_history(db_conn, demo_no : str):
     FROM appointment
     WHERE demographic_no = {demo_no}
       AND appointment_date < '{today}'
-    LIMIT 10;
+    LIMIT {MAX_RESULTS + 1};
     """
 
     res = db_conn.query_database(query)
+    truncated = len(res) > MAX_RESULTS
+    res = res[:MAX_RESULTS]
+
+    label = f"Patient's appointment history" + ("; more results exist" if truncated else "")
     return tr(
-        label="Appointment History",
+        label=label,
         send_to_ai=True,
         query_results=res,
-        save_results=res
+        save_results=res,
+        followup_prompt=(
+            """
+            The following data contains the patient's appointment history, which may or may not be truncated.
+
+            {res}
+
+            Output the appointment history as a list, with each line item in the following format:
+
+            - (<MM>/<DD>/<YYYY>) <reason>
+            """
+        )
     )
 
 @tool(
