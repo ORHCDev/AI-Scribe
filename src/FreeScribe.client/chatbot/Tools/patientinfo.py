@@ -1,5 +1,14 @@
 from chatbot.Tools.Tool import tool, ToolReturn as tr
 from utils.read_files import pdf_image_to_text
+from datetime import date, datetime, timedelta
+
+
+def _valid_date(value : str) -> str:
+    """Returns value as a YYYY-MM-DD string if it parses as one, else ""."""
+    try:
+        return datetime.strptime(str(value).strip(), "%Y-%m-%d").strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return ""
 
 def get_patient_mh(db_conn, oscar, demo_no : str):
     query = f"""
@@ -136,7 +145,7 @@ def get_patient_changes_since(db_conn, demo_no : str, since_date : str = ""):
     date. The reference date is the caller-supplied since_date, else the patient's
     most recent past appointment, else three months ago as a fallback.
     """
-    anchor = str(since_date).strip()
+    anchor = _valid_date(since_date)
     anchor_source = "the date you specified"
 
     if not anchor:
@@ -146,16 +155,13 @@ def get_patient_changes_since(db_conn, demo_no : str, since_date : str = ""):
         WHERE demographic_no = {demo_no}
           AND appointment_date < CURDATE();
         """)
-        anchor = ""
         if anchor_rows:
-            anchor = str(anchor_rows[0].get("anchor") or "").strip()
-        if anchor and anchor.lower() != "none":
+            anchor = _valid_date(anchor_rows[0].get("anchor"))
+
+        if anchor:
             anchor_source = "the patient's most recent past appointment"
         else:
-            fallback_rows = db_conn.query_database(
-                "SELECT DATE_SUB(CURDATE(), INTERVAL 3 MONTH) AS anchor;"
-            )
-            anchor = str(fallback_rows[0].get("anchor")).strip() if fallback_rows else ""
+            anchor = (date.today() - timedelta(days=90)).strftime("%Y-%m-%d")
             anchor_source = "the last 3 months (no prior appointment on record)"
 
     measurements = db_conn.query_database(f"""
