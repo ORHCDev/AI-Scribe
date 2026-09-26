@@ -1,15 +1,14 @@
 from chatbot.Tools.Tool import tool, ToolReturn as tr
 from chatbot.Tools.utils import period_parser
-from datetime import datetime
 
 @tool(
     category="medication",
     description=(
-        "Returns a list of medications that the patient is currently prescribed or actively taking. "
-        "The result includes all drug records for the given patient demographic number where the medication "
-        "has no recorded end date or the end date is on or after today, indicating the medication is still active. "
-        "Each row represents an active prescription and typically includes drug name fields (brand, generic, or custom), "
-        "dosage information, start and end dates (if available), and prescribing metadata as stored in the Oscar EMR drugs table. "
+        "Returns the patient's current medications from the EMR measurement entries (type = 'MEDS'). "
+        "The result contains the medication text entries and their observation dates for the most recent "
+        "MEDS snapshot recorded for the given patient demographic number. "
+        "Each row represents an active medication entry and includes the medication text and the date it was "
+        "observed, as stored in the Oscar EMR measurements table. "
         "This tool is most relevant when answering questions about a patient's current treatment regimen, "
         "active medications, medication reconciliation, drug interactions, or confirming whether a patient is presently "
         "on a specific medication."
@@ -36,13 +35,23 @@ def get_current_medications(db_conn, demo_no : str):
     Dataframe containing the queried results.
     """
 
-    today = datetime.today().strftime("%Y-%m-%d")
-
     query = f"""
-    SELECT *
-    FROM drugs
-    WHERE demographic_no = {demo_no}
-        AND (end_date is NULL OR end_date >= '{today}')
+    SELECT
+        m.type AS "Type",
+        m.dataField AS "Medication",
+        DATE(m.dateObserved) AS "Date Observed"
+    FROM measurements m
+    JOIN (
+        SELECT MAX(dateObserved) AS maxDate
+        FROM measurements
+        WHERE demographicNo = {demo_no}
+        AND type = 'MEDS'
+    ) latest
+        ON m.dateObserved = latest.maxDate
+    WHERE m.demographicNo = {demo_no}
+    AND m.type = 'MEDS'
+    GROUP BY m.type, m.dataField, DATE(m.dateObserved)
+    ORDER BY m.dateObserved DESC;
     """
     res = db_conn.query_database(query)
     return tr(
@@ -55,15 +64,15 @@ def get_current_medications(db_conn, demo_no : str):
 @tool(
     category="medication",
     description=(
-        "Returns a summary of the patient's past medication history, limited to medications that have been discontinued "
-        "or have an end date prior to today. The results are ordered by most recent end date first and include up to the "
-        "10 most recent historical prescriptions. Each record corresponds to a previously prescribed medication and may "
-        "contain drug name fields, prescribing dates, and stop dates as recorded in the Oscar EMR drugs table. "
+        "Returns the patient's medication history from the EMR measurement entries (type = 'MEDS'). "
+        "Results are ordered by most recent observation date first and include up to the 10 most recent medication "
+        "entries. Each record corresponds to a medication entry and includes the medication text and the date it was "
+        "observed, as stored in the Oscar EMR measurements table. "
         "This tool is most relevant when reviewing prior therapies, understanding medication changes over time, "
         "investigating adverse reactions, assessing treatment effectiveness, or answering questions about what medications "
-        "a patient has taken in the past but is no longer using."
+        "a patient has taken in the past."
     ),
-    context="Historical and discontinued patient medications",
+    context="Historical patient medications",
     parameters={
         "demo_no": "Patient demographic number used to identify the patient in the EMR",
     }
@@ -85,15 +94,16 @@ def get_medication_history(db_conn, demo_no : str):
     Dataframe containing the queried results
     """
 
-    today = datetime.today().strftime("%Y-%m-%d")
-
     query = f"""
-    SELECT *
-    FROM drugs
-    WHERE demographic_no = {demo_no}
-        AND end_date < '{today}'
-        AND not archived
-    ORDER BY end_date DESC
+    SELECT
+        m.type AS "Type",
+        m.dataField AS "Medication",
+        DATE(m.dateObserved) AS "Date Observed"
+    FROM measurements m
+    WHERE m.demographicNo = {demo_no}
+    AND m.type = 'MEDS'
+    GROUP BY m.type, m.dataField, DATE(m.dateObserved)
+    ORDER BY m.dateObserved DESC
     LIMIT 10;
     """
     res = db_conn.query_database(query)
@@ -107,11 +117,11 @@ def get_medication_history(db_conn, demo_no : str):
 @tool(
     category="medication",
     description=(
-        "Returns both current and past prescription records for a specific medication name for the given patient. "
-        "The search performs a case-insensitive partial match against brand name, generic name, and custom-entered drug names, "
-        "allowing flexible matching even when naming varies across prescriptions. Results are ordered by end date in descending "
-        "order and include up to the 10 most recent matching prescriptions. Each row represents a prescription instance of the "
-        "specified drug and may include start and end dates, dosage details, and prescribing metadata. "
+        "Returns medication records for a specific medication name for the given patient from the EMR measurement "
+        "entries (type = 'MEDS'). The search performs a case-insensitive partial match against the medication text "
+        "entry, allowing flexible matching even when naming varies across entries. Results are ordered by observation "
+        "date in descending order and include up to the 10 most recent matching entries. Each row represents a "
+        "medication entry and includes the medication text and the date it was observed. "
         "This tool is most relevant when determining whether a patient is or was ever prescribed a particular medication, "
         "checking medication continuity, reviewing historical use of a drug, or confirming prior exposure to a specific therapy."
     ),
@@ -142,15 +152,16 @@ def get_prescription_by_drug(db_conn, demo_no : str, drug_name : str):
     """
 
     query = f"""
-    SELECT *
-    FROM drugs
-    WHERE demographic_no = {demo_no}
-        AND (
-            LOWER(BN) LIKE LOWER('%{drug_name}%')
-            OR LOWER(customName) LIKE LOWER('%{drug_name}%')
-            OR LOWER(GN) LIKE LOWER('%{drug_name}%')
-        )
-    ORDER BY end_date DESC
+    SELECT
+        m.type AS "Type",
+        m.dataField AS "Medication",
+        DATE(m.dateObserved) AS "Date Observed"
+    FROM measurements m
+    WHERE m.demographicNo = {demo_no}
+    AND m.type = 'MEDS'
+    AND LOWER(m.dataField) LIKE LOWER('%{drug_name}%')
+    GROUP BY m.type, m.dataField, DATE(m.dateObserved)
+    ORDER BY m.dateObserved DESC
     LIMIT 10;
     """
     res = db_conn.query_database(query)
