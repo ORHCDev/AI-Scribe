@@ -157,6 +157,12 @@ class SOQ:
 
         textbox_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[2]/td/textarea'
         button_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[6]/td/input'
+        results_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[8]/td/table/tbody'
+
+        try:
+            previous_results = self.driver.find_element(By.XPATH, results_xpath)
+        except Exception:
+            previous_results = None
 
         for attempt in range(3):
             try:
@@ -182,10 +188,19 @@ class SOQ:
 
                 time.sleep(0.5)
 
+        # Wait for the previous results to be replaced before reading them.
+        if previous_results is not None:
+            try:
+                WebDriverWait(self.driver, self.query_timeout).until(
+                    EC.staleness_of(previous_results)
+                )
+            except Exception:
+                pass
+
         results_wait = WebDriverWait(self.driver, self.query_timeout)
         try:
             table = results_wait.until(
-                EC.presence_of_element_located((By.XPATH, '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[8]/td/table/tbody'))
+                EC.presence_of_element_located((By.XPATH, results_xpath))
             )
         except Exception as e:
             # Capture what the page actually shows for debugging before returning empty
