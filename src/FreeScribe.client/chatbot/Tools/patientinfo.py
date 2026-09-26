@@ -123,7 +123,41 @@ def get_patient_cardiac_issues(db_conn, oscar, demo_no : str):
         send_to_ai=True,
         query_results=text,
         save_results=text,
-        followup_prompt="Extract the patient's active cardiac issues from this text: {text}"
+        followup_prompt=(
+            """
+            Extract the patient's active cardiac issues from the following text.
+            Do not use any markdown formatting, bolding, or italics.
+            Do not use asterisks (*) in the final output.
+            
+            {text}
+            """
+        )
+    )
+
+@tool(
+    category="patientinfo",
+    description="Gets a specific patient's full cardiac history.",
+    context="Patient's cardiac history",
+    parameters={
+        "demo_no": "Patient demographic number used to uniquely identify the patient in the EMR"
+    }
+)
+def get_patient_cardiac_history(db_conn, oscar, demo_no : str):
+    text = get_patient_mh(db_conn, oscar, demo_no)
+    return tr(
+        label="Patient Summary",
+        send_to_ai=True,
+        query_results=text,
+        save_results=text,
+        followup_prompt=(
+            """
+            Extract the patient's full cardiac history from the following text.
+            Do not use any markdown formatting, bolding, or italics.
+            Do not use asterisks (*) in the final output.
+            
+            {text}
+            """
+        )
     )
 
 @tool(
