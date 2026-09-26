@@ -114,7 +114,7 @@ def get_patient_summary(db_conn, oscar, demo_no : str):
         send_to_ai=True,
         query_results=text,
         save_results=text,
-        followup_prompt="Summarize the following information into two sentences: {text}"
+        followup_prompt="Summarize the following information into two sentences: {context}"
     )
 
 
@@ -220,7 +220,7 @@ def get_patient_cardiac_issues(db_conn, oscar, demo_no : str):
             Do not use any markdown formatting, bolding, or italics.
             Do not use asterisks (*) in the final output.
             
-            {text}
+            {context}
             """
         )
     )
@@ -246,7 +246,7 @@ def get_patient_cardiac_history(db_conn, oscar, demo_no : str):
             Do not use any markdown formatting, bolding, or italics.
             Do not use asterisks (*) in the final output.
             
-            {text}
+            {context}
             """
         )
     )

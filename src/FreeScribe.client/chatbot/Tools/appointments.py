@@ -75,8 +75,7 @@ def get_upcoming_appointments(db_conn, demo_no : str):
         "such as the date of last admission."
     ),
     context=(
-        "Here are the patient's past appointments, summarize them in a concise format."
-        "If the patient has no past appointments, explicitly state this to the user."
+        "Here are the patient's past appointments."
     ),
     parameters={
         "demo_no": "Patient demographic number"
@@ -111,11 +110,17 @@ def get_appointment_history(db_conn, demo_no : str):
             """
             The following data contains the patient's appointment history, which may or may not be truncated.
 
-            {res}
+            {context}
 
-            Output the appointment history as a list, with each line item in the following format:
+            Here is the user's request:
+
+            {user_input}
+
+            If the user asked for full appointment history, output it as a list, with each line item in the following format:
 
             - (<MM>/<DD>/<YYYY>) <reason>
+
+            Otherwise, simply use the above data to answer the user's request.
             """
         )
     )
