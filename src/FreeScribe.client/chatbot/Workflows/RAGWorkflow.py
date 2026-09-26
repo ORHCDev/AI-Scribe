@@ -192,30 +192,7 @@ class RAGWorkflow(Workflow):
         logging.info(f"Top results: {top_k}")
         #
         # Extract tools and prompt LLM
-        rag_tools = [elem[1] for elem in top_k if elem[1]["is_tool"]]
-
-        # On a retry let the LLM choose from the full tool registry instead
-        retrying = bool(context.verification_feedback or context.excluded_tools)
-        if retrying:
-            logging.info("Retry detected: offering full tool registry to the LLM instead of RAG candidates")
-            tools = [
-                {
-                    "tool_name": t.name,
-                    "text": t.description,
-                    "obs_date": datetime.now(timezone.utc),
-                    "args": t.parameters,
-                    "is_tool": True,
-                }
-                for t in context.tools.list()
-            ]
-        else:
-            tools = rag_tools
-
-        # Withhold tools that a previous verification attempt already failed
-        # with so a retry is forced to consider an alternative.
-        if context.excluded_tools:
-            tools = [t for t in tools if t["tool_name"] not in context.excluded_tools]
-            logging.info(f"Excluding previously failed tools: {context.excluded_tools}")
+        tools = [elem[1] for elem in top_k if elem[1]["is_tool"]]
 
         # Generating sources array
         sources = []
@@ -250,9 +227,6 @@ class RAGWorkflow(Workflow):
                     logging.info(f"Calling tool: {tool}")
                     name = tool.get("tool_name")
                     args = tool.get("args") or {}
-                    if name in context.excluded_tools:
-                        logging.warning(f"Skipping previously failed tool returned by LLM: {name}")
-                        continue
                     if name not in context.tools.keys():
                         logging.warning(f"Skipping unknown tool returned by LLM: {name}")
                         continue
