@@ -220,23 +220,25 @@ class SOQ:
 
         # Get headers
         headers = [th.text.strip() for th in table.find_elements(By.TAG_NAME, "th")]
-        
-        # If there are no <th>, use first row as header
-        if not headers:
-            first_row = table.find_element(By.TAG_NAME, "tr")
-            headers = [td.text.strip() for td in first_row.find_elements(By.TAG_NAME, "td")]
-        
-        # Get all rows
+
+        # An empty result still renders the table shell but has no rows; treat it
+        # as "no results" instead of letting an unguarded lookup raise.
         rows = table.find_elements(By.TAG_NAME, "tr")
-        
+        if not rows:
+            return []
+
+        # If there are no <th>, use the first row as the header.
+        if not headers:
+            headers = [td.text.strip() for td in rows[0].find_elements(By.TAG_NAME, "td")]
+
         table_data = []
         for row in rows[1:]:  # skip header row
             cells = row.find_elements(By.TAG_NAME, "td")
             if len(cells) == 0:
                 continue  # skip empty rows
-            row_data = {headers[i]: cells[i].text.strip() for i in range(len(cells))}
+            row_data = {headers[i]: cells[i].text.strip() for i in range(min(len(cells), len(headers)))}
             table_data.append(row_data)
-        
+
         return table_data
     
 
