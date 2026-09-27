@@ -128,8 +128,14 @@ def get_patient_summary(db_conn, oscar, demo_no : str):
         "since a specific date. Not a full patient summary and not a single latest value."
     ),
     context=(
-        "Here is what is new for the patient since the reference date. Group the answer "
-        "by New Measurements and New Documents, be concise, and state the reference date used."
+        "Below is what is new for the patient since the reference date, with each "
+        "measurement paired against its previous value and the text of new reports. "
+        "Write a concise clinical briefing for the physician: for each measurement state "
+        "the change as prior -> new with direction and magnitude, and skip values that did "
+        "not meaningfully change; for each new report state the clinically significant "
+        "findings and how they differ from the patient's prior picture. Lead with the most "
+        "significant or abnormal changes, state the reference date used, and do not simply "
+        "list files. If nothing changed, say so plainly."
     ),
     parameters={
         "demo_no": "Patient demographic number",
@@ -164,32 +170,85 @@ def get_patient_changes_since(db_conn, demo_no : str, since_date : str = ""):
             anchor = (date.today() - timedelta(days=90)).strftime("%Y-%m-%d")
             anchor_source = "the last 3 months (no prior appointment on record)"
 
-    measurements = db_conn.query_database(f"""
-    SELECT type AS "Type", dataField AS "Value", DATE(dateObserved) AS "Date"
+    # New measurement values after the anchor (CATH is covered by the document
+    # section below, so it is excluded here to avoid reporting it twice).
+    new_rows = db_conn.query_database(f"""
+    SELECT type AS "type", dataField AS "value", DATE(dateObserved) AS "date"
     FROM measurements
     WHERE demographicNo = {demo_no}
       AND dateObserved > '{anchor}'
+      AND type NOT LIKE 'CATH%'
     ORDER BY dateObserved DESC
-    LIMIT 10;
+    LIMIT 25;
     """)
 
-    documents = db_conn.query_database(f"""
-    SELECT d.doctype AS "Type", d.docdesc AS "Description", d.observationdate AS "Date"
+    # Latest value of each type on or before the anchor, to compare against.
+    prior_rows = db_conn.query_database(f"""
+    SELECT m.type AS "type", m.dataField AS "value", DATE(m.dateObserved) AS "date"
+    FROM measurements m
+    JOIN (
+        SELECT type, MAX(dateObserved) AS mx
+        FROM measurements
+        WHERE demographicNo = {demo_no}
+          AND dateObserved <= '{anchor}'
+        GROUP BY type
+    ) p ON m.type = p.type AND m.dateObserved = p.mx
+    WHERE m.demographicNo = {demo_no};
+    """)
+    prior = {r["type"]: r for r in prior_rows}
+
+    def _short(v):
+        v = str(v).strip()
+        return v if len(v) <= 200 else v[:200] + "..."
+
+    measure_lines = []
+    seen = set()
+    for r in new_rows:
+        t = r["type"]
+        if t in seen:
+            continue
+        seen.add(t)
+        p = prior.get(t)
+        if p:
+            measure_lines.append(
+                f"{t}: {_short(p['value'])} ({p['date']}) -> {_short(r['value'])} ({r['date']})"
+            )
+        else:
+            measure_lines.append(
+                f"{t}: {_short(r['value'])} ({r['date']}) [no prior value on record]"
+            )
+
+    # New narrative reports that are NOT stored as measurements, with their content.
+    doc_rows = db_conn.query_database(f"""
+    SELECT cd.document_no AS "document_no", d.doctype AS "doctype", d.observationdate AS "date"
     FROM ctl_document AS cd
     LEFT JOIN document AS d
         ON cd.document_no = d.document_no
     WHERE cd.module = "demographic"
         AND cd.module_id = {demo_no}
         AND d.observationdate > '{anchor}'
+        AND TRIM(UPPER(d.doctype)) IN ('DC SUMMARY', 'CONSULTANT NOTES', 'CLINIC NOTES', 'CATH')
     ORDER BY d.observationdate DESC
-    LIMIT 10;
+    LIMIT 4;
     """)
 
+    doc_blocks = []
+    for r in doc_rows:
+        doc_no = r.get("document_no")
+        if not doc_no:
+            continue
+        try:
+            pdf_bytes = db_conn.get_doc_bytes(doc_no=doc_no)
+            content = pdf_image_to_text(pdf_bytes=pdf_bytes, last_page=2).strip()
+        except Exception as e:
+            content = f"(could not read document: {e})"
+        doc_blocks.append(f"{r.get('doctype')} ({r.get('date')}):\n{content}")
+
     text = f"Reference date: {anchor} ({anchor_source}).\n\n"
-    text += "New Measurements:\n"
-    text += f"{measurements}\n\n" if measurements else "None since the reference date.\n\n"
-    text += "New Documents:\n"
-    text += f"{documents}\n" if documents else "None since the reference date.\n"
+    text += "New Measurements (prior -> new):\n"
+    text += ("\n".join(measure_lines) if measure_lines else "None since the reference date.") + "\n\n"
+    text += "New Reports:\n"
+    text += ("\n\n".join(doc_blocks) if doc_blocks else "None since the reference date.") + "\n"
 
     return tr(
         label="Changes Since Last Visit",
