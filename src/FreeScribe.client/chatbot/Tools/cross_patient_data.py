@@ -101,7 +101,7 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
         name_query = f"""
         SELECT first_name, last_name
         FROM demographic
-        WHERE demographic_no = {entry["demographicNo"]}
+        WHERE demographicNo = {entry["demographicNo"]}
         """
         name_results = db_conn.query_database(name_query)
         if name_results:
@@ -199,7 +199,10 @@ def condition_condition_lookup(db_conn, condition1 : str, condition2: str = None
         mapped_results.append({
             "demographic_number": entry["demographicNo"],
             "patient_name": patient_name,
-            "value": entry["CARD"] + entry["CARD1"],
+            "value": (
+                (entry["CARD"] or "") +
+                (entry["CARD1"] or "")
+            ),
             "date_observed": entry["latest_date"],
         })
         
@@ -217,20 +220,127 @@ def condition_condition_lookup(db_conn, condition1 : str, condition2: str = None
     )
 
 
-"""@tool(
+@tool(
     category="cross_patient_data",
     description=(
-        ""
+        "Returns all patients who have a specific cardiac condition and are currently "
+        "taking a specific medication."
     ),
     context=(
-        ""
+        "Here is the list of patients with the specified cardiac condition who are currently taking the specified medication."
     ),
     parameters={
-        "condition": "",
-        "medication": ""
+        "condition": "the cardiac condition to check for",
+        "medication": "the medication to check for"
     }
-)"""
-def condition_medication_lookup(db_conn, condition : str, medication: str) -> list[dict]:
+)
+def condition_medication_lookup(db_conn, condition: str, medication: str) -> list[dict]:
+    query = f"""
+    SELECT
+        m.demographicNo,
+        MAX(CASE WHEN m.type = 'CARD' THEN m.dataField END) AS CARD,
+        MAX(CASE WHEN m.type = 'CARD1' THEN m.dataField END) AS CARD1,
+        DATE(m.dateObserved) AS latest_date
+    FROM measurements m
+    JOIN (
+        SELECT
+            demographicNo,
+            MAX(DATE(dateObserved)) AS latest_date
+        FROM measurements
+        WHERE type IN ('CARD', 'CARD1')
+        GROUP BY demographicNo
+    ) latest
+        ON latest.demographicNo = m.demographicNo
+        AND latest.latest_date = DATE(m.dateObserved)
+    WHERE m.type IN ('CARD', 'CARD1')
+    GROUP BY
+        m.demographicNo,
+        DATE(m.dateObserved)
+    HAVING CONCAT(
+        COALESCE(MAX(CASE WHEN type = 'CARD' THEN dataField END), ''),
+        COALESCE(MAX(CASE WHEN type = 'CARD1' THEN dataField END), '')
+    ) REGEXP '{condition}';
     """
-    
+
+    condition_results = db_conn.query_database(query)
+
+    demographic_numbers = [
+        result["demographicNo"]
+        for result in condition_results
+    ]
+    if not demographic_numbers:
+        return tr(
+            label=f"Patients with {condition} taking {medication} (0 found)",
+            send_to_ai=True,
+            query_results=[],
+            save_results=[]
+        )
+
+    patient_filter = ", ".join(str(demo_no) for demo_no in demographic_numbers)
+
+    med_query = f"""
+    SELECT
+        m.demographicNo,
+        GROUP_CONCAT(
+            m.dataField
+            ORDER BY m.dateObserved
+            SEPARATOR '\\n'
+        ) AS medication_entries,
+        DATE(MAX(m.dateObserved)) AS medication_date
+    FROM measurements m
+    WHERE m.type = 'MEDS'
+    AND m.demographicNo IN ({patient_filter})
+    AND LOWER(m.dataField) LIKE LOWER('%{medication}%')
+    GROUP BY m.demographicNo;
     """
+
+    medication_results = db_conn.query_database(med_query)
+
+    medication_patients = {
+        result["demographicNo"]: result
+        for result in medication_results
+    }
+
+    mapped_results = []
+
+    for result in condition_results:
+        demo_no = result["demographicNo"]
+
+        if demo_no not in medication_patients:
+            continue
+
+        name_query = f"""
+        SELECT first_name, last_name
+        FROM demographic
+        WHERE demographic_no = {demo_no}
+        """
+
+        name_results = db_conn.query_database(name_query)
+
+        if name_results:
+            patient_name = (
+                f"{name_results[0]['first_name']} "
+                f"{name_results[0]['last_name']}"
+            ).title()
+        else:
+            patient_name = "Unknown"
+
+        mapped_results.append(patient_name)
+
+    truncated = len(mapped_results) > _MAX_RESULTS
+    mapped_results = mapped_results[:_MAX_RESULTS]
+
+    if truncated:
+        label = f"Top {_MAX_RESULTS} patients with {condition} taking {medication}"
+    else:
+        label = (
+            f"Patients with {condition} taking {medication} "
+            f"({len(mapped_results)} found)"
+        )
+
+    return tr(
+        label=label,
+        send_to_ai=True,
+        query_results=mapped_results,
+        save_results=mapped_results
+    )
