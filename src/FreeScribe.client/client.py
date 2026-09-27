@@ -1409,7 +1409,8 @@ def generate_note(formatted_message):
                             "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
                             "sources. Do NOT include information dated older than one month. Include ALL relevant information "
                             "from the text, however do NOT reference the date/time of any observations or say \"the ECG "
-                            f"revealed...\", simply what the observations actually are.\n\n{ecg_text}"
+                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
+                            f"section\n\n{ecg_text}"
                         )
                     if echo_results: 
                         sections += "\n- ECHO"
@@ -1420,7 +1421,8 @@ def generate_note(formatted_message):
                             "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
                             "sources. Do NOT include information dated older than one month. Include ALL relevant information "
                             "from the text, however do NOT reference the date/time of any observations or say \"the ECHO "
-                            f"revealed...\", simply what the observations actually are.\n\n{echo_text}"
+                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
+                            f"section.\n\n{echo_text}"
                         )
                     if est_results: 
                         sections += "\n- EST"
@@ -1431,7 +1433,8 @@ def generate_note(formatted_message):
                             "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
                             "sources. Do NOT include information dated older than one month. Include ALL relevant information "
                             "from the text, however do NOT reference the date/time of any observations or say \"the EST "
-                            f"revealed...\", simply what the observations actually are.\n\n{est_text}"
+                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
+                            f"section.\n\n{est_text}"
                         )
                     if secho_results: 
                         sections += "\n- SECHO"
@@ -1442,7 +1445,8 @@ def generate_note(formatted_message):
                             "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
                             "sources. Do NOT include information dated older than one month. Include ALL relevant information "
                             "from the text, however do NOT reference the date/time of any observations or say \"the SECHO "
-                            f"revealed...\", simply what the observations actually are.\n\n{secho_text}"
+                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
+                            f"section\n\n{secho_text}"
                         )
                     if holt_results: 
                         sections += "\n- HOLTER"
@@ -1453,7 +1457,8 @@ def generate_note(formatted_message):
                             "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
                             "sources. Do NOT include information dated older than one month. Include ALL relevant information "
                             "from the text, however do NOT reference the date/time of any observations or say \"the HOLTER "
-                            f"revealed...\", simply what the observations actually are.\n\n{holt_text}"
+                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
+                            f"section\n\n{holt_text}"
                         )
                     sections += "\n- ASSESSMENT\n- PLAN"
 
