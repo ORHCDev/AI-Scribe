@@ -32,6 +32,12 @@ TOMORROW = (datetime.now().date() + timedelta(days=1)).strftime("%Y-%m-%d")
 # Appointment statuses to include. Set to None to include all statuses.
 APPOINTMENT_STATUS = None
 
+# Only upload these document types. Empty list uploads all types.
+DOC_TYPES = []
+
+# Document types for which only the single most recent document is uploaded 
+LATEST_DOC_TYPES = []
+
 def initialize_oscardb(config) -> SOQ | OscarDB:
     """
     Initializes connection to the Oscar EMR database.
@@ -160,7 +166,14 @@ if __name__ == "__main__":
 
         for patient_id in patient_ids:
             print(f"Upserting Documents for {patient_id}")
-            embedder.upsert_documents(patient_id=patient_id, delay=DELAY, skip_exists=True, summarize=False)
+            embedder.upsert_documents(
+                patient_id=patient_id,
+                delay=DELAY,
+                include_types=DOC_TYPES,
+                latest_types=LATEST_DOC_TYPES,
+                skip_exists=True,
+                summarize=False
+            )
 
             time.sleep(10)
             print(f"Upserting measurements for {patient_id}")

@@ -274,6 +274,7 @@ class EmbeddingEngine:
         delay           : float = 0.5, 
         skip_types      : list[str]=[],
         include_types   : list[str]=[],
+        latest_types    : list[str]=[],
         skip_exists     : bool = False,
         summarize       : bool = False,
         collect_after   : int = 10
@@ -309,6 +310,11 @@ class EmbeddingEngine:
         include_types : List[str]
             Document types to be allowed while all others are skipped.
             I.e. skip_types=['LAB'] will only allow documents that are labeled with 'LAB'
+
+        latest_types : List[str]
+            Document types for which only the single most recent document per patient
+            is upserted. 
+            I.e. latest_types=['LAB'] will upsert only the newest document labeled 'LAB' 
 
         skip_exists : bool
             If True, will skip documents that already exist in the vector database.
@@ -347,11 +353,13 @@ class EmbeddingEngine:
             ON cd.document_no = d.document_no
             WHERE cd.module = "demographic"
                 {filter_str}
-            ORDER BY observationdate DESC
+            ORDER BY observationdate DESC, contentdatetime DESC
         """
 
         docs = self.oscar_db.query_database(query)
         print(f"Found {len(docs)} to upsert")
+        # Track which latest_types have already had their most recent document handled
+        seen_latest_types = set()
         # Iterate over returned documents
         for i, row in enumerate(docs):
             doc_no = row["document_no"]
@@ -369,6 +377,13 @@ class EmbeddingEngine:
             if doc_type in skip_types: 
                 print(f"Skipping {doc_type}")
                 continue
+
+            # For selected types keep only the most recent document per patient
+            if doc_type in latest_types:
+                if doc_type in seen_latest_types:
+                    print(f"Skipping older {doc_type} document {doc_no} (latest only)")
+                    continue
+                seen_latest_types.add(doc_type)
 
             # Skip if already exists in vector database
             if skip_exists:

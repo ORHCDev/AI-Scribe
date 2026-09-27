@@ -32,6 +32,8 @@ DELAY = 5
 BATCH_SIZE = 8
 # Only upload these document types. Empty list uploads all types.
 DOC_TYPES = []
+# Document types for which only the single most recent document is uploaded 
+LATEST_DOC_TYPES = []
 
 def initialize_oscardb(config) -> SOQ | OscarDB:
     """
@@ -143,6 +145,7 @@ if __name__ == "__main__":
             date_op=DATE_OP, 
             delay=DELAY, 
             include_types=DOC_TYPES,
+            latest_types=LATEST_DOC_TYPES,
             skip_exists=True, 
             summarize=False
         )
