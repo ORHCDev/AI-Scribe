@@ -1318,56 +1318,48 @@ def generate_note(formatted_message):
                         FROM (
                             SELECT
                                 CASE
-                                    WHEN type REGEXP '^ECG' THEN 'ECG'
-                                    WHEN type REGEXP '^ECHO' THEN 'ECHO'
-                                    WHEN type REGEXP '^ST' THEN 'ST'
-                                    WHEN type REGEXP '^HOLT' THEN 'HOLT'
-                                    WHEN type REGEXP '^SECHO' THEN 'SECHO'
+                                    WHEN type REGEXP '^ECG[0-9]?$' THEN 'ECG'
+                                    WHEN type REGEXP '^ECHO[0-9]?$' THEN 'ECHO'
+                                    WHEN type REGEXP '^ST[0-9]?$' THEN 'ST'
+                                    WHEN type REGEXP '^HOLT[0-9]?$' THEN 'HOLT'
+                                    WHEN type REGEXP '^SECHO[0-9]?$' THEN 'SECHO'
                                 END AS type_group,
                                 dateObserved
                             FROM measurements
                             WHERE demographicNo = {demo_no}
                             AND (
-                                type REGEXP '^ECG'
-                                OR type REGEXP '^ECHO'
-                                OR type REGEXP '^ST'
-                                OR type REGEXP '^HOLT'
-                                OR type REGEXP '^SECHO'
+                                type REGEXP '^ECG[0-9]?$'
+                                OR type REGEXP '^ECHO[0-9]?$'
+                                OR type REGEXP '^ST[0-9]?$'
+                                OR type REGEXP '^HOLT[0-9]?$'
+                                OR type REGEXP '^SECHO[0-9]?$'
                             )
                             AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
                         ) grouped
                         GROUP BY type_group
                     ) latest
                         ON (
-                            (m.type REGEXP '^ECG' AND latest.type_group = 'ECG')
+                            (m.type REGEXP '^ECG[0-9]?$' AND latest.type_group = 'ECG')
                             OR
-                            (m.type REGEXP '^ECHO' AND latest.type_group = 'ECHO')
+                            (m.type REGEXP '^ECHO[0-9]?$' AND latest.type_group = 'ECHO')
                             OR
-                            (m.type REGEXP '^ST' AND latest.type_group = 'ST')
+                            (m.type REGEXP '^ST[0-9]?$' AND latest.type_group = 'ST')
                             OR
-                            (m.type REGEXP '^HOLT' AND latest.type_group = 'HOLT')
+                            (m.type REGEXP '^HOLT[0-9]?$' AND latest.type_group = 'HOLT')
                             OR
-                            (m.type REGEXP '^SECHO' AND latest.type_group = 'SECHO')
+                            (m.type REGEXP '^SECHO[0-9]?$' AND latest.type_group = 'SECHO')
                         )
                         AND DATE(m.dateObserved) = latest.latest_date
                     WHERE m.demographicNo = {demo_no}
                     AND (
-                        m.type REGEXP '^ECG'
-                        OR m.type REGEXP '^ECHO'
-                        OR m.type REGEXP '^ST'
-                        OR m.type REGEXP '^HOLT'
-                        OR m.type REGEXP '^SECHO'
+                        m.type REGEXP '^ECG[0-9]?$'
+                        OR m.type REGEXP '^ECHO[0-9]?$'
+                        OR m.type REGEXP '^ST[0-9]?$'
+                        OR m.type REGEXP '^HOLT[0-9]?$'
+                        OR m.type REGEXP '^SECHO[0-9]?$'
                     )
                     AND m.dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                    ORDER BY
-                        CASE
-                            WHEN m.type REGEXP '^ECG' THEN 1
-                            WHEN m.type REGEXP '^ECHO' THEN 2
-                            WHEN m.type REGEXP '^ST' THEN 3
-                            WHEN m.type REGEXP '^HOLT' THEN 4
-                            WHEN m.type REGEXP '^SECHO' THEN 5
-                        END,
-                        m.dateObserved DESC
+                    ORDER BY m.dateObserved DESC, m.type ASC
                     """
                     measurement_results = chatbot.db_conn.query_database(measurement_query)
                     print(
@@ -1378,36 +1370,97 @@ def generate_note(formatted_message):
                     step_start = time.perf_counter()
                     ecg_results = []
                     echo_results = []
-                    st_results = []
-                    holt_results = []
+                    est_results = []
                     secho_results = []
+                    holt_results = []
                     for result in measurement_results:
-                        if "ECG" in result["type"].upper():
-                            ecg_results.append(result)
-                        elif "HOLT" in result["type"].upper():
-                            holt_results.append(result)
-                        elif "ST" in result["type"].upper():
-                            st_results.append(result)
-                        elif "SECHO" in result["type"].upper():
+                        result_type = result["type"].upper()
+                        if result_type.startswith("SECHO"):
                             secho_results.append(result)
-                        elif "ECHO" in result["type"].upper():
+                        elif result_type.startswith("ECHO"):
                             echo_results.append(result)
+                        elif result_type.startswith("ECG"):
+                            ecg_results.append(result)
+                        elif result_type.startswith("HOLT"):
+                            holt_results.append(result)
+                        elif result_type.startswith("ST"):
+                            est_results.append(result)
                     print(f"ECG: {ecg_results}")
                     print(f"ECHO: {echo_results}")
-                    print(f"ST: {st_results}")
-                    print(f"HOLT: {holt_results}")
+                    print(f"EST: {est_results}")
                     print(f"SECHO: {secho_results}")
+                    print(f"HOLT: {holt_results}")
                     print(f"[TIMING] measurement processing: {time.perf_counter() - step_start:.2f}s")
 
                     step_start = time.perf_counter()
+                    sections = ""
+                    completion_advice = ""
                     if prompt_type == "Consult Complete + MH":
-                        mh_sections = "\n- RISK FACTORS\n- PAST CARDIAC HISTORY\n- PAST MEDICAL HISTORY"
+                        sections = "- RISK FACTORS\n- PAST CARDIAC HISTORY\n- PAST MEDICAL HISTORY\n"
                     else:
-                        mh_sections = ""
+                        sections = ""
+                    sections += "- HISTORY OF PRESENT ILLNESS"
+                    if ecg_results: 
+                        sections += "\n- ECG"
+                        ecg_text = " ".join(str(result["dataField"]) for result in ecg_results)
+                        print(f"ECG NOTE: {ecg_text}")
+                        completion_advice += (
+                            "\n\nTo complete the \"ECG\" section, use ONLY the following text. Ensure to write everything in "
+                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
+                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
+                            "from the text, however do NOT reference the date/time of any observations or say \"the ECG "
+                            f"revealed...\", simply what the observations actually are.\n\n{ecg_text}"
+                        )
+                    if echo_results: 
+                        sections += "\n- ECHO"
+                        echo_text = " ".join(str(result["dataField"]) for result in echo_results)
+                        print(f"ECHO NOTE: {echo_text}")
+                        completion_advice += (
+                            "\n\nTo complete the \"ECHO\" section, use ONLY the following text. Ensure to write everything in "
+                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
+                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
+                            "from the text, however do NOT reference the date/time of any observations or say \"the ECHO "
+                            f"revealed...\", simply what the observations actually are.\n\n{echo_text}"
+                        )
+                    if est_results: 
+                        sections += "\n- EST"
+                        est_text = " ".join(str(result["dataField"]) for result in est_results)
+                        print(f"EST NOTE: {est_text}")
+                        completion_advice += (
+                            "\n\nTo complete the \"EST\" section, use ONLY the following text. Ensure to write everything in "
+                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
+                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
+                            "from the text, however do NOT reference the date/time of any observations or say \"the EST "
+                            f"revealed...\", simply what the observations actually are.\n\n{est_text}"
+                        )
+                    if secho_results: 
+                        sections += "\n- SECHO"
+                        secho_text = " ".join(str(result["dataField"]) for result in secho_results)
+                        print(f"SECHO NOTE: {secho_text}")
+                        completion_advice += (
+                            "\n\nTo complete the \"SECHO\" section, use ONLY the following text. Ensure to write everything in "
+                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
+                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
+                            "from the text, however do NOT reference the date/time of any observations or say \"the SECHO "
+                            f"revealed...\", simply what the observations actually are.\n\n{secho_text}"
+                        )
+                    if holt_results: 
+                        sections += "\n- HOLTER"
+                        holt_text = " ".join(str(result["dataField"]) for result in holt_results)
+                        print(f"HOLT NOTE: {holt_text}")
+                        completion_advice += (
+                            "\n\nTo complete the \"HOLTER\" section, use ONLY the following text. Ensure to write everything in "
+                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
+                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
+                            "from the text, however do NOT reference the date/time of any observations or say \"the HOLTER "
+                            f"revealed...\", simply what the observations actually are.\n\n{holt_text}"
+                        )
+                    sections += "\n- ASSESSMENT\n- PLAN"
+
                     master_prompt = f"""
                     You are a board-certified cardiologist writing a concise, professional consultation or follow-up note to a primary care 
                     physician (family doctor) regarding a patient encounter. Synthesize the provided patient conversation transcript into a 
-                    standard cardiology note format, including a History of Present Illness (HPI), Impression/Assessment, and Plan.
+                    standard cardiology note format, including a History of Present Illness (HPI), Assessment, and Plan.
                     
 
                     Key Instructions:
@@ -1440,63 +1493,16 @@ def generate_note(formatted_message):
                     Patient Conversation Transcript: [Insert the transcript of the conversation with the patient here]
                     
                     Synthesize the above transcript into the following format.  Do not include any section that is not listed 
-                    below:
-                    {mh_sections}
-                    - HISTORY OF PRESENT ILLNESS
-                    - ECG
-                    - ECHO
-                    - STRESS TEST
-                    - HOLTER
-                    - STRESS ECHO
-                    - ASSESSMENT
-                    - PLAN
+                    below, and do not rename/tweak these headings:
+
+                    {sections}
                     
 
                     Post prompt:
                     
-                    FORMATTING REQUIREMENTS: Use plain text only, no markdown, asterisks, bold, or underlining. No headers like "To:", "From:", 
-                    "Date:", "Re:", or "Subject: Separate sections with paragraph breaks. Only include the sections outlined above (HISTORY OF 
-                    PRESENT ILLNESS, IMPRESSION/ASSESSMENT and PLAN) in the output."
-
-                    To complete the "ECG" section, use ONLY the following JSON. Ensure to write everything in full 
-                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations or say "the ECG revealed...", simply what the 
-                    observations actually are.
-                    
-                    {ecg_results}
-
-                    To complete the "ECHO" section, use ONLY the following JSON. Ensure to write everything in full 
-                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations or say "the echo revealed...", simply what the 
-                    observations actually are.
-                    
-                    {echo_results}
-
-                    To complete the "STRESS TEST" section, use ONLY the following JSON. Ensure to write everything in full 
-                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations or say "the stress test revealed...", simply 
-                    what the observations actually are.
-                    
-                    {st_results}
-
-                    To complete the "HOLTER" section, use ONLY the following JSON. Ensure to write everything in full 
-                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations or say "the holter revealed...", simply what 
-                    the observations actually are.
-                    
-                    {holt_results}
-
-                    To complete the "STRESS ECHO" section, use ONLY the following JSON. Ensure to write everything in full 
-                    sentences or paragraphs, rather than bullet points. Do NOT include information from other sources. 
-                    Do NOT include information dated older than one month. Include ALL relevant information from the JSON, 
-                    however do NOT reference the date/time of any observations or say "the stress echo revealed...", simply 
-                    what the observations actually are.
-                    
-                    {secho_results}
+                    FORMATTING REQUIREMENTS: Use plain text only, no markdown, asterisks, bold, or underlining. No headers like 
+                    "To:", "From:", "Date:", "Re:", or "Subject:". Separate sections with paragraph breaks. Only include the 
+                    sections outlined above in the output."{completion_advice}
 
                     To complete the remaining sections, use the following information. Ensure to write everything in 
                     paragraphs, rather than bullet points. Do NOT invent new sections that were not listed above.
