@@ -264,11 +264,8 @@ def condition_medication_lookup(db_conn, condition: str, medication: str) -> lis
 
     condition_results = db_conn.query_database(query)
 
-    demographic_numbers = [
-        result["demographicNo"]
-        for result in condition_results
-    ]
-    if not demographic_numbers:
+    condition_map = {result["demographicNo"]: result for result in condition_results}
+    if not condition_map:
         return tr(
             label=f"Patients with {condition} taking {medication} (0 found)",
             send_to_ai=True,
@@ -276,67 +273,55 @@ def condition_medication_lookup(db_conn, condition: str, medication: str) -> lis
             save_results=[]
         )
 
-    patient_filter = ", ".join(str(demo_no) for demo_no in demographic_numbers)
+    patient_filter = ", ".join(str(demo_no) for demo_no in condition_map)
 
+    # Of the condition matches, keep only those on the medication (one query, set only).
     med_query = f"""
-    SELECT
-        m.demographicNo,
-        GROUP_CONCAT(
-            m.dataField
-            ORDER BY m.dateObserved
-            SEPARATOR '\\n'
-        ) AS medication_entries,
-        DATE(MAX(m.dateObserved)) AS medication_date
+    SELECT DISTINCT m.demographicNo
     FROM measurements m
     WHERE m.type = 'MEDS'
     AND m.demographicNo IN ({patient_filter})
-    AND LOWER(m.dataField) LIKE LOWER('%{medication}%')
-    GROUP BY m.demographicNo;
+    AND LOWER(m.dataField) LIKE LOWER('%{medication}%');
     """
+    med_results = db_conn.query_database(med_query)
+    matched = [r["demographicNo"] for r in med_results if r["demographicNo"] in condition_map]
 
-    medication_results = db_conn.query_database(med_query)
+    truncated = len(matched) > _MAX_RESULTS
+    matched = matched[:_MAX_RESULTS]
+    if not matched:
+        return tr(
+            label=f"Patients with {condition} taking {medication} (0 found)",
+            send_to_ai=True,
+            query_results=[],
+            save_results=[]
+        )
 
-    medication_patients = {
-        result["demographicNo"]: result
-        for result in medication_results
+    # Single batched name lookup instead of one query per patient.
+    name_filter = ", ".join(str(demo_no) for demo_no in matched)
+    name_rows = db_conn.query_database(f"""
+    SELECT demographic_no, first_name, last_name
+    FROM demographic
+    WHERE demographic_no IN ({name_filter});
+    """)
+    names = {
+        r["demographic_no"]: f"{r['first_name']} {r['last_name']}".title()
+        for r in name_rows
     }
 
     mapped_results = []
-
-    for result in condition_results:
-        demo_no = result["demographicNo"]
-
-        if demo_no not in medication_patients:
-            continue
-
-        name_query = f"""
-        SELECT first_name, last_name
-        FROM demographic
-        WHERE demographic_no = {demo_no}
-        """
-
-        name_results = db_conn.query_database(name_query)
-
-        if name_results:
-            patient_name = (
-                f"{name_results[0]['first_name']} "
-                f"{name_results[0]['last_name']}"
-            ).title()
-        else:
-            patient_name = "Unknown"
-
-        mapped_results.append(patient_name)
-
-    truncated = len(mapped_results) > _MAX_RESULTS
-    mapped_results = mapped_results[:_MAX_RESULTS]
+    for demo_no in matched:
+        cond = condition_map.get(demo_no, {})
+        mapped_results.append({
+            "demographic_number": demo_no,
+            "patient_name": names.get(demo_no, "Unknown"),
+            "condition": (cond.get("CARD") or "") + (cond.get("CARD1") or ""),
+            "date_observed": cond.get("latest_date"),
+        })
 
     if truncated:
         label = f"Top {_MAX_RESULTS} patients with {condition} taking {medication}"
     else:
-        label = (
-            f"Patients with {condition} taking {medication} "
-            f"({len(mapped_results)} found)"
-        )
+        label = f"Patients with {condition} taking {medication} ({len(mapped_results)} found)"
 
     return tr(
         label=label,
