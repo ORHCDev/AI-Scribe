@@ -556,15 +556,12 @@ class Oscar:
         
         HEADINGS = [
             "RISK FACTORS", "PAST CARDIAC HISTORY", "PAST MEDICAL HISTORY", "HISTORY OF PRESENT ILLNESS", "SOCIAL HISTORY",
-            "MEDICATIONS", "ALLERGIES", "EXAM", "ECG", "ECHO", "LAB WORK", "ASSESSMENT", "PLAN"
+            "MEDICATIONS", "ALLERGIES", "EXAM", "ECG", "ECHO", "EST", "SECHO", "HOLTER", "LAB WORK", "ASSESSMENT", "PLAN"
         ]
 
         def replace_section(heading, text):
-            next_headings = HEADINGS[HEADINGS.index(heading) + 1:]
-
             if not overwrite_existing:
-                focus_and_insert(heading, f"{heading}\n{text}")
-                return True
+                return focus_and_insert(heading, f"{heading}\n{text}")
 
             # When overwriting the final section, use the signature as the boundary
             next_headings = HEADINGS[HEADINGS.index(heading) + 1:]
@@ -584,18 +581,34 @@ class Oscar:
             );
 
             if (!headingPara) {
-                return false;
-            }
+                // Find the first existing next heading
+                const nextHeadingPara = paras.find(
+                    p => nextHeadings.some(
+                        h => p.textContent.trim().toLowerCase().startsWith(h.trim().toLowerCase())
+                    )
+                );
 
-            // Append text only
-            if (!overwrite) {
-                const range = document.createRange();
-                range.selectNodeContents(headingPara);
-                range.collapse(false);
+                if (!nextHeadingPara) {
+                    return -1;
+                }
 
-                range.insertNode(document.createTextNode(newText));
+                // Create the missing heading
+                const newHeadingPara = document.createElement("p");
 
-                return true;
+                const headingNode = document.createElement("strong");
+                headingNode.textContent = headingText + ":";
+
+                newHeadingPara.appendChild(headingNode);
+                newHeadingPara.appendChild(document.createElement("br"));
+                newHeadingPara.appendChild(document.createTextNode(newText));
+
+                // Insert it immediately before the next heading
+                nextHeadingPara.parentNode.insertBefore(
+                    newHeadingPara,
+                    nextHeadingPara
+                );
+
+                return 1;
             }
 
             // Overwrite existing text
@@ -603,7 +616,7 @@ class Oscar:
             const colonIndex = headingTextContent.indexOf(":");
 
             if (colonIndex === -1) {
-                return false;
+                return -1;
             }
 
             // Find next heading/signature
@@ -631,7 +644,6 @@ class Oscar:
             );
 
             let node;
-            let currentOffset = 0;
             let startNode = null;
             let startOffset = 0;
 
@@ -643,12 +655,10 @@ class Oscar:
                     startOffset = colonPosition + 1;
                     break;
                 }
-
-                currentOffset += node.textContent.length;
             }
 
             if (!startNode) {
-                return false;
+                return -1;
             }
 
             const range = document.createRange();
@@ -670,7 +680,7 @@ class Oscar:
             // Insert new section contents
             range.insertNode(document.createTextNode(newText));
 
-            return true;
+            return 0;
             """
 
             return self.driver.execute_script(
@@ -681,51 +691,135 @@ class Oscar:
                 overwrite_existing
             )
 
-        def focus_cursor_before(indicator):
-            length = len(indicator)
-            """Focus cursor to right before given indicator on 0letter note"""
-            paras = "const paras = Array.from(document.getElementsByTagName('p'));\n"
-            p = f"const p = paras.find(el => el.textContent.includes('{indicator}'));\n"
-
-            script = paras + p + f"""
-                if (!p) return;
-
-                if (!p.firstChild) {{
-                    p.appendChild(document.createTextNode(''));
-                }}
-
-                const range = document.createRange();
-                range.setStart(p.firstChild, p.firstChild.length);
-                range.collapse(true);
-
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
-            """
-            
-            self.driver.execute_script(script)
-        
-        def toggle_off_bold():
-            # toggle bold off
-            if  self.driver.execute_script("return document.queryCommandState('bold');"):
-                print("Toggled")
-                self.driver.execute_script("""
-                    // Force bold OFF
-                    document.execCommand('bold', false, null);
-
-                    // Normalize font weight at caret
-                    document.execCommand('removeFormat', false, null);
-                """)
-
         def focus_and_insert(indicator, text):
-            focus_cursor_before(indicator)
-            body.send_keys(Keys.HOME)
-            for i in range(len(indicator) + 1):
-                body.send_keys(Keys.ARROW_RIGHT)
-            body.send_keys(Keys.ENTER)
-            toggle_off_bold()
-            body.send_keys(text)
-            body.send_keys(Keys.ENTER)
+            next_headings = HEADINGS[HEADINGS.index(indicator) + 1:]
+
+            if not next_headings:
+                next_headings = ["Yours Sincerely,"]
+
+            script = """
+            const headingText = arguments[0];
+            const newText = arguments[1];
+            const nextHeadings = arguments[2];
+
+            const paras = Array.from(document.getElementsByTagName('p'));
+
+            const headingPara = paras.find(
+                p => p.textContent.trim().startsWith(headingText)
+            );
+
+            // Heading doesn't exist, so insert it before the next existing heading
+            if (!headingPara) {
+                const nextHeadingPara = paras.find(
+                    p => nextHeadings.some(
+                        h => p.textContent.trim().toLowerCase().startsWith(
+                            h.trim().toLowerCase()
+                        )
+                    )
+                );
+
+                if (!nextHeadingPara) {
+                    return -1;
+                }
+
+                const newHeadingPara = document.createElement("p");
+
+                const headingNode = document.createElement("strong");
+                headingNode.textContent = headingText + ":";
+
+                newHeadingPara.appendChild(headingNode);
+                newHeadingPara.appendChild(document.createElement("br"));
+
+                const textContainer = document.createElement("span");
+                textContainer.style.fontWeight = "normal";
+                textContainer.style.fontStyle = "normal";
+                textContainer.style.textDecoration = "none";
+
+                const lines = newText.split("\\n");
+
+                lines.forEach((line, index) => {
+                    if (index > 0) {
+                        textContainer.appendChild(document.createElement("br"));
+                    }
+
+                    textContainer.appendChild(
+                        document.createTextNode(line)
+                    );
+                });
+
+                newHeadingPara.appendChild(textContainer);
+
+                nextHeadingPara.parentNode.insertBefore(
+                    newHeadingPara,
+                    nextHeadingPara
+                );
+
+                return 1;
+            }
+
+            // Existing heading: insert after the colon
+            const walker = document.createTreeWalker(
+                headingPara,
+                NodeFilter.SHOW_TEXT
+            );
+
+            let node;
+            let colonNode = null;
+            let colonOffset = -1;
+
+            while (node = walker.nextNode()) {
+                const colonPosition = node.textContent.indexOf(":");
+
+                if (colonPosition !== -1) {
+                    colonNode = node;
+                    colonOffset = colonPosition + 1;
+                    break;
+                }
+            }
+
+            if (!colonNode) {
+                return -1;
+            }
+
+            const range = document.createRange();
+            range.setStart(colonNode, colonOffset);
+            range.collapse(true);
+
+            const br = document.createElement("br");
+
+            const textContainer = document.createElement("span");
+            textContainer.style.fontWeight = "normal";
+            textContainer.style.fontStyle = "normal";
+            textContainer.style.textDecoration = "none";
+
+            const lines = newText.split("\\n");
+
+            lines.forEach((line, index) => {
+                if (index > 0) {
+                    textContainer.appendChild(document.createElement("br"));
+                }
+
+                textContainer.appendChild(
+                    document.createTextNode(line)
+                );
+            });
+
+            range.insertNode(br);
+
+            br.parentNode.insertBefore(
+                textContainer,
+                br.nextSibling
+            );
+
+            return 1;
+            """
+
+            return self.driver.execute_script(
+                script,
+                indicator,
+                text,
+                next_headings
+            )
 
         try:
             # Preprocessing of text
@@ -764,8 +858,10 @@ class Oscar:
             # Insert present text
             for heading in HEADINGS:
                 if heading in parsed_sections:
-                    success = replace_section(heading, parsed_sections[heading])
-                    if success:
+                    result = replace_section(heading, parsed_sections[heading])
+                    if result == 0:
+                        print(f"Replaced section {heading}")
+                    elif result == 1:
                         print(f"Inserted section {heading}")
 
             # Click submit
