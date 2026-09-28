@@ -53,8 +53,40 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
     """
     Returns patients whose most recent value of a numeric measurement satisfies the comparison.
     """
-    mtype = _MEASUREMENT_TYPES.get(str(measurement).strip().lower(), str(measurement).strip().upper())
-    op = _COMPARISONS.get(str(comparison).strip().lower(), "<")
+    # Validate inputs so a typo or bad argument is reported clearly instead of
+    # silently running a query that returns nothing (a false "no patients found").
+    key = str(measurement).strip().lower()
+    valid_codes = set(_MEASUREMENT_TYPES.values())
+    if key in _MEASUREMENT_TYPES:
+        mtype = _MEASUREMENT_TYPES[key]
+    elif str(measurement).strip().upper() in valid_codes:
+        mtype = str(measurement).strip().upper()
+    else:
+        msg = (
+            f"Unrecognized measurement '{measurement}'. Supported measurements: "
+            f"{', '.join(sorted(valid_codes))}."
+        )
+        return tr(label="Unrecognized measurement", send_to_ai=True,
+                  query_results=msg, save_results=msg)
+
+    comp_key = str(comparison).strip().lower()
+    if comp_key not in _COMPARISONS:
+        msg = (
+            f"Unrecognized comparison '{comparison}'. Use one of: less than, at most, "
+            f"greater than, at least, equal to, between (or < <= > >= =)."
+        )
+        return tr(label="Unrecognized comparison", send_to_ai=True,
+                  query_results=msg, save_results=msg)
+    op = _COMPARISONS[comp_key]
+
+    try:
+        float(value)
+        if value2 is not None:
+            float(value2)
+    except (ValueError, TypeError):
+        msg = f"The threshold value(s) must be numeric; got value={value!r}, value2={value2!r}."
+        return tr(label="Invalid value", send_to_ai=True,
+                  query_results=msg, save_results=msg)
 
     if mtype == "BP":
         num = "CAST(SUBSTRING_INDEX(m.dataField, '/', 1) AS DECIMAL(10,2))"
