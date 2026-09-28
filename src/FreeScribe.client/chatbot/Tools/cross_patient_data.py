@@ -27,6 +27,22 @@ _COMPARISONS = {
 }
 
 
+def _names_for(db_conn, demo_numbers) -> dict:
+    """Return {demographic_no: 'First Last'} for the given numbers in one query."""
+    demos = [str(d) for d in demo_numbers if str(d).strip()]
+    if not demos:
+        return {}
+    rows = db_conn.query_database(f"""
+    SELECT demographic_no, first_name, last_name
+    FROM demographic
+    WHERE demographic_no IN ({", ".join(demos)});
+    """)
+    return {
+        str(r["demographic_no"]): f"{r['first_name']} {r['last_name']}".title()
+        for r in rows
+    }
+
+
 @tool(
     category="cross_patient_data",
     description=(
@@ -128,21 +144,12 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
     truncated = len(res) > _MAX_RESULTS
     res = res[:_MAX_RESULTS]
 
+    names = _names_for(db_conn, [entry["demographicNo"] for entry in res])
     mapped_results = []
     for entry in res:
-        name_query = f"""
-        SELECT first_name, last_name
-        FROM demographic
-        WHERE demographicNo = {entry["demographicNo"]}
-        """
-        name_results = db_conn.query_database(name_query)
-        if name_results:
-            patient_name = f"{name_results[0]['first_name']} {name_results[0]['last_name']}".title()
-        else:
-            patient_name = "Unknown"
         mapped_results.append({
             "demographic_number": entry["demographicNo"],
-            "patient_name": patient_name,
+            "patient_name": names.get(str(entry["demographicNo"]), "Unknown"),
             "value": entry["dataField"],
             "date_observed": entry["dateObserved"],
         })
@@ -216,21 +223,12 @@ def condition_condition_lookup(db_conn, condition1 : str, condition2: str = None
     truncated = len(res) > _MAX_RESULTS
     res = res[:_MAX_RESULTS]
 
+    names = _names_for(db_conn, [entry["demographicNo"] for entry in res])
     mapped_results = []
     for entry in res:
-        name_query = f"""
-        SELECT first_name, last_name
-        FROM demographic
-        WHERE demographic_no = {entry["demographicNo"]}
-        """
-        name_results = db_conn.query_database(name_query)
-        if name_results:
-            patient_name = f"{name_results[0]['first_name']} {name_results[0]['last_name']}".title()
-        else:
-            patient_name = "Unknown"
         mapped_results.append({
             "demographic_number": entry["demographicNo"],
-            "patient_name": patient_name,
+            "patient_name": names.get(str(entry["demographicNo"]), "Unknown"),
             "value": (
                 (entry["CARD"] or "") +
                 (entry["CARD1"] or "")
