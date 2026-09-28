@@ -127,7 +127,7 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
     )
 
 
-@tool(
+'''@tool(
     category="cross_patient_data",
     description=(
         "Returns all patients who are experiencing one or two specific cardiac conditions."
@@ -328,4 +328,106 @@ def condition_medication_lookup(db_conn, condition: str, medication: str) -> lis
         send_to_ai=True,
         query_results=mapped_results,
         save_results=mapped_results
+    )'''
+
+
+@tool(
+    category="cross_patient_data",
+    description=(
+        "Returns a report of active patients who have cardiac history entries matching one or more specified "
+        "conditions within a defined recent time period. The tool searches cardiac history measurement entries "
+        "(type = 'CARD' or 'CARD1') and aggregates the matching history text entries and observation dates for each "
+        "patient. Results include patient identifiers (first and last name), provider number, history entry text, and "
+        "corresponding observation dates, grouped by patient. Only active patients are included, and only entries "
+        "recorded on or after the calculated start date based on the provided period are considered. "
+        "This tool is most relevant for population-level condition audits, cohort identification, quality improvement "
+        "initiatives, clinical reporting, or identifying patients with specific cardiac conditions such as "
+        "'atrial fibrillation', 'heart failure', 'myocardial infarction', or 'valve replacement'."
+    ),
+    context="Population-level lookup of patients with specific cardiac history conditions over a recent time window",
+    parameters={
+        "conditions": "List of cardiac condition names or partial names to search for in cardiac history measurement entries",
+        "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'",
+    }
+)
+def condition_lookup(db_conn, conditions : list[str], period : str):
+    """
+    Queries and returns a report of patients that have the given cardiac conditions.
+
+    Params
+    ------
+    db_conn : SOQ | OscarDB
+        Database connection.
+
+    conditions : list[str]
+        List of cardiac conditions to use to find patients that have them.
+
+    period : str
+        An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. \\
+        I.e. '6m' would indicate 6 months.
+    """
+
+    if isinstance(conditions, str):
+        conditions = [conditions]
+
+    if not conditions:
+        return tr(
+            label="Condition Lookup",
+            send_to_ai=True,
+            query_results="No conditions were provided to search for.",
+            save_results="No conditions were provided to search for."
+        )
+
+    date = period_parser(period)
+
+    list_of_conditions = [str(cond).replace("'", "''") for cond in conditions]
+    condition_filter = " AND ".join(
+        f"LOWER(m.dataField) LIKE LOWER('%{cond}%')" for cond in list_of_conditions
+    )
+
+    MAX_RESULTS = 10
+
+    query = f"""
+    SELECT DISTINCT
+        d.demographic_no,
+        d.last_name,
+        d.first_name,
+        GROUP_CONCAT(CONCAT('new history: ', m.dataField) ORDER BY m.dateObserved SEPARATOR '\n') AS condition_entries,
+        GROUP_CONCAT(CONCAT('new history: ', m.dateObserved) ORDER BY m.dateObserved SEPARATOR '\n') AS date_entries,
+        d.provider_no
+    FROM measurements m
+    JOIN demographic d
+        ON m.demographicNo = d.demographic_no
+    WHERE m.type IN ('CARD', 'CARD1')
+    AND d.patient_status = 'AC'
+    AND m.dateObserved > '{date}'
+    AND (
+        {condition_filter}
+        )
+    GROUP BY
+        d.demographic_no,
+        d.last_name,
+        d.first_name,
+        d.provider_no
+    ORDER BY
+        d.last_name,
+        d.first_name
+    LIMIT {MAX_RESULTS + 1};
+    """
+
+    res = db_conn.query_database(query)
+
+    truncated = len(res) > MAX_RESULTS
+    res = res[:MAX_RESULTS]
+
+    if truncated:
+        label = f"First {MAX_RESULTS} patients with {conditions} within {period}; more results exist"
+    else:
+        label = f"Patients with {conditions} within {period} ({len(res)} found)"
+
+    return tr(
+        label=label,
+        send_to_ai=True,
+        query_results=res,
+        save_results=res
     )
