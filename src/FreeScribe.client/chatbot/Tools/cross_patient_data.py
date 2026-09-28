@@ -1,7 +1,7 @@
 from chatbot.Tools.Tool import tool, ToolReturn as tr
 from chatbot.Tools.utils import period_parser
 
-_MAX_RESULTS = 15
+_MAX_RESULTS = 100
 
 _MEASUREMENT_TYPES = {
     "ef": "EF_B", "ejection fraction": "EF_B", "ef_b": "EF_B", "lvef": "EF_B",
@@ -385,7 +385,7 @@ def condition_lookup(db_conn, conditions : list[str], period : str):
         f"LOWER(m.dataField) LIKE LOWER('%{cond}%')" for cond in list_of_conditions
     )
 
-    MAX_RESULTS = 10
+    MAX_RESULTS = 100
 
     query = f"""
     SELECT DISTINCT

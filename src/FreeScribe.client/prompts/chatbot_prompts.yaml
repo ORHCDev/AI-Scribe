@@ -734,9 +734,16 @@ answer_verification_prompt: |
     for genuinely missing information (for example, which patient) that cannot
     be inferred.
   - "passes" must be false when the ANSWER is wrong, unsupported by the
-    evidence, ignores part of the question, contradicts the detected
-    workflow/format requested by the user, or claims that no data was found. When
-    no data or records are found, it is best to try again with a different tool.
+    evidence, ignores part of the question, or contradicts the detected
+    workflow/format requested by the user.
+  - A well-supported negative answer PASSES: when the tool ran and the evidence
+    genuinely contains no matching records, an ANSWER stating that none were
+    found is correct and complete, and must NOT be marked retryable. Only fail a
+    "no data" answer when a clearly more suitable tool or query was available and
+    was not tried.
+  - A result intentionally capped at a stated maximum (for example "top 15" or
+    "showing the closest matches") is COMPLETE for verification. Do NOT fail it
+    for truncation or because more results might exist.
   - "passes" must be false when the ANSWER is empty or is only a generic
     acknowledgement with no content.
   - "retryable" must be true ONLY when re-running the search with a DIFFERENT
