@@ -559,7 +559,7 @@ memory_gate_prompt: |
      These ask for new data and do NOT depend on prior chat.
   3. Prior context IS required ONLY when the message CANNOT be understood without earlier messages, such as:
      - Referring to something discussed earlier ("as I said", "that medication we discussed", "the test you mentioned", "and then?")
-     - A follow-up that depends on a previous answer ("does it interact with her azithromycin?", "how about the diastolic?")
+     - A follow-up that depends on a previous answer ("does it interact with her azithromycin?", "how about the diastolic?", "what other medications?")
      - Using pronouns or incomplete statements with no referent in the current message ("what about him?", "is it high?")
   4. When in doubt, choose {{"needs_memory": false}}.
 
@@ -569,6 +569,7 @@ memory_gate_prompt: |
   - "give me the troponin trend" -> {{"needs_memory": false}}
   - "as I said, the dose we discussed" -> {{"needs_memory": true}}
   - "and does it interact with metformin?" -> {{"needs_memory": true}}
+  - "what other medications is the patient taking?" -> {{"needs_memory": true}}
 
   Respond ONLY with valid JSON, no other text:
   {{"needs_memory": true}}
@@ -662,6 +663,7 @@ query_resolution_prompt: |
   Rules:
   - Resolve references such as "it", "them", "that", "those", "the results",
     "the measurements", etc. using the conversation.
+  - Resolve references such as "other" by excluding previous results.
   - Preserve the user's intended action.
   - Preserve the patient if the patient was established in the conversation.
   - Preserve important details from the previous request when the latest
