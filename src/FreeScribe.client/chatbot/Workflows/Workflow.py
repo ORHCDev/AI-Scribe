@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -15,7 +15,6 @@ class WorkflowContext:
     curr_demo: str
     prompts: dict
     memory_needed: bool = True
-    excluded_tools: list[str] = field(default_factory=list)
     verification_feedback: str = ""
 
 @dataclass

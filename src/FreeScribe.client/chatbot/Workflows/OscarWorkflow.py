@@ -138,12 +138,6 @@ class OscarWorkflow(Workflow):
             for t in context.tools.list()
         ]
 
-        # Withhold tools that a previous verification attempt already failed with
-        # so a retry is forced to consider an alternative.
-        if context.excluded_tools:
-            tools = [t for t in tools if t["tool_name"] not in context.excluded_tools]
-            logging.info(f"Excluding previously failed tools: {context.excluded_tools}")
-
         sources = []
         tool_context = ""
         tools_tried = []
@@ -169,9 +163,6 @@ class OscarWorkflow(Workflow):
                     logging.info(f"Calling tool: {tool}")
                     name = tool.get("tool_name")
                     args = tool.get("args") or {}
-                    if name in context.excluded_tools:
-                        logging.warning(f"Skipping previously failed tool returned by LLM: {name}")
-                        continue
                     if name not in context.tools.keys():
                         logging.warning(f"Skipping unknown tool returned by LLM: {name}")
                         continue

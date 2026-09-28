@@ -360,9 +360,10 @@ class OscarCB:
 
     def _run_with_verification(self, user_input: str, workflow_type: str, context: WorkflowContext) -> WorkflowResult:
         """
-        Runs the selected workflow and verifies its answer, retrying with
-        previously failed tools excluded when verification says a different
-        tool could do better.
+        Runs the selected workflow and verifies its answer, retrying with the
+        verification feedback when the verifier says a retry could do better.
+        The feedback is passed to the workflow so the LLM can decide how to
+        proceed rather than having previously failed tools withheld.
 
         A failed RAG search is retried through OscarWorkflow, since RAG itself
         is single-pass and only handles documents.
@@ -379,16 +380,21 @@ class OscarCB:
             logging.info("Skipping verification: get_patient_summary was used.")
             return result
         
+        previous_reason = None
         for attempt in range(1, MAX_VERIFICATION_ATTEMPTS + 1):
             verdict = self._verify_answer(user_input, result, context)
+            # A repeated reason means another retry would just surface the same
+            # point, so stop rather than spend the remaining attempt.
+            if previous_reason is not None and verdict["reason"] == previous_reason:
+                logging.info("Verification feedback repeated; stopping retries")
+                verdict["retryable"] = False
             if verdict["passes"] or not verdict["retryable"]:
                 break
             if attempt == MAX_VERIFICATION_ATTEMPTS:
                 logging.info("Verification failed but retry budget exhausted")
                 break
 
-            attempted = (result.metadata or {}).get("tools_tried", []) if result.metadata else []
-            context.excluded_tools = list(set(context.excluded_tools) | set(attempted))
+            previous_reason = verdict["reason"]
             context.verification_feedback = verdict["reason"]
 
             # RAGWorkflow is single-pass and document-only
@@ -399,7 +405,7 @@ class OscarCB:
 
             logging.info(
                 f"Verification failed (attempt {attempt}/{MAX_VERIFICATION_ATTEMPTS}): "
-                f"{verdict['reason']}. Retrying with excluded tools {context.excluded_tools}"
+                f"{verdict['reason']}. Retrying with feedback"
             )
             result = workflow.run(user_input, context)
 
