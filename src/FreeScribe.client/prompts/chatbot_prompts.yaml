@@ -273,8 +273,9 @@ rag_tool_prompt: |
   ---------------------
 
   If a previous attempt at this question was rejected, the reason is given
-  below. Do NOT repeat a tool that already failed. Choose a DIFFERENT tool
-  that is more likely to produce the needed data.
+  below. Use that reasoning to decide how to proceed: choose the tool(s) most
+  likely to produce the needed data, whether that means a different tool, a
+  different set of arguments, or the same tool used differently.
 
   Feedback: {verification_feedback}
 
