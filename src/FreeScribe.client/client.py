@@ -1886,11 +1886,36 @@ def download_results():
 
 
 
+def _open_medication_eform():
+    """Auto-open the medication prescription eForm (0.1Rfx) fill page for the opened patient."""
+    MED_FORM_PREFIX = "0.1Rfx"
+    eforms = getattr(eform_selection_panel, "eforms", None) or {}
+    if not eforms and hasattr(eform_selection_panel, "_load_eforms"):
+        try:
+            eforms = eform_selection_panel._load_eforms() or {}
+        except Exception as e:
+            print(f"Could not load eForms for medication auto-open: {e}")
+            return
+    fid = eforms.get(MED_FORM_PREFIX)
+    if fid is None:
+        fid = next((f for name, f in eforms.items() if str(name).startswith(MED_FORM_PREFIX)), None)
+    if fid is None:
+        print(f"Medication eForm '{MED_FORM_PREFIX}' not found; skipping auto-open")
+        return
+    try:
+        oscar.open_new_eform(fid)
+    except Exception as e:
+        # Never let the auto-open disturb the consult upload that already succeeded.
+        print(f"Could not auto-open medication eForm: {e}")
+
+
 def upload_consult():
-    """Uploads the LLM response to patient consult to most recent 0letter eform"""
+    """Uploads the LLM response to patient consult to most recent 0letter eform,
+    then auto-opens the medication (0.1Rfx) eForm fill page."""
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid=fdid, consult=text)
+    _open_medication_eform()
 
 def upload_consult_and_mh():
     """
@@ -2046,11 +2071,13 @@ def upload_consult_and_mh():
     # Insert text into 0letter
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid, consult, med_hist_resp)
-    
+    _open_medication_eform()
+
 def upload_consult_complete(overwrite):
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter_from_headings(fdid, text, overwrite)
+    _open_medication_eform()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ROOT GRID
