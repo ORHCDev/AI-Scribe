@@ -461,3 +461,178 @@ def condition_lookup(db_conn, conditions : list[str], period : str):
         query_results=res,
         save_results=res
     )
+
+
+_CROSS_LOOKUP_SOURCES = {
+    "conditions": {
+        "types": ("CARD", "CARD1"),
+        "prefix": "new history: ",
+        "label": "condition",
+    },
+    "medications": {
+        "types": ("MEDS",),
+        "prefix": "new entry: ",
+        "label": "medication",
+    },
+}
+
+
+@tool(
+    category="cross_patient_data",
+    description=(
+        "Unified population-level lookup that returns active patients matching any combination of cardiac "
+        "conditions and/or medications within a recent time period in a single call. Prefer this over calling "
+        "condition_lookup and medication_lookup separately, especially when the question combines a condition "
+        "with a medication (e.g. 'patients with heart failure on metoprolol'). Supply at least one of conditions "
+        "or medications; when both are supplied, only patients matching every provided criterion are returned. "
+        "Searches cardiac history measurement entries (type 'CARD'/'CARD1') and medication entries (type 'MEDS'), "
+        "aggregates the matching entry text and observation dates for each patient, and returns patient identifiers "
+        "(first and last name), provider number, the matching entries, and their dates grouped by patient. Only "
+        "active patients are included, and only entries recorded on or after the calculated start date based on the "
+        "provided period are considered. This tool is most relevant for cohort identification, combined "
+        "condition/medication audits, quality improvement initiatives, and clinical reporting."
+    ),
+    context=(
+        "Population-level lookup of patients matching one or more cardiac conditions and/or medications over a "
+        "recent time window. Output all fields in a table format."
+    ),
+    parameters={
+        "conditions": "Optional. List of cardiac condition names or partial names to search for in cardiac history entries.",
+        "medications": "Optional. List of medication names or partial names to search for in medication entries.",
+        "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
+    }
+)
+def cross_patient_lookup(
+    db_conn,
+    period: str,
+    conditions: list[str] | None = None,
+    medications: list[str] | None = None
+):
+    """
+    Queries and returns a report of patients matching the given conditions and/or medications.
+
+    Params
+    ------
+    db_conn : SOQ | OscarDB
+        Database connection.
+
+    period : str
+        An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. \\
+        I.e. '6m' would indicate 6 months.
+
+    conditions : list[str] | None
+        Optional list of cardiac conditions to find patients that have them.
+
+    medications : list[str] | None
+        Optional list of medications to find patients that are on them.
+
+    Returns
+    -------
+    ToolReturn
+        Aggregated condition and/or medication entries grouped by patient.
+    """
+
+    def _normalize(values: list[str] | str | None) -> list[str]:
+        if not values:
+            return []
+        if isinstance(values, str):
+            values = [values]
+        return [str(value).replace("'", "''") for value in values if str(value).strip()]
+
+    sources = {
+        key: normalized
+        for key, normalized in (
+            ("conditions", _normalize(conditions)),
+            ("medications", _normalize(medications)),
+        )
+        if normalized
+    }
+
+    if not sources:
+        return tr(
+            label="Cross Patient Lookup",
+            send_to_ai=True,
+            query_results="No conditions or medications were provided to search for.",
+            save_results="No conditions or medications were provided to search for."
+        )
+
+    date = period_parser(period)
+    if not date:
+        msg = f"Could not parse period '{period}'. Use a duration such as '6m', '30d', or '1y'."
+        return tr(
+            label="Invalid period",
+            send_to_ai=True,
+            query_results=msg,
+            save_results=msg
+        )
+
+    select_aggs = []
+    match_filters = []
+    having_filters = []
+
+    for key, values in sources.items():
+        spec = _CROSS_LOOKUP_SOURCES[key]
+        types_sql = ", ".join(f"'{mtype}'" for mtype in spec["types"])
+        like_filter = " AND ".join(
+            f"LOWER(m.dataField) LIKE LOWER('%{value}%')" for value in values
+        )
+        match = f"(m.type IN ({types_sql}) AND ({like_filter}))"
+        match_filters.append(match)
+        select_aggs.append(
+            f"GROUP_CONCAT(CASE WHEN {match} "
+            f"THEN CONCAT('{spec['prefix']}', m.dataField) END "
+            f"ORDER BY m.dateObserved SEPARATOR '\n') AS {key}_entries"
+        )
+        select_aggs.append(
+            f"GROUP_CONCAT(CASE WHEN {match} "
+            f"THEN CONCAT('{spec['prefix']}', m.dateObserved) END "
+            f"ORDER BY m.dateObserved SEPARATOR '\n') AS {key}_dates"
+        )
+        having_filters.append(f"{key}_entries IS NOT NULL")
+
+    query = f"""
+    SELECT DISTINCT
+        d.demographic_no,
+        d.last_name,
+        d.first_name,
+        d.provider_no,
+        {", ".join(select_aggs)}
+    FROM measurements m
+    JOIN demographic d
+        ON m.demographicNo = d.demographic_no
+    WHERE d.patient_status = 'AC'
+    AND m.dateObserved > '{date}'
+    AND (
+        {" OR ".join(match_filters)}
+    )
+    GROUP BY
+        d.demographic_no,
+        d.last_name,
+        d.first_name,
+        d.provider_no
+    HAVING {" AND ".join(having_filters)}
+    ORDER BY
+        d.last_name,
+        d.first_name
+    LIMIT {_MAX_RESULTS + 1};
+    """
+
+    res = db_conn.query_database(query)
+
+    truncated = len(res) > _MAX_RESULTS
+    res = res[:_MAX_RESULTS]
+
+    desc = " and ".join(
+        f"{_CROSS_LOOKUP_SOURCES[key]['label']}s {values}" for key, values in sources.items()
+    )
+    if truncated:
+        label = f"First {_MAX_RESULTS} patients with {desc} within {period}; more results exist"
+    else:
+        label = f"Patients with {desc} within {period} ({len(res)} found)"
+
+    return tr(
+        label=label,
+        send_to_ai=True,
+        query_results=res,
+        save_results=res
+    )
