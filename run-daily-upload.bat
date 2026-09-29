@@ -30,7 +30,7 @@ set LOGFILE=logs\upload_%date:~10,4%%date:~4,2%%date:~7,2%.log
 if not exist "logs" mkdir "logs"
 
 echo === Upload started %date% %time% === >> "%LOGFILE%"
-python chatbot/daily_uploader.py >> "%LOGFILE%" 2>&1
+python chatbot/daily_patient_uploader.py >> "%LOGFILE%" 2>&1
 echo === Upload finished %date% %time% (exit code %errorlevel%) === >> "%LOGFILE%"
 
 endlocal
