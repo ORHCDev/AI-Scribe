@@ -203,8 +203,105 @@ class CustomTextBox(tk.Frame):
         self.upload_callback = callback
 
     def _upload(self):
-        if self.upload_callback:
-            self.upload_callback()
+        if not self.upload_callback:
+            return
+
+        menu = tk.Toplevel(self)
+        menu.title("Upload Options")
+        menu.resizable(False, False)
+
+        # Upload type
+        tk.Label(
+            menu,
+            text="Upload Type"
+        ).pack(anchor="w", padx=10, pady=(10, 2))
+
+        upload_types = {
+            "Consult": "consult",
+            "MH + Consult": "mh_and_consult",
+            "Complete Consult": "complete_consult"
+        }
+
+        upload_type_var = tk.StringVar(value="Consult")
+
+        upload_type_dropdown = tk.OptionMenu(
+            menu,
+            upload_type_var,
+            *upload_types.keys(),
+            command=lambda selected: self._update_complete_consult_options(
+                selected,
+                complete_consult_label,
+                complete_consult_dropdown
+            )
+        )
+        upload_type_dropdown.config(width=25)
+        upload_type_dropdown.pack(padx=10, pady=(0, 10))
+
+        # Complete consult action
+        complete_consult_frame = tk.Frame(menu)
+        complete_consult_frame.pack()
+
+        complete_consult_label = tk.Label(
+            complete_consult_frame,
+            text="Complete Consult Action"
+        )
+
+        complete_consult_action_var = tk.StringVar(value="Append Consult")
+
+        complete_consult_actions = {
+            "Append Consult": False,
+            "Overwrite Consult": True
+        }
+
+        complete_consult_dropdown = tk.OptionMenu(
+            complete_consult_frame,
+            complete_consult_action_var,
+            *complete_consult_actions.keys()
+        )
+
+        complete_consult_dropdown.config(width=25)
+
+        # Upload button
+        tk.Button(
+            menu,
+            text="Upload",
+            width=25,
+            command=lambda: self._submit_upload(
+                menu,
+                upload_type_var.get(),
+                complete_consult_action_var.get()
+            )
+        ).pack(pady=(0, 10))
+
+        menu.transient(self.winfo_toplevel())
+        menu.grab_set()
+
+    def _update_complete_consult_options(self, selected, label, dropdown):
+        if selected == "Complete Consult":
+            label.pack(anchor="w", padx=10, pady=(0, 2))
+            dropdown.pack(padx=10, pady=(0, 10))
+        else:
+            label.pack_forget()
+            dropdown.pack_forget()
+
+    def _submit_upload(self, menu, upload_type, complete_consult_action):
+        menu.destroy()
+
+        upload_types = {
+            "Consult": "consult",
+            "MH + Consult": "mh_and_consult",
+            "Complete Consult": "complete_consult"
+        }
+
+        complete_consult_actions = {
+            "Append Consult": False,
+            "Overwrite Consult": True
+        }
+
+        self.upload_callback(
+            upload_types[upload_type],
+            complete_consult_actions[complete_consult_action]
+        )
 
     # Medical history button
     def set_med_hist_callback(self, callback):
