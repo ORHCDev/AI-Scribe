@@ -90,6 +90,8 @@ class SettingsWindow():
         self.scribe_template_values = []
         self.scribe_template_mapping = {}
 
+        self.restart_callback = None
+
         
         self.general_settings = [
             "Show Welcome Message",

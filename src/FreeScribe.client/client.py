@@ -2093,6 +2093,14 @@ def upload_consult_complete(overwrite):
     oscar.insert_text_into_0letter_from_headings(fdid, text, overwrite)
     _open_medication_eform()
 
+def upload_consult_by_type(upload_type, overwrite):
+    if upload_type == "consult": upload_consult()
+    elif upload_type == "mh_and_consult": upload_consult_and_mh()
+    elif upload_type == "complete_consult": upload_consult_complete(overwrite)
+    else: raise ValueError(
+        'upload_consult_by_type: upload_type must be one of ["consult", "mh_and_consult", "complete_consult"]'
+    )
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ROOT GRID
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2350,11 +2358,14 @@ eform_selection_panel.grid(row=0, column=11, rowspan=4, padx=(2, 5), pady=12, st
 eform_selection_panel.grid_remove()
 
 # ── Response display callbacks ────────────────────────────────────────────────
-#response_display.set_med_hist_callback(upload_medical_history)
-response_display.set_consult_callback(upload_consult)
-response_display.set_consult_and_mh_callback(upload_consult_and_mh)
-response_display.set_consult_complete_append_callback(lambda: upload_consult_complete(False))
-response_display.set_consult_complete_overwrite_callback(lambda: upload_consult_complete(True))
+if new_ui:
+    response_display.set_upload_callback(upload_consult_by_type)
+else:
+    #response_display.set_med_hist_callback(upload_medical_history)
+    response_display.set_consult_callback(upload_consult)
+    response_display.set_consult_and_mh_callback(upload_consult_and_mh)
+    response_display.set_consult_complete_append_callback(lambda: upload_consult_complete(False))
+    response_display.set_consult_complete_overwrite_callback(lambda: upload_consult_complete(True))
 response_display.set_get_eforms_callback(get_labs_from_response)
 response_display.set_download_callback(download_results)
 
