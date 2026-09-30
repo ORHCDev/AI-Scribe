@@ -98,11 +98,12 @@ HL7_PROMPTS = ai_prompts.hl7_prompt_list
 oscar = chatbot.oscar 
 #  create our ui elements and settings config
 if app_settings.editable_settings[SettingsKeys.USE_NEW_UI.value]:
-    window = MainWindowUI(root, app_settings, ai_prompts)
+    new_ui = True
     print("New UI selected")
 else:
-    window = MainWindowUI(root, app_settings, ai_prompts)
+    new_ui = False
     print("Legacy UI selected")
+window = MainWindowUI(root, app_settings, ai_prompts)
 
 app_settings.set_main_window(window)
 
@@ -2328,7 +2329,7 @@ timestamp_listbox.insert(tk.END, "Temporary Note History")
 timestamp_listbox.config(fg='grey')
 
 # ── Response display ──────────────────────────────────────────────────────────
-response_display = CustomTextBox(scribe_frame, height=13, state="normal")
+response_display = CustomTextBox(scribe_frame, height=13, state="normal", new_ui=new_ui)
 response_display.grid(
     row=3, column=1, columnspan=8, padx=(5, 2), pady=(4, 12), sticky='nsew',
 )

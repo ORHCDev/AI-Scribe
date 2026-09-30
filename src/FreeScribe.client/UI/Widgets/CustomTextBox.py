@@ -34,8 +34,9 @@ class CustomTextBox(tk.Frame):
     :type state: str, optional
     :param kwargs: Additional keyword arguments to pass to the `tk.Frame` constructor.
     """
-    def __init__(self, parent, height=10, state='normal', **kwargs):
+    def __init__(self, parent, height=10, state='normal', new_ui=False, **kwargs):
         tk.Frame.__init__(self, parent, **kwargs)
+        self.new_ui = new_ui
         
         # Create scrolled text widget
         self.scrolled_text = tk.scrolledtext.ScrolledText(self, wrap="word", height=height, state=state)
@@ -52,56 +53,67 @@ class CustomTextBox(tk.Frame):
         )
 
         # Initialize callback functions
-        self.med_hist_callback = None
-        self.consult_callback = None
-        self.consult_and_mh_callback = None
-        self.consult_complete_append_callback = None
-        self.consult_complete_overwrite_callback = None
+        if new_ui:
+            self.upload_callback = None
+        else:
+            self.med_hist_callback = None
+            self.consult_callback = None
+            self.consult_and_mh_callback = None
+            self.consult_complete_append_callback = None
+            self.consult_complete_overwrite_callback = None
         self.get_eform_callback = None
         self.download_callback = None
         self.cancel_callback = None
 
         # Buttons, in order of appearance
+        if new_ui:
+            self.upload_button = tk.Button(
+                self.button_frame,
+                text="Insert Consult",
+                command=self._upload,
+                relief="raised",
+                borderwidth=1
+            )
+        else:
+            self.med_hist_button = tk.Button(
+                self.button_frame,
+                text="Insert MH",
+                command=self._med_hist,
+                relief="raised",
+                borderwidth=1
+            )
 
-        self.consult_button = tk.Button(
-            self.button_frame,
-            text="Insert Consult",
-            command=self._consult,
-            relief="raised",
-            borderwidth=1
-        )
+            self.consult_button = tk.Button(
+                self.button_frame,
+                text="Insert Consult",
+                command=self._consult,
+                relief="raised",
+                borderwidth=1
+            )
 
-        self.consult_and_mh_button = tk.Button(
-            self.button_frame,
-            text="Insert Consult & MH",
-            command=self._consult_and_mh,
-            relief="raised",
-            borderwidth=1
-        )
+            self.consult_and_mh_button = tk.Button(
+                self.button_frame,
+                text="Insert Consult & MH",
+                command=self._consult_and_mh,
+                relief="raised",
+                borderwidth=1
+            )
 
-        self.consult_complete_append_button = tk.Button(
-            self.button_frame,
-            text="Append Complete Consult",
-            command=self._consult_complete_append,
-            relief="raised",
-            borderwidth=1
-        )
+            self.consult_complete_append_button = tk.Button(
+                self.button_frame,
+                text="Append Complete Consult",
+                command=self._consult_complete_append,
+                relief="raised",
+                borderwidth=1
+            )
 
-        self.consult_complete_overwrite_button = tk.Button(
-            self.button_frame,
-            text="Overwrite Complete Consult",
-            command=self._consult_complete_overwrite,
-            relief="raised",
-            borderwidth=1
-        )
-
-        self.med_hist_button = tk.Button(
-            self.button_frame,
-            text="Insert MH",
-            command=self._med_hist,
-            relief="raised",
-            borderwidth=1
-        )
+            self.consult_complete_overwrite_button = tk.Button(
+                self.button_frame,
+                text="Overwrite Complete Consult",
+                command=self._consult_complete_overwrite,
+                relief="raised",
+                borderwidth=1
+            )
 
         self.get_eforms_button = tk.Button(
             self.button_frame,
@@ -137,25 +149,32 @@ class CustomTextBox(tk.Frame):
         )
 
         # Button order
-        self._button_order = [
-            self.med_hist_button,
-            self.consult_button,
-            self.consult_and_mh_button,
-            self.consult_complete_append_button,
-            self.consult_complete_overwrite_button,
-            self.get_eforms_button,
-            self.download_button,
-            self.cancel_button,
-            self.copy_button
-        ]
+        if new_ui:
+            self._button_order = [
+                self.upload_button,
+                self.get_eforms_button,
+                self.download_button,
+                self.cancel_button,
+                self.copy_button
+            ]
+        else:
+            self._button_order = [
+                self.med_hist_button,
+                self.consult_button,
+                self.consult_and_mh_button,
+                self.consult_complete_append_button,
+                self.consult_complete_overwrite_button,
+                self.get_eforms_button,
+                self.download_button,
+                self.cancel_button,
+                self.copy_button
+            ]
 
         for button in self._button_order:
             button.pack_forget()
 
-        self.copy_button.pack(
-            side="left",
-            padx=4
-        )
+        if new_ui: self.upload_button.pack(side="left", padx=4)
+        self.copy_button.pack(side="left", padx=4)
 
     # Button visibility
     def _show_button(self, button):
@@ -179,11 +198,19 @@ class CustomTextBox(tk.Frame):
             padx=4
         )
 
+    # Upload consult button
+    def set_upload_callback(self, callback):
+        self.upload_callback = callback
+
+    def _upload(self):
+        if self.upload_callback:
+            self.upload_callback()
+
     # Medical history button
     def set_med_hist_callback(self, callback):
         self.med_hist_callback = callback
 
-        if self.med_hist_callback:
+        if self.med_hist_callback and not self.new_ui:
             self._show_button(self.med_hist_button)
 
     def _med_hist(self):
@@ -194,7 +221,7 @@ class CustomTextBox(tk.Frame):
     def set_consult_callback(self, callback):
         self.consult_callback = callback
 
-        if self.consult_callback:
+        if self.consult_callback and not self.new_ui:
             self._show_button(self.consult_button)
 
     def _consult(self):
@@ -205,7 +232,7 @@ class CustomTextBox(tk.Frame):
     def set_consult_and_mh_callback(self, callback):
         self.consult_and_mh_callback = callback
 
-        if self.consult_and_mh_callback:
+        if self.consult_and_mh_callback and not self.new_ui:
             self._show_button(self.consult_and_mh_button)
 
     def _consult_and_mh(self):
@@ -216,7 +243,7 @@ class CustomTextBox(tk.Frame):
     def set_consult_complete_append_callback(self, callback):
         self.consult_complete_append_callback = callback
 
-        if self.consult_complete_append_callback:
+        if self.consult_complete_append_callback and not self.new_ui:
             self._show_button(self.consult_complete_append_button)
 
     def _consult_complete_append(self):
@@ -227,7 +254,7 @@ class CustomTextBox(tk.Frame):
     def set_consult_complete_overwrite_callback(self, callback):
         self.consult_complete_overwrite_callback = callback
 
-        if self.consult_complete_overwrite_callback:
+        if self.consult_complete_overwrite_callback and not self.new_ui:
             self._show_button(self.consult_complete_overwrite_button)
 
     def _consult_complete_overwrite(self):
