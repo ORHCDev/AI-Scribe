@@ -1327,83 +1327,62 @@ def generate_note(formatted_message):
                     FROM measurements m
                     JOIN (
                         SELECT
-                            type_group,
-                            MAX(DATE(dateObserved)) AS latest_date
-                        FROM (
-                            SELECT
-                                CASE
-                                    WHEN type REGEXP '^ECG[0-9]?$' THEN 'ECG'
-                                    WHEN type REGEXP '^ECHO[0-9]?$' THEN 'ECHO'
-                                    WHEN type REGEXP '^ST[0-9]?$' THEN 'ST'
-                                    WHEN type REGEXP '^HOLT[0-9]?$' THEN 'HOLT'
-                                    WHEN type REGEXP '^SECHO[0-9]?$' THEN 'SECHO'
-                                END AS type_group,
-                                dateObserved
-                            FROM measurements
-                            WHERE demographicNo = {demo_no}
-                            AND (
-                                type REGEXP '^ECG[0-9]?$'
-                                OR type REGEXP '^ECHO[0-9]?$'
-                                OR type REGEXP '^ST[0-9]?$'
-                                OR type REGEXP '^HOLT[0-9]?$'
-                                OR type REGEXP '^SECHO[0-9]?$'
-                            )
-                            AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                        ) grouped
-                        GROUP BY type_group
-                    ) latest
-                        ON (
-                            (m.type REGEXP '^ECG[0-9]?$' AND latest.type_group = 'ECG')
-                            OR
-                            (m.type REGEXP '^ECHO[0-9]?$' AND latest.type_group = 'ECHO')
-                            OR
-                            (m.type REGEXP '^ST[0-9]?$' AND latest.type_group = 'ST')
-                            OR
-                            (m.type REGEXP '^HOLT[0-9]?$' AND latest.type_group = 'HOLT')
-                            OR
-                            (m.type REGEXP '^SECHO[0-9]?$' AND latest.type_group = 'SECHO')
+                            type,
+                            MAX(dateObserved) AS latest_date
+                        FROM measurements
+                        WHERE demographicNo = {demo_no}
+                        AND type IN (
+                            'ECG',
+                            'ECHO', 'ECHO1', 'ECHO2',
+                            'EST',
+                            'SECHO', 'SECHO1',
+                            'HOLT', 'HOLT1', 'HOLT2'
                         )
-                        AND DATE(m.dateObserved) = latest.latest_date
+                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                        GROUP BY type
+                    ) latest
+                        ON m.type = latest.type
+                        AND m.dateObserved = latest.latest_date
                     WHERE m.demographicNo = {demo_no}
-                    AND (
-                        m.type REGEXP '^ECG[0-9]?$'
-                        OR m.type REGEXP '^ECHO[0-9]?$'
-                        OR m.type REGEXP '^ST[0-9]?$'
-                        OR m.type REGEXP '^HOLT[0-9]?$'
-                        OR m.type REGEXP '^SECHO[0-9]?$'
+                    AND m.type IN (
+                        'ECG',
+                        'ECHO', 'ECHO1', 'ECHO2',
+                        'EST',
+                        'SECHO', 'SECHO1',
+                        'HOLT', 'HOLT1', 'HOLT2'
                     )
                     AND m.dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
                     ORDER BY m.dateObserved DESC, m.type ASC
                     """
                     measurement_results = chatbot.db_conn.query_database(measurement_query)
+                    print(f"measurement_results: {measurement_results}")
                     print(
                         f"[TIMING] DB: "
                         f"{time.perf_counter() - step_start:.2f}s"
                     )
 
                     step_start = time.perf_counter()
-                    ecg_results = []
-                    echo_results = []
-                    est_results = []
-                    secho_results = []
-                    holt_results = []
-                    for result in measurement_results:
-                        result_type = result["type"].upper()
-                        if result_type.startswith("SECHO"):
-                            secho_results.append(result)
-                        elif result_type.startswith("ECHO"):
-                            echo_results.append(result)
-                        elif result_type.startswith("ECG"):
-                            ecg_results.append(result)
-                        elif result_type.startswith("HOLT"):
-                            holt_results.append(result)
-                        elif result_type.startswith("ST"):
-                            est_results.append(result)
-                    print(f"ECG: {ecg_results}")
-                    print(f"ECHO: {echo_results}")
-                    print(f"EST: {est_results}")
-                    print(f"SECHO: {secho_results}")
-                    print(f"HOLT: {holt_results}")
+                    measurements = {
+                        result["type"].upper(): result["dataField"]
+                        for result in measurement_results
+                    }
+                    print(f"measurements: {measurements}")
+                    ecg_text = str(measurements.get("ECG", ""))
+                    echo_text = "".join([
+                        str(measurements.get("ECHO", "")),
+                        str(measurements.get("ECHO1", "")),
+                        str(measurements.get("ECHO2", ""))
+                    ])
+                    est_text = str(measurements.get("EST", ""))
+                    secho_text = "".join([
+                        str(measurements.get("SECHO", "")),
+                        str(measurements.get("SECHO1", ""))
+                    ])
+                    holt_text = "".join([
+                        str(measurements.get("HOLT", "")),
+                        str(measurements.get("HOLT1", "")),
+                        str(measurements.get("HOLT2", ""))
+                    ])
                     print(f"[TIMING] measurement processing: {time.perf_counter() - step_start:.2f}s")
 
                     step_start = time.perf_counter()
@@ -1414,9 +1393,8 @@ def generate_note(formatted_message):
                     else:
                         sections = ""
                     sections += "- HISTORY OF PRESENT ILLNESS"
-                    if ecg_results: 
+                    if ecg_text: 
                         sections += "\n- ECG"
-                        ecg_text = " ".join(str(result["dataField"]) for result in ecg_results)
                         print(f"ECG NOTE: {ecg_text}")
                         completion_advice += (
                             "\n\nTo complete the \"ECG\" section, use ONLY the following text. Ensure to write everything in "
@@ -1426,9 +1404,8 @@ def generate_note(formatted_message):
                             "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
                             f"section\n\n{ecg_text}"
                         )
-                    if echo_results: 
+                    if echo_text: 
                         sections += "\n- ECHO"
-                        echo_text = " ".join(str(result["dataField"]) for result in echo_results)
                         print(f"ECHO NOTE: {echo_text}")
                         completion_advice += (
                             "\n\nTo complete the \"ECHO\" section, use ONLY the following text. Ensure to write everything in "
@@ -1438,9 +1415,8 @@ def generate_note(formatted_message):
                             "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
                             f"section.\n\n{echo_text}"
                         )
-                    if est_results: 
+                    if est_text: 
                         sections += "\n- EST"
-                        est_text = " ".join(str(result["dataField"]) for result in est_results)
                         print(f"EST NOTE: {est_text}")
                         completion_advice += (
                             "\n\nTo complete the \"EST\" section, use ONLY the following text. Ensure to write everything in "
@@ -1450,9 +1426,8 @@ def generate_note(formatted_message):
                             "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
                             f"section.\n\n{est_text}"
                         )
-                    if secho_results: 
+                    if secho_text: 
                         sections += "\n- SECHO"
-                        secho_text = " ".join(str(result["dataField"]) for result in secho_results)
                         print(f"SECHO NOTE: {secho_text}")
                         completion_advice += (
                             "\n\nTo complete the \"SECHO\" section, use ONLY the following text. Ensure to write everything in "
@@ -1462,9 +1437,8 @@ def generate_note(formatted_message):
                             "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
                             f"section\n\n{secho_text}"
                         )
-                    if holt_results: 
+                    if holt_text: 
                         sections += "\n- HOLTER"
-                        holt_text = " ".join(str(result["dataField"]) for result in holt_results)
                         print(f"HOLT NOTE: {holt_text}")
                         completion_advice += (
                             "\n\nTo complete the \"HOLTER\" section, use ONLY the following text. Ensure to write everything in "
