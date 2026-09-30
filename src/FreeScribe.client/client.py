@@ -97,7 +97,12 @@ HL7_PROMPTS = ai_prompts.hl7_prompt_list
 
 oscar = chatbot.oscar 
 #  create our ui elements and settings config
-window = MainWindowUI(root, app_settings, ai_prompts)
+if app_settings.editable_settings[SettingsKeys.USE_NEW_UI.value]:
+    window = MainWindowUI(root, app_settings, ai_prompts)
+    print("New UI selected")
+else:
+    window = MainWindowUI(root, app_settings, ai_prompts)
+    print("Legacy UI selected")
 
 app_settings.set_main_window(window)
 
@@ -109,6 +114,14 @@ def on_close():
 
 root.protocol("WM_DELETE_WINDOW", on_close)
 
+
+def restart_application():
+    print("Restarting app, please wait")
+    on_close()
+    python = sys.executable
+    os.execl(python, python, *sys.argv)
+
+app_settings.set_restart_callback(restart_application)
 
 
 if app_settings.editable_settings["Use Docker Status Bar"]:

@@ -17,8 +17,7 @@ WhisperAudio, and OpenAI services.
 
 """
 
-import json
-import os
+import json, os, sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 import requests
@@ -34,6 +33,7 @@ class SettingsKeys(Enum):
     LOCAL_WHISPER = "Built-in Speech2Text"
     WHISPER_ENDPOINT = "Speech2Text (Whisper) Endpoint"
     WHISPER_SERVER_API_KEY = "Speech2Text (Whisper) API Key"
+    USE_NEW_UI = "Use New UI"
 
 
 class FeatureToggle:
@@ -94,7 +94,8 @@ class SettingsWindow():
         self.general_settings = [
             "Show Welcome Message",
             "Use Database Patient Lookup",
-            "Show Scrub PHI"
+            "Show Scrub PHI",
+            SettingsKeys.USE_NEW_UI.value
         ]
 
         self.whisper_settings = [
@@ -203,6 +204,7 @@ class SettingsWindow():
             "Pre-Processing": "Please break down the conversation into a list of facts. Take the conversation and transform it to a easy to read list:\n\n",
             "Post-Processing": "\n\nUsing the provided list of facts, review the SOAP note for accuracy. Verify that all details align with the information provided in the list of facts and ensure consistency throughout. Update or adjust the SOAP note as necessary to reflect the listed facts without offering opinions or subjective commentary. Ensure that the revised note excludes a \"Notes\" section and does not include a header for the SOAP note. Provide the revised note after making any necessary corrections.",
             "Show Scrub PHI": False,
+            SettingsKeys.USE_NEW_UI.value: False,
             "ReportMasterPath" : r'.\oscarReportmasterXLS.xls',
             "HL7 Base Folder" : r'.\hl7',
             "Feedback Base Folder" : r'.\feedback',
@@ -335,11 +337,15 @@ class SettingsWindow():
 
         self.editable_settings["Silence cut-off"] = silence_cutoff
 
+        prev_use_new_ui = self.editable_settings[SettingsKeys.USE_NEW_UI.value]
+
         for setting, entry in self.editable_settings_entries.items():     
             value = entry.get()
             if setting in ["max_context_length", "max_length", "rep_pen_range", "top_k"]:
                 value = int(value)
             self.editable_settings[setting] = value
+
+        curr_use_new_ui = self.editable_settings[SettingsKeys.USE_NEW_UI.value]
 
         self.save_settings_to_file()
 
@@ -350,6 +356,10 @@ class SettingsWindow():
             f.write(self.AISCRIBE)
         with open(get_resource_path('aiscribe2.txt'), 'w') as f:
             f.write(self.AISCRIBE2)
+
+        if prev_use_new_ui != curr_use_new_ui:
+            settings_window.destroy()
+            self._restart_application()
       
     def load_aiscribe_from_file(self):
         """
@@ -572,3 +582,10 @@ class SettingsWindow():
             architectures.append("CUDA (Nvidia GPU)")
 
         return architectures
+
+    def _restart_application(self):
+        if self.restart_callback:
+            self.restart_callback()
+
+    def set_restart_callback(self, callback):
+        self.restart_callback = callback
