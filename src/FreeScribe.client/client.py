@@ -1883,42 +1883,76 @@ _MED_FORM_RESET_BUTTON = "new or dose change"
 # How to decide whether a plan changes a medication: "keyword" (free, instant) or "llm"
 # (one extra model call per Insert Consult, more accurate - it can tell a real medication
 # change from things like "start a stress test" or "stop smoking"). Flip to switch.
-_MED_GATE_MODE = "keyword"
+_MED_GATE_MODE = "llm"
 
 
-def _plan_mentions_medication_keyword(text: str) -> bool:
+def _plan_mentions_medication_or_labs_keyword(text: str) -> bool:
     """Keyword check: looks for medication-change verbs. Fast but cannot tell whether the verb
     refers to a medication (e.g. 'start a stress test' would match)."""
     import re
     t = str(text or "").lower()
-    pattern = (r"\b(start\w*|stop\w*|discontinu\w*|increas\w*|decreas\w*|reduc\w*|switch\w*|"
+    med_pattern = (r"\b(start\w*|stop\w*|discontinu\w*|increas\w*|decreas\w*|reduc\w*|switch\w*|"
                r"titrat\w*|initiat\w*|wean\w*|hold\b|add(ed|ing|s)?\b)")
-    return bool(re.search(pattern, t))
+    lab_action_pattern = (
+        r"\b(order|ordered|obtain|obtained|check|checked|repeat|recheck|"
+        r"measure|monitor|draw|complete|perform|do|get|request|requested)\w*\b"
+    )
+    lab_test_pattern = (
+        r"\b(lab|labs|laboratory|bloodwork|blood\s+work|blood\s+test\w*|"
+        r"blood\s+panel\w*|cbc|bmp|cmp|lipid\w*|cholesterol|"
+        r"creatinine|egfr|electrolytes?|potassium|sodium|"
+        r"glucose|a1c|hba1c|tsh|thyroid|lft\w*|"
+        r"liver\s+function|renal\s+function|kidney\s+function|"
+        r"bnp|nt-probnp|troponin|inr|ptt?|ferritin|iron\s+studies|"
+        r"urinalysis|urine\s+test\w*)\b"
+    )
+    result = {
+        "medication": bool(re.search(med_pattern, t)),
+        "labs": bool(re.search(lab_action_pattern, t) and re.search(lab_test_pattern, t))
+    }
+    return result
 
 
-def _plan_mentions_medication_llm(plan_text: str) -> bool:
+def _plan_mentions_medication_or_labs_llm(plan_text: str) -> bool:
     """LLM check: asks the model whether the plan starts, stops, or changes a medication,
     ignoring tests, procedures, lifestyle advice, appointments, and unchanged continuations.
     Falls back to the keyword check if the model call fails."""
     plan = str(plan_text or "").strip()
     if not plan:
         return False
-    prompt = (
-        "You are reviewing the PLAN section of a cardiology note. Does the plan START, STOP, "
-        "or CHANGE THE DOSE of any medication (a drug or prescription)? Continuing existing "
-        "medications unchanged does NOT count. Tests, imaging, procedures, lifestyle advice, "
-        "and appointments do NOT count. Answer with only the single word yes or no.\n\n"
-        f"PLAN:\n{plan}"
-    )
+    prompt = f"""
+    You are reviewing the PLAN section of a cardiology note, and must return JSON in the following format:
+
+    {{
+        "medication": boolean,
+        "labs": boolean
+    }}
+
+    "medication" should be true when the plan mentions to START, STOP, or CHANGE THE DOSE of any medication (a drug or 
+    prescription). Continuing existing medications unchanged does NOT count. Tests, imaging, procedures, lifestyle advice, 
+    and appointments do NOT count. Answer with only the single word yes or no.
+    
+    Here is the PLAN section to check:\n{plan}
+    
+    Return ONLY JSON in the format specified above."
+    """
     try:
         resp = (send_text_to_chatgpt(prompt) or "").strip().lower()
+        match = re.search(r"\{.*\}", resp, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, dict):
+                return parsed
+            else:
+                return _plan_mentions_medication_or_labs_keyword(plan)
+        else:
+            return _plan_mentions_medication_or_labs_keyword(plan)
     except Exception as e:
         print(f"Medication LLM gate failed, falling back to keyword: {e}")
-        return _plan_mentions_medication_keyword(plan)
-    return "yes" in resp[:10]
+        return _plan_mentions_medication_or_labs_keyword(plan)
 
 
-def _plan_mentions_medication(text: str) -> bool:
+def _plan_mentions_medication_or_labs(text: str) -> bool:
     """Decide whether to open the medication eForm. Looks only at the PLAN section (not HPI or
     Assessment) so phrases like 'the prescribed therapy' do not cause a false open, then
     dispatches to the keyword or LLM check depending on _MED_GATE_MODE."""
@@ -1929,14 +1963,16 @@ def _plan_mentions_medication(text: str) -> bool:
         plan = ""
     scope = plan or full
     if _MED_GATE_MODE == "llm":
-        return _plan_mentions_medication_llm(scope)
-    return _plan_mentions_medication_keyword(scope)
+        return _plan_mentions_medication_or_labs_llm(scope)
+    return _plan_mentions_medication_or_labs_keyword(scope)
 
 
 def _open_medication_eform(consult_text: str = ""):
     """Auto-open the medication prescription eForm (0.1Rfx), but only when the plan involves a
     medication change, then click its reset button so it starts from the current meds."""
-    if not _plan_mentions_medication(consult_text):
+    mentioned = _plan_mentions_medication_or_labs(consult_text)
+    print(f"eForm decisions: {mentioned}")
+    if not mentioned["medication"]:
         print("No medication change detected in the plan; skipping medication eForm")
         return
 
