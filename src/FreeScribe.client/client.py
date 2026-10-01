@@ -1874,8 +1874,72 @@ def download_results():
 
 
 
-def _open_medication_eform():
-    """Auto-open the medication prescription eForm (0.1Rfx) fill page for the opened patient."""
+# Visible text of the button clicked once the medication eForm opens, so it refreshes to the
+# patient's current meds (and drops any stale pre-filled content) ready for a new / dose change.
+# Change to "clear" if the clinic prefers to blank the form instead.
+_MED_FORM_RESET_BUTTON = "new or dose change"
+
+
+# How to decide whether a plan changes a medication: "keyword" (free, instant) or "llm"
+# (one extra model call per Insert Consult, more accurate - it can tell a real medication
+# change from things like "start a stress test" or "stop smoking"). Flip to switch.
+_MED_GATE_MODE = "keyword"
+
+
+def _plan_mentions_medication_keyword(text: str) -> bool:
+    """Keyword check: looks for medication-change verbs. Fast but cannot tell whether the verb
+    refers to a medication (e.g. 'start a stress test' would match)."""
+    import re
+    t = str(text or "").lower()
+    pattern = (r"\b(start\w*|stop\w*|discontinu\w*|increas\w*|decreas\w*|reduc\w*|switch\w*|"
+               r"titrat\w*|initiat\w*|wean\w*|hold\b|add(ed|ing|s)?\b)")
+    return bool(re.search(pattern, t))
+
+
+def _plan_mentions_medication_llm(plan_text: str) -> bool:
+    """LLM check: asks the model whether the plan starts, stops, or changes a medication,
+    ignoring tests, procedures, lifestyle advice, appointments, and unchanged continuations.
+    Falls back to the keyword check if the model call fails."""
+    plan = str(plan_text or "").strip()
+    if not plan:
+        return False
+    prompt = (
+        "You are reviewing the PLAN section of a cardiology note. Does the plan START, STOP, "
+        "or CHANGE THE DOSE of any medication (a drug or prescription)? Continuing existing "
+        "medications unchanged does NOT count. Tests, imaging, procedures, lifestyle advice, "
+        "and appointments do NOT count. Answer with only the single word yes or no.\n\n"
+        f"PLAN:\n{plan}"
+    )
+    try:
+        resp = (send_text_to_chatgpt(prompt) or "").strip().lower()
+    except Exception as e:
+        print(f"Medication LLM gate failed, falling back to keyword: {e}")
+        return _plan_mentions_medication_keyword(plan)
+    return "yes" in resp[:10]
+
+
+def _plan_mentions_medication(text: str) -> bool:
+    """Decide whether to open the medication eForm. Looks only at the PLAN section (not HPI or
+    Assessment) so phrases like 'the prescribed therapy' do not cause a false open, then
+    dispatches to the keyword or LLM check depending on _MED_GATE_MODE."""
+    full = str(text or "")
+    try:
+        plan = extract_plan_section(full) or ""
+    except Exception:
+        plan = ""
+    scope = plan or full
+    if _MED_GATE_MODE == "llm":
+        return _plan_mentions_medication_llm(scope)
+    return _plan_mentions_medication_keyword(scope)
+
+
+def _open_medication_eform(consult_text: str = ""):
+    """Auto-open the medication prescription eForm (0.1Rfx), but only when the plan involves a
+    medication change, then click its reset button so it starts from the current meds."""
+    if not _plan_mentions_medication(consult_text):
+        print("No medication change detected in the plan; skipping medication eForm")
+        return
+
     MED_FORM_PREFIX = "0.1Rfx"
     eforms = getattr(eform_selection_panel, "eforms", None) or {}
     if not eforms and hasattr(eform_selection_panel, "_load_eforms"):
@@ -1890,11 +1954,46 @@ def _open_medication_eform():
     if fid is None:
         print(f"Medication eForm '{MED_FORM_PREFIX}' not found; skipping auto-open")
         return
+
+    # Remember the windows open before, so we can switch to exactly the new one afterwards
+    # without touching the letter window that the consult upload just opened.
+    try:
+        before = set(oscar.driver.window_handles)
+    except Exception:
+        before = set()
+
     try:
         oscar.open_new_eform(fid)
     except Exception as e:
         # Never let the auto-open disturb the consult upload that already succeeded.
         print(f"Could not auto-open medication eForm: {e}")
+        return
+
+    # Click the form's reset button so it does not carry stale pre-filled meds.
+    target = _MED_FORM_RESET_BUTTON.lower()
+    find_js = ("var t=arguments[0];"
+               "return Array.from(document.querySelectorAll('input,button,a')).some(function(x){"
+               "return (x.value||x.textContent||'').trim().toLowerCase().indexOf(t)>=0;});")
+    click_js = ("var t=arguments[0];"
+                "var b=Array.from(document.querySelectorAll('input,button,a')).find(function(x){"
+                "return (x.value||x.textContent||'').trim().toLowerCase().indexOf(t)>=0;});"
+                "if(b){b.click();return (b.tagName+' '+(b.value||b.textContent||'')).trim().slice(0,60);}"
+                "return 'button-not-found';")
+    try:
+        after = oscar.driver.window_handles
+        new_windows = [h for h in after if h not in before]
+        med_window = new_windows[-1] if new_windows else after[-1]
+        oscar.driver.switch_to.window(med_window)
+        oscar.wait.until(lambda d: d.execute_script(find_js, target))
+        result = oscar.driver.execute_script(click_js, target)
+        print(f"Medication form reset button -> {result}")
+    except Exception as e:
+        print(f"Could not click medication form reset button: {e}")
+    finally:
+        try:
+            oscar.driver.switch_to.window(oscar.home_window)
+        except Exception:
+            pass
 
 
 def upload_consult():
@@ -1903,7 +2002,7 @@ def upload_consult():
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid=fdid, consult=text)
-    _open_medication_eform()
+    _open_medication_eform(text)
 
 def upload_consult_and_mh():
     """
@@ -2059,13 +2158,13 @@ def upload_consult_and_mh():
     # Insert text into 0letter
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid, consult, med_hist_resp)
-    _open_medication_eform()
+    _open_medication_eform(consult)
 
 def upload_consult_complete(overwrite):
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter_from_headings(fdid, text, overwrite)
-    _open_medication_eform()
+    _open_medication_eform(text)
 
 def upload_consult_by_type(upload_type, overwrite):
     if upload_type == "consult": upload_consult()
