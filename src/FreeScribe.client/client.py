@@ -1967,14 +1967,22 @@ def _plan_mentions_medication_or_labs(text: str) -> bool:
     return _plan_mentions_medication_or_labs_keyword(scope)
 
 
-def _open_medication_eform(consult_text: str = ""):
+def _open_relevant_eforms(consult_text: str = ""):
+    plan_mentions = _plan_mentions_medication_or_labs(consult_text)
+    print(f"eForm decisions: {plan_mentions}")
+    if plan_mentions["medication"]:
+        _open_medication_eform()
+    else:
+        print("No medication change detected in the plan; skipping medication eForm")
+    if plan_mentions["labs"]:
+        _open_labs_eform()
+    else:
+        print("No labwork requirement detected in the plan; skipping labs eForm")
+
+
+def _open_medication_eform():
     """Auto-open the medication prescription eForm (0.1Rfx), but only when the plan involves a
     medication change, then click its reset button so it starts from the current meds."""
-    mentioned = _plan_mentions_medication_or_labs(consult_text)
-    print(f"eForm decisions: {mentioned}")
-    if not mentioned["medication"]:
-        print("No medication change detected in the plan; skipping medication eForm")
-        return
 
     MED_FORM_PREFIX = "0.1Rfx"
     eforms = getattr(eform_selection_panel, "eforms", None) or {}
@@ -2032,13 +2040,22 @@ def _open_medication_eform(consult_text: str = ""):
             pass
 
 
+def _open_labs_eform():
+    LABS_FORM_FID = 659
+    try:
+        oscar.open_new_eform(LABS_FORM_FID)
+    except Exception as e:
+        print(f"Could not auto-open labs eForm: {e}")
+        return
+
+
 def upload_consult():
     """Uploads the LLM response to patient consult to most recent 0letter eform,
     then auto-opens the medication (0.1Rfx) eForm fill page."""
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid=fdid, consult=text)
-    _open_medication_eform(text)
+    _open_relevant_eforms(text)
 
 def upload_consult_and_mh():
     """
@@ -2194,13 +2211,13 @@ def upload_consult_and_mh():
     # Insert text into 0letter
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter(fdid, consult, med_hist_resp)
-    _open_medication_eform(consult)
+    _open_relevant_eforms(consult)
 
 def upload_consult_complete(overwrite):
     text = response_display.scrolled_text.get("1.0", tk.END).strip()
     fdid = eform_selection_panel.get_most_recent_0letter()
     oscar.insert_text_into_0letter_from_headings(fdid, text, overwrite)
-    _open_medication_eform(text)
+    _open_relevant_eforms(text)
 
 def upload_consult_by_type(upload_type, overwrite):
     if upload_type == "consult": upload_consult()
