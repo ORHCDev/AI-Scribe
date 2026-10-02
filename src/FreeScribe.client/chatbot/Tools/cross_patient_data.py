@@ -474,6 +474,11 @@ _CROSS_LOOKUP_SOURCES = {
         "prefix": "new entry: ",
         "label": "medication",
     },
+    "medical_history": {
+        "types": ("PMH",),
+        "prefix": "new entry: ",
+        "label": "medical history entry",
+    },
 }
 
 
@@ -481,24 +486,27 @@ _CROSS_LOOKUP_SOURCES = {
     category="cross_patient_data",
     description=(
         "Unified population-level lookup that returns active patients matching any combination of cardiac "
-        "conditions and/or medications within a recent time period in a single call. Prefer this over calling "
-        "condition_lookup and medication_lookup separately, especially when the question combines a condition "
-        "with a medication (e.g. 'patients with heart failure on metoprolol'). Supply at least one of conditions "
-        "or medications; when both are supplied, only patients matching every provided criterion are returned. "
-        "Searches cardiac history measurement entries (type 'CARD'/'CARD1') and medication entries (type 'MEDS'), "
-        "aggregates the matching entry text and observation dates for each patient, and returns patient identifiers "
-        "(first and last name), provider number, the matching entries, and their dates grouped by patient. Only "
-        "active patients are included, and only entries recorded on or after the calculated start date based on the "
-        "provided period are considered. This tool is most relevant for cohort identification, combined "
-        "condition/medication audits, quality improvement initiatives, and clinical reporting."
+        "conditions, medications, and/or medical history within a recent time period in a single call. Prefer this "
+        "over calling condition_lookup and medication_lookup separately, especially when the question combines a "
+        "condition with a medication (e.g. 'patients with heart failure on metoprolol') or involves past medical "
+        "history (e.g. 'patients with a history of asthma'). Supply at least one of conditions, medications, or "
+        "medical_history; when more than one is supplied, only patients matching every provided criterion are "
+        "returned. Searches cardiac history measurement entries (type 'CARD'/'CARD1'), medication entries (type "
+        "'MEDS'), and patient medical history entries (type 'PMH'), aggregates the matching entry text and "
+        "observation dates for each patient, and returns patient identifiers (first and last name), provider number, "
+        "the matching entries, and their dates grouped by patient. Only active patients are included, and only "
+        "entries recorded on or after the calculated start date based on the provided period are considered. This "
+        "tool is most relevant for cohort identification, combined condition/medication/history audits, quality "
+        "improvement initiatives, and clinical reporting."
     ),
     context=(
-        "Population-level lookup of patients matching one or more cardiac conditions and/or medications over a "
-        "recent time window. Output all fields in a table format."
+        "Population-level lookup of patients matching one or more cardiac conditions, medications, and/or medical "
+        "history entries over a recent time window. Output all fields in a table format."
     ),
     parameters={
         "conditions": "Optional. List of cardiac condition names or partial names to search for in cardiac history entries.",
         "medications": "Optional. List of medication names or partial names to search for in medication entries.",
+        "medical_history": "Optional. List of medical history terms or partial names to search for in patient medical history entries (type 'PMH').",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
     }
 )
@@ -506,10 +514,11 @@ def cross_patient_lookup(
     db_conn,
     period: str,
     conditions: list[str] | None = None,
-    medications: list[str] | None = None
+    medications: list[str] | None = None,
+    medical_history: list[str] | None = None
 ):
     """
-    Queries and returns a report of patients matching the given conditions and/or medications.
+    Queries and returns a report of patients matching the given conditions, medications, and/or medical history.
 
     Params
     ------
@@ -526,10 +535,13 @@ def cross_patient_lookup(
     medications : list[str] | None
         Optional list of medications to find patients that are on them.
 
+    medical_history : list[str] | None
+        Optional list of medical history terms to find patients that have them.
+
     Returns
     -------
     ToolReturn
-        Aggregated condition and/or medication entries grouped by patient.
+        Aggregated condition, medication, and/or medical history entries grouped by patient.
     """
 
     def _normalize(values: list[str] | str | None) -> list[str]:
@@ -544,6 +556,7 @@ def cross_patient_lookup(
         for key, normalized in (
             ("conditions", _normalize(conditions)),
             ("medications", _normalize(medications)),
+            ("medical_history", _normalize(medical_history)),
         )
         if normalized
     }
@@ -552,8 +565,8 @@ def cross_patient_lookup(
         return tr(
             label="Cross Patient Lookup",
             send_to_ai=True,
-            query_results="No conditions or medications were provided to search for.",
-            save_results="No conditions or medications were provided to search for."
+            query_results="No conditions, medications, or medical history were provided to search for.",
+            save_results="No conditions, medications, or medical history were provided to search for."
         )
 
     date = period_parser(period)
