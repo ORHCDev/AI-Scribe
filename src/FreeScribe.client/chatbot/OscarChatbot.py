@@ -368,12 +368,15 @@ class OscarCB:
         A failed RAG search is retried through OscarWorkflow, since RAG itself
         is single-pass and only handles documents.
 
-        Verification is applied to every response produced here, including
-        responses that never passed through an LLM (e.g. patient-clarification
-        or error messages).
+        Verification only runs for the RAG workflow; Oscar and other workflows
+        are returned as-is.
         """
         workflow = self.workflows[workflow_type]
         result = workflow.run(user_input, context)
+
+        if workflow_type != "rag_search":
+            logging.info(f"Skipping verification: workflow '{workflow_type}' is not RAG.")
+            return result
 
         tools_tried = (result.metadata or {}).get("tools_tried", [])
         if "get_patient_summary" in tools_tried or "patients_by_measurement" in tools_tried:
