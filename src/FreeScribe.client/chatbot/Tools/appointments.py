@@ -268,14 +268,20 @@ def get_appointments_by_provider(db_conn, provider_name: str):
         "chart number, reason, notes, and provider. "
         "The results may optionally be filtered to a single provider by name. "
         "The provider name may be given with or without a professional title such as 'Dr.'. "
+        "The results include the current date and exact current time so that already-completed and "
+        "still-upcoming appointments for the day can be distinguished. "
         "This tool is most relevant when answering questions about who is booked on a "
-        "given day, a provider's day sheet or daily schedule, or the list of patients "
-        "being seen on a particular date."
+        "given day, a provider's day sheet or daily schedule, the list of patients "
+        "being seen on a particular date, or which appointments are left today "
+        "(e.g. 'What appointments do I have left today?')."
     ),
     context=(
         "Here are the appointments scheduled for the requested day. "
+        "The current date and exact current time are provided with the results. "
         "Present the patients as a simple list including each patient's appointment "
         "time and name, along with the provider and reason for the visit. "
+        "When asked what is left or upcoming for today, include only appointments "
+        "whose time is later than the current time. "
         "If no appointments are found, explicitly state this to the user."
     ),
     parameters={
@@ -310,18 +316,21 @@ def get_appointment_day_sheet(
         Optional provider name used to filter the results.
     """
 
+    now = datetime.now()
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
     if date:
         try:
             datetime.strptime(date, "%Y-%m-%d")
         except ValueError:
             return tr(
-                label=f"Invalid date: {date}",
+                label=f"Invalid date: {date} (current date/time: {now_str})",
                 send_to_ai=True,
                 query_results=[],
                 save_results=[]
             )
     else:
-        date = datetime.today().strftime("%Y-%m-%d")
+        date = now.strftime("%Y-%m-%d")
 
     label = f"Appointment Day Sheet for {date}"
 
@@ -374,11 +383,27 @@ def get_appointment_day_sheet(
 
     res = db_conn.query_database(query)
 
+    label += f" (current date/time: {now_str})"
+
+    followup_prompt = (
+        f"The following data is the appointment day sheet for {date}.\n"
+        f"The current date and time is {now_str}.\n\n"
+        "{context}\n\n"
+        "Here is the user's request:\n\n"
+        "{user_input}\n\n"
+        f"Treat {date} as the day of the listed appointments and {now_str} as 'now'. "
+        "When the user asks what appointments remain or are upcoming for today, list only the "
+        "appointments whose time is later than the current time. When the user asks for the full "
+        "day or for a past date, include all appointments. Present each appointment with its time (in AM/PM format), "
+        "patient name, provider, and reason."
+    )
+
     return tr(
         label=label,
         send_to_ai=True,
         query_results=res,
-        save_results=res
+        save_results=res,
+        followup_prompt=followup_prompt
     )
 
 
