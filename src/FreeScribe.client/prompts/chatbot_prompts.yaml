@@ -238,6 +238,7 @@ rag_tool_prompt: |
   - For category measurement with mode all (trend, over time, graph, plot the values), call get_measurement_trend with the single measurement name; do NOT use get_measurement_trend for a latest or current value
   - When the intent types include ECHO, SECHO, HOLT, HOL, ECG, CATH, or EST and the question asks for results, a report, findings, or details, ALSO call get_documents with the same clinical query, since the full report may live in a document; the answer should use whichever source is more complete and up to date
   - For category document use get_documents; for category medication use the medication tools
+  - When a question combines patients matching a condition, medication, or medical history with an appointment date or provider (e.g. "which patients did I see today with heart disease"), call cross_patient_lookup ONCE with the condition/medication/history plus appointment_date (and provider_name if given); do NOT also call an appointment day sheet or appointment tool
   - For category general or a broad summary or overview request, do NOT force a single tool; answer from the retrieved context and call multiple tools only if each is clearly needed
 
   ---------------------
