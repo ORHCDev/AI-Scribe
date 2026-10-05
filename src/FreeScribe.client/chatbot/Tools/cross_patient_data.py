@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from chatbot.Tools.Tool import tool, ToolReturn as tr
 from chatbot.Tools.utils import period_parser
 
@@ -482,32 +484,70 @@ _CROSS_LOOKUP_SOURCES = {
 }
 
 
+def _resolve_appointment_date(value: str) -> str | None:
+    """
+    Resolve a user-supplied appointment date to a 'YYYY-MM-DD' string.
+
+    Accepts an explicit date as well as the relative terms 'today' and 'yesterday'.
+
+    Params
+    ------
+    value : str
+        The appointment date as 'YYYY-MM-DD', 'today', or 'yesterday'.
+
+    Returns
+    -------
+    str | None
+        The resolved date in 'YYYY-MM-DD' format, or None when it cannot be parsed.
+    """
+    text = str(value).strip()
+    lowered = text.lower()
+    if lowered in ("today", "now"):
+        return datetime.now().strftime("%Y-%m-%d")
+    if lowered == "yesterday":
+        return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
 @tool(
     category="cross_patient_data",
     description=(
         "Unified population-level lookup that returns active patients matching any combination of cardiac "
-        "conditions, medications, and/or medical history within a recent time period in a single call. Prefer this "
-        "over calling condition_lookup and medication_lookup separately, especially when the question combines a "
-        "condition with a medication (e.g. 'patients with heart failure on metoprolol') or involves past medical "
-        "history (e.g. 'patients with a history of asthma'). Supply at least one of conditions, medications, or "
-        "medical_history; when more than one is supplied, only patients matching every provided criterion are "
-        "returned. Searches cardiac history measurement entries (type 'CARD'/'CARD1'), medication entries (type "
-        "'MEDS'), and patient medical history entries (type 'PMH'), aggregates the matching entry text and "
-        "observation dates for each patient, and returns patient identifiers (first and last name), provider number, "
-        "the matching entries, and their dates grouped by patient. Only active patients are included, and only "
-        "entries recorded on or after the calculated start date based on the provided period are considered. This "
-        "tool is most relevant for cohort identification, combined condition/medication/history audits, quality "
+        "conditions, medications, and/or medical history within a recent time period in a single call. When "
+        "appointment_date is provided, results are further limited to patients who have an appointment on that "
+        "date and each patient's appointment details are included. Prefer this over calling condition_lookup and "
+        "medication_lookup separately, especially when the question combines a condition with a medication "
+        "(e.g. 'patients with heart failure on metoprolol') or involves past medical history (e.g. 'patients with "
+        "a history of asthma'). Also prefer this single tool over combining a cross-patient lookup with an "
+        "appointment tool when the question asks which patients matching a condition, medication, or history were "
+        "also seen on a given date (e.g. 'which patients did I see today with heart disease', 'patients with "
+        "atrial fibrillation booked today', or 'patients with heart failure seen by Dr. Smith today'). Supply at "
+        "least one of conditions, medications, or medical_history; when more than one is supplied, only patients "
+        "matching every provided criterion are returned. Searches cardiac history measurement entries (type "
+        "'CARD'/'CARD1'), medication entries (type 'MEDS'), and patient medical history entries (type 'PMH'), "
+        "aggregates the matching entry text and observation dates for each patient, and returns patient identifiers "
+        "(first and last name), provider number, the matching entries, their dates, and any matching appointments "
+        "grouped by patient. Only active patients are included, and only entries recorded on or after the calculated "
+        "start date based on the provided period are considered. This tool is most relevant for cohort "
+        "identification, combined condition/medication/history audits, appointment day-sheet filtering, quality "
         "improvement initiatives, and clinical reporting."
     ),
     context=(
         "Population-level lookup of patients matching one or more cardiac conditions, medications, and/or medical "
-        "history entries over a recent time window. Output all fields in a table format."
+        "history entries over a recent time window, optionally limited to patients with an appointment on a given "
+        "date. When appointments are included, present each patient with their appointment date, time, and reason. "
+        "Output all fields in a table format."
     ),
     parameters={
         "conditions": "Optional. List of cardiac condition names or partial names to search for in cardiac history entries.",
         "medications": "Optional. List of medication names or partial names to search for in medication entries.",
         "medical_history": "Optional. List of medical history terms or partial names to search for in patient medical history entries (type 'PMH').",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
+        "appointment_date": "Optional. When set, only patients with an appointment on this date are returned, along with their appointment details. Accepts 'YYYY-MM-DD', 'today', or 'yesterday'.",
+        "provider_name": "Optional. Filters appointments to a provider, given with or without 'Dr.'. If provided without appointment_date, defaults to today's appointments.",
     }
 )
 def cross_patient_lookup(
@@ -515,7 +555,9 @@ def cross_patient_lookup(
     period: str,
     conditions: list[str] | None = None,
     medications: list[str] | None = None,
-    medical_history: list[str] | None = None
+    medical_history: list[str] | None = None,
+    appointment_date: str | None = None,
+    provider_name: str | None = None
 ):
     """
     Queries and returns a report of patients matching the given conditions, medications, and/or medical history.
@@ -538,10 +580,20 @@ def cross_patient_lookup(
     medical_history : list[str] | None
         Optional list of medical history terms to find patients that have them.
 
+    appointment_date : str | None
+        Optional appointment date as 'YYYY-MM-DD', 'today', or 'yesterday'. When set,
+        only patients with an appointment on that date are returned and their
+        appointment details are included.
+
+    provider_name : str | None
+        Optional provider name (with or without 'Dr.') used to filter appointments.
+        If provided without appointment_date, today's appointments are used.
+
     Returns
     -------
     ToolReturn
-        Aggregated condition, medication, and/or medical history entries grouped by patient.
+        Aggregated condition, medication, and/or medical history entries grouped by
+        patient, including any matching appointment details.
     """
 
     def _normalize(values: list[str] | str | None) -> list[str]:
@@ -579,6 +631,73 @@ def cross_patient_lookup(
             save_results=msg
         )
 
+    appointment_date = appointment_date.strip() if isinstance(appointment_date, str) else appointment_date
+    provider_name = provider_name.strip() if isinstance(provider_name, str) else provider_name
+
+    appointment_join = ""
+    appointment_select = ""
+    appointment_having = ""
+    resolved_date = None
+
+    if appointment_date or provider_name:
+        if appointment_date:
+            resolved_date = _resolve_appointment_date(appointment_date)
+            if not resolved_date:
+                msg = (
+                    f"Could not parse appointment date '{appointment_date}'. "
+                    "Use 'YYYY-MM-DD', 'today', or 'yesterday'."
+                )
+                return tr(
+                    label="Invalid appointment date",
+                    send_to_ai=True,
+                    query_results=msg,
+                    save_results=msg
+                )
+        else:
+            resolved_date = datetime.now().strftime("%Y-%m-%d")
+
+        appt_provider_filter = ""
+        if provider_name:
+            safe_provider = provider_name.replace("'", "''")
+            providers = db_conn.query_database(f"""
+            SELECT provider_no
+            FROM provider
+            WHERE CONCAT(first_name, ' ', last_name) = '{safe_provider}'
+               OR CONCAT('Dr. ', first_name, ' ', last_name) = '{safe_provider}'
+            """)
+
+            if not providers:
+                return tr(
+                    label=f"Provider not found: {provider_name}",
+                    send_to_ai=True,
+                    query_results=[],
+                    save_results=[]
+                )
+
+            provider_ids = [str(provider["provider_no"]) for provider in providers]
+            appt_provider_filter = f"AND a.provider_no IN ({','.join(provider_ids)})"
+
+        appointment_join = f"""
+    LEFT JOIN (
+        SELECT
+            a.demographic_no,
+            GROUP_CONCAT(
+                CONCAT(
+                    a.appointment_date, ' ', a.start_time,
+                    CASE WHEN a.reason IS NOT NULL AND a.reason <> ''
+                         THEN CONCAT(' - ', a.reason) ELSE '' END
+                )
+                ORDER BY a.start_time SEPARATOR '\\n'
+            ) AS appointments
+        FROM appointment a
+        WHERE a.appointment_date = '{resolved_date}'
+          AND a.demographic_no <> 0
+          {appt_provider_filter}
+        GROUP BY a.demographic_no
+    ) appt ON appt.demographic_no = d.demographic_no"""
+        appointment_select = "MAX(appt.appointments) AS appointments"
+        appointment_having = "appointments IS NOT NULL"
+
     select_aggs = []
     match_filters = []
     having_filters = []
@@ -603,16 +722,26 @@ def cross_patient_lookup(
         )
         having_filters.append(f"{key}_entries IS NOT NULL")
 
+    if appointment_having:
+        having_filters.append(appointment_having)
+
+    select_parts = [
+        "d.demographic_no",
+        "d.last_name",
+        "d.first_name",
+        "d.provider_no",
+    ]
+    if appointment_select:
+        select_parts.append(appointment_select)
+    select_parts.extend(select_aggs)
+
     query = f"""
     SELECT DISTINCT
-        d.demographic_no,
-        d.last_name,
-        d.first_name,
-        d.provider_no,
-        {", ".join(select_aggs)}
+        {", ".join(select_parts)}
     FROM measurements m
     JOIN demographic d
         ON m.demographicNo = d.demographic_no
+    {appointment_join}
     WHERE d.patient_status = 'AC'
     AND m.dateObserved > '{date}'
     AND (
@@ -638,6 +767,11 @@ def cross_patient_lookup(
     desc = " and ".join(
         f"{_CROSS_LOOKUP_SOURCES[key]['label']}s {values}" for key, values in sources.items()
     )
+    if appointment_select:
+        desc += f" with an appointment on {resolved_date}"
+        if provider_name:
+            desc += f" with {provider_name}"
+
     if truncated:
         label = f"First {_MAX_RESULTS} patients with {desc} within {period}; more results exist"
     else:
