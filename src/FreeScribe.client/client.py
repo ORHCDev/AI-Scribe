@@ -1886,9 +1886,10 @@ _MED_FORM_RESET_BUTTON = "new or dose change"
 _MED_GATE_MODE = "llm"
 
 
-def _plan_mentions_medication_or_labs_keyword(text: str) -> bool:
-    """Keyword check: looks for medication-change verbs. Fast but cannot tell whether the verb
-    refers to a medication (e.g. 'start a stress test' would match)."""
+def _plan_mentions_medication_or_labs_keyword(text: str) -> dict:
+    """Keyword check: looks for medication-change verbs, and for a lab action plus a lab test
+    name. Fast but cannot tell whether the verb refers to a medication (e.g. 'start a stress
+    test' would match). Returns {"medication": bool, "labs": bool}."""
     import re
     t = str(text or "").lower()
     med_pattern = (r"\b(start\w*|stop\w*|discontinu\w*|increas\w*|decreas\w*|reduc\w*|switch\w*|"
@@ -1913,49 +1914,53 @@ def _plan_mentions_medication_or_labs_keyword(text: str) -> bool:
     return result
 
 
-def _plan_mentions_medication_or_labs_llm(plan_text: str) -> bool:
-    """LLM check: asks the model whether the plan starts, stops, or changes a medication,
-    ignoring tests, procedures, lifestyle advice, appointments, and unchanged continuations.
-    Falls back to the keyword check if the model call fails."""
+def _as_flag(value) -> bool:
+    """Coerce an LLM JSON value to bool. bool("false") is True, so strings are matched explicitly."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("true", "yes", "1")
+
+
+def _plan_mentions_medication_or_labs_llm(plan_text: str) -> dict:
+    """LLM check: asks the model whether the plan starts, stops, or changes a medication, and
+    whether it orders lab work. Returns {"medication": bool, "labs": bool}.
+    Falls back to the keyword check if the model call fails or returns unparseable output."""
     plan = str(plan_text or "").strip()
     if not plan:
-        return False
-    prompt = f"""
-    You are reviewing the PLAN section of a cardiology note, and must return JSON in the following format:
-
-    {{
-        "medication": boolean,
-        "labs": boolean
-    }}
-
-    "medication" should be true when the plan mentions to START, STOP, or CHANGE THE DOSE of any medication (a drug or 
-    prescription). Continuing existing medications unchanged does NOT count. Tests, imaging, procedures, lifestyle advice, 
-    and appointments do NOT count. Answer with only the single word yes or no.
-    
-    Here is the PLAN section to check:\n{plan}
-    
-    Return ONLY JSON in the format specified above."
-    """
+        return {"medication": False, "labs": False}
+    prompt = (
+        "You are reviewing the PLAN section of a cardiology note. Return JSON in exactly this format:\n"
+        '{"medication": true or false, "labs": true or false}\n\n'
+        '"medication" is true only if the plan STARTS, STOPS, or CHANGES THE DOSE of any medication '
+        "(a drug or prescription). Continuing existing medications unchanged does NOT count. Tests, "
+        "imaging, procedures, lifestyle advice, and appointments do NOT count.\n\n"
+        '"labs" is true only if the plan orders or requests laboratory blood or urine tests (e.g. '
+        "bloodwork, CBC, electrolytes, creatinine/eGFR, lipids, A1C, TSH, BNP, troponin, INR, "
+        "urinalysis). Imaging, ECG, echo, Holter, and stress tests do NOT count.\n\n"
+        f"PLAN:\n{plan}\n\n"
+        "Return ONLY the JSON object, with no other text."
+    )
     try:
         resp = (send_text_to_chatgpt(prompt) or "").strip().lower()
         match = re.search(r"\{.*\}", resp, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, dict):
-                return parsed
-            else:
-                return _plan_mentions_medication_or_labs_keyword(plan)
-        else:
+        parsed = json.loads(match.group(0)) if match else None
+        if not isinstance(parsed, dict):
+            print(f"eForm LLM gate returned no usable JSON, falling back to keyword: {resp[:200]!r}")
             return _plan_mentions_medication_or_labs_keyword(plan)
+        return {
+            "medication": _as_flag(parsed.get("medication", False)),
+            "labs": _as_flag(parsed.get("labs", False)),
+        }
     except Exception as e:
-        print(f"Medication LLM gate failed, falling back to keyword: {e}")
+        print(f"eForm LLM gate failed, falling back to keyword: {e}")
         return _plan_mentions_medication_or_labs_keyword(plan)
 
 
-def _plan_mentions_medication_or_labs(text: str) -> bool:
-    """Decide whether to open the medication eForm. Looks only at the PLAN section (not HPI or
-    Assessment) so phrases like 'the prescribed therapy' do not cause a false open, then
-    dispatches to the keyword or LLM check depending on _MED_GATE_MODE."""
+def _plan_mentions_medication_or_labs(text: str) -> dict:
+    """Decide whether to open the medication and/or labs eForms. Looks only at the PLAN section
+    (not HPI or Assessment) so phrases like 'the prescribed therapy' do not cause a false open,
+    then dispatches to the keyword or LLM check depending on _MED_GATE_MODE.
+    Returns {"medication": bool, "labs": bool}."""
     full = str(text or "")
     try:
         plan = extract_plan_section(full) or ""
