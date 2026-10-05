@@ -7,6 +7,7 @@ import cgi
 import json
 import os
 import tempfile
+import threading
 import time
 import logging
 import yaml
@@ -23,10 +24,15 @@ model = whisper.load_model("medium")
 print("Whisper model loaded successfully")
 logger.info("Whisper model loaded successfully")
 
+MODEL_LOCK = threading.Lock()
+
+DEFAULT_MAX_UPLOAD_SIZE = 1024 * 1024 * 1024  # 1 GB
+
 with open(r".\configs\config.yaml", "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 WHISPER_API_KEY = config.get("WHISPER_API_KEY")
+MAX_UPLOAD_SIZE = config.get("MAX_UPLOAD_SIZE", DEFAULT_MAX_UPLOAD_SIZE)
 print("Loaded API key")
 logger.info("Loaded API key")
 
@@ -51,6 +57,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                     logger.warning("Unauthorized request to %s from %s", self.path, client)
                     self.send_error(401, "Unauthorized")
                     return
+                try:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                except (TypeError, ValueError):
+                    content_length = 0
+                if content_length > MAX_UPLOAD_SIZE:
+                    print(f"Request too large ({content_length} bytes) from {client}")
+                    logger.warning(
+                        "Request too large (%d bytes, max %d) from %s", content_length, MAX_UPLOAD_SIZE, client)
+                    self.send_error(413, "Payload too large")
+                    return
                 ctype, pdict = cgi.parse_header(self.headers.get('content-type'))
                 if ctype == 'multipart/form-data':
                     pdict['boundary'] = bytes(pdict['boundary'], "utf-8")
@@ -66,9 +82,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                     try:
                         print("Starting transcription")
                         logger.info("Starting transcription")
-                        start_time = time.time()
-                        result = model.transcribe(temp_file_path)
-                        elapsed = time.time() - start_time
+                        with MODEL_LOCK: # handles each request in its own thread
+                            start_time = time.time()
+                            result = model.transcribe(temp_file_path)
+                            elapsed = time.time() - start_time
                         print(f"Transcription completed in {elapsed:.2f}s: {result['text']}")
                         logger.info(
                             "Transcription completed in %.2fs: %s",
