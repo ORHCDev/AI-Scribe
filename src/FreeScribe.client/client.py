@@ -64,6 +64,7 @@ from utils.lab_processor import generate_lab_hl7
 from utils.auto_processing import AutoProcessor
 from utils.patient_details import PatientDetailsDB, find_details_from_db
 from utils.referral_form_processor import get_referral_labels
+from utils.lab_analysis import analyze_plan_for_labs
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
@@ -862,7 +863,6 @@ def update_gui_with_response(response_text):
             # Analyze plan using LLM in a separate thread
             def analyze_and_update():
                 try:
-                    from utils.lab_analysis import analyze_plan_for_labs
                     suggested_labels = analyze_plan_for_labs(plan_text, send_text_to_chatgpt)
                     # Update panel on main thread - always call set_checkboxes (even if empty) to clear previous selections
                     root.after(0, lambda: eform_selection_panel.set_checkboxes(suggested_labels))
@@ -1028,7 +1028,6 @@ def send_text_to_chatgpt(edited_text, context_length=None):
 
 def get_labs_from_response():
     """Analyze text and open the lab panel with suggested checkboxes."""
-    from utils.lab_analysis import analyze_plan_for_labs
     from utils.read_files import extract_plan_section
     
     # Shrink response_display to make room for lab panel
@@ -1966,26 +1965,24 @@ def _plan_mentions_medication_or_labs(text: str) -> dict:
     (not HPI or Assessment) so phrases like 'the prescribed therapy' do not cause a false open,
     then dispatches to the keyword or LLM check depending on _MED_GATE_MODE.
     Returns {"medication": bool, "labs": bool}."""
-    full = str(text or "")
-    try:
-        plan = extract_plan_section(full) or ""
-    except Exception:
-        plan = ""
-    scope = plan or full
-    if _MED_GATE_MODE == "llm":
-        return _plan_mentions_medication_or_labs_llm(scope)
-    return _plan_mentions_medication_or_labs_keyword(scope)
+    if _MED_GATE_MODE == "llm": return _plan_mentions_medication_or_labs_llm(text)
+    else: return _plan_mentions_medication_or_labs_keyword(text)
 
 
 def _open_relevant_eforms(consult_text: str = ""):
-    plan_mentions = _plan_mentions_medication_or_labs(consult_text)
+    print(f"consult text: {consult_text}")
+    plan_text = extract_plan_section(consult_text) or ""
+    print(f"plan text: {plan_text}")
+    scope = plan_text or consult_text
+    print(f"scope: {scope}")
+    plan_mentions = _plan_mentions_medication_or_labs(scope)
     print(f"eForm decisions: {plan_mentions}")
     if plan_mentions["medication"]:
         _open_medication_eform()
     else:
         print("No medication change detected in the plan; skipping medication eForm")
     if plan_mentions["labs"]:
-        _open_labs_eform()
+        _open_labs_eform(scope)
     else:
         print("No labwork requirement detected in the plan; skipping labs eForm")
 
@@ -2050,10 +2047,22 @@ def _open_medication_eform():
             pass
 
 
-def _open_labs_eform():
+def _open_labs_eform(plan_text: str):
     LABS_FORM_FID = 659
     try:
-        oscar.open_new_eform(LABS_FORM_FID)
+        checkbox_strings = analyze_plan_for_labs(plan_text, send_text_to_chatgpt, False)
+        print(f"checkbox_strings: {checkbox_strings}")
+
+        checkbox_data = oscar.get_eform_checkboxes(LABS_FORM_FID)
+        checkbox_vars = {}
+        for checkbox in checkbox_data:
+            var = checkbox["name"] in checkbox_strings
+            name = checkbox["name"]
+            checkbox_vars[name] = var
+        data_lookup = {cb["name"]: cb for cb in checkbox_data} if checkbox_data else {}
+        checkboxes = [data_lookup[k] for k, v in checkbox_vars.items() if v and k in data_lookup]
+
+        oscar.open_new_eform(LABS_FORM_FID, checkboxes)
     except Exception as e:
         print(f"Could not auto-open labs eForm: {e}")
         return

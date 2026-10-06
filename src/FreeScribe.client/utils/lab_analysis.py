@@ -85,7 +85,7 @@ Correct response: ["RenalFunction ", "CHFFollowUp"]
 """
 
 
-def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func) -> list[str]:
+def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func, map_response: bool = True) -> list[str]:
     """
     Analyze PLAN section text using LLM to identify which lab checkboxes should be checked.
     
@@ -146,17 +146,19 @@ def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func) -> list[str
             if isinstance(checkbox_code_names, list):
                 # Convert eform code names back to UI labels
                 from utils.lab_checkbox_mapping import get_ui_label
-                ui_labels = []
-                for code_name in checkbox_code_names:
-                    code_name_str = str(code_name).strip()
-                    ui_label = get_ui_label(code_name_str)
-                    if ui_label:
-                        ui_labels.append(ui_label)
-                    else:
-                        # If code name not found, warn and skip
-                        print(f"Warning: Could not map code name '{code_name}' to UI label")
-                return ui_labels
-                return ui_labels
+                if map_response:
+                    ui_labels = []
+                    for code_name in checkbox_code_names:
+                        code_name_str = str(code_name).strip()
+                        ui_label = get_ui_label(code_name_str)
+                        if ui_label:
+                            ui_labels.append(ui_label)
+                        else:
+                            # If code name not found, warn and skip
+                            print(f"Warning: Could not map code name '{code_name}' to UI label")
+                    return ui_labels
+                else:
+                    return checkbox_code_names
         
         print(f"Failed to parse LLM response as JSON: {response}")
         return []
