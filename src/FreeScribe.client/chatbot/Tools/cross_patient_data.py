@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 
 from chatbot.Tools.Tool import tool, ToolReturn as tr
@@ -509,37 +510,74 @@ _CROSS_LOOKUP_SOURCES = {
         "label": "medication",
     },
     "medical_history": {
-        "types": ("PMH",),
+        "types": ("PMH","PMH1"),
         "prefix": "new entry: ",
         "label": "medical history entry",
     },
 }
 
 
-def _resolve_appointment_date(value: str) -> str | None:
+def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
     """
-    Resolve a user-supplied appointment date to a 'YYYY-MM-DD' string.
+    Resolve a user-supplied appointment date or range to an inclusive
+    ('YYYY-MM-DD', 'YYYY-MM-DD') tuple.
 
-    Accepts an explicit date as well as the relative terms 'today' and 'yesterday'.
+    Accepts a single explicit date, relative terms ('today', 'tomorrow',
+    'yesterday', 'this week', 'next week', 'this month', 'next month'), or an
+    explicit range such as '2025-06-01 to 2025-06-07' (also 'through', 'until',
+    or '/' as the separator).
 
     Params
     ------
     value : str
-        The appointment date as 'YYYY-MM-DD', 'today', or 'yesterday'.
+        The appointment date or range expression.
 
     Returns
     -------
-    str | None
-        The resolved date in 'YYYY-MM-DD' format, or None when it cannot be parsed.
+    tuple[str, str] | None
+        The resolved inclusive start and end dates, or None when unparseable.
     """
     text = str(value).strip()
     lowered = text.lower()
+
+    def fmt(day) -> str:
+        return day.strftime("%Y-%m-%d")
+
+    today = datetime.now().date()
     if lowered in ("today", "now"):
-        return datetime.now().strftime("%Y-%m-%d")
+        return fmt(today), fmt(today)
     if lowered == "yesterday":
-        return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        day = today - timedelta(days=1)
+        return fmt(day), fmt(day)
+    if lowered == "tomorrow":
+        day = today + timedelta(days=1)
+        return fmt(day), fmt(day)
+
+    if lowered in ("this week", "current week"):
+        start = today - timedelta(days=today.weekday())
+        return fmt(start), fmt(start + timedelta(days=6))
+    if lowered == "next week":
+        start = today - timedelta(days=today.weekday()) + timedelta(days=7)
+        return fmt(start), fmt(start + timedelta(days=6))
+    if lowered in ("this month", "current month"):
+        start = today.replace(day=1)
+        end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        return fmt(start), fmt(end)
+    if lowered == "next month":
+        start = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+        end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        return fmt(start), fmt(end)
+
+    parts = re.split(r"\s+to\s+|\s+through\s+|\s+until\s+|\s*/\s*", text, maxsplit=1)
     try:
-        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+        if len(parts) == 2:
+            start = datetime.strptime(parts[0].strip(), "%Y-%m-%d").date()
+            end = datetime.strptime(parts[1].strip(), "%Y-%m-%d").date()
+            if start > end:
+                start, end = end, start
+            return fmt(start), fmt(end)
+        day = datetime.strptime(text, "%Y-%m-%d").date()
+        return fmt(day), fmt(day)
     except ValueError:
         return None
 
@@ -550,7 +588,7 @@ def _resolve_appointment_date(value: str) -> str | None:
         "Unified population-level lookup that returns active patients matching any combination of cardiac "
         "conditions, medications, and/or medical history within a recent time period in a single call. When "
         "appointment_date is provided, results are further limited to patients who have an appointment on that "
-        "date and each patient's appointment details are included. Prefer this over calling condition_lookup and "
+        "date or within that range and each patient's appointment details are included. Prefer this over calling condition_lookup and "
         "medication_lookup separately, especially when the question combines a condition with a medication "
         "(e.g. 'patients with heart failure on metoprolol') or involves past medical history (e.g. 'patients with "
         "a history of asthma'). Also prefer this single tool over combining a cross-patient lookup with an "
@@ -570,7 +608,7 @@ def _resolve_appointment_date(value: str) -> str | None:
     context=(
         "Population-level lookup of patients matching one or more cardiac conditions, medications, and/or medical "
         "history entries over a recent time window, optionally limited to patients with an appointment on a given "
-        "date. When appointments are included, present each patient with their appointment date, time, and reason. "
+        "date or within a given range. When appointments are included, present each patient with their appointment date, time, and reason. "
         "Output all fields in a table format."
     ),
     parameters={
@@ -578,7 +616,7 @@ def _resolve_appointment_date(value: str) -> str | None:
         "medications": "Optional. List of medication names or partial names to search for in medication entries.",
         "medical_history": "Optional. List of medical history terms or partial names to search for in patient medical history entries (type 'PMH').",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
-        "appointment_date": "Optional. When set, only patients with an appointment on this date are returned, along with their appointment details. Accepts 'YYYY-MM-DD', 'today', or 'yesterday'.",
+        "appointment_date": "Optional. When set, only patients with an appointment on this date or within this range are returned, along with their appointment details. Accepts 'YYYY-MM-DD', 'today', 'tomorrow', 'yesterday', 'this week', 'next week', 'this month', 'next month', or an explicit range such as '2025-06-01 to 2025-06-07'.",
         "provider_name": "Optional. Filters appointments to a provider, given with or without 'Dr.'. If provided without appointment_date, defaults to today's appointments.",
     }
 )
@@ -613,9 +651,11 @@ def cross_patient_lookup(
         Optional list of medical history terms to find patients that have them.
 
     appointment_date : str | None
-        Optional appointment date as 'YYYY-MM-DD', 'today', or 'yesterday'. When set,
-        only patients with an appointment on that date are returned and their
-        appointment details are included.
+        Optional appointment date or range as 'YYYY-MM-DD', 'today', 'tomorrow',
+        'yesterday', 'this week', 'next week', 'this month', 'next month', or an
+        explicit range such as '2025-06-01 to 2025-06-07'. When set, only patients
+        with an appointment on that date or within that range are returned and
+        their appointment details are included.
 
     provider_name : str | None
         Optional provider name (with or without 'Dr.') used to filter appointments.
@@ -669,15 +709,18 @@ def cross_patient_lookup(
     appointment_join = ""
     appointment_select = ""
     appointment_having = ""
-    resolved_date = None
+    appointment_start = None
+    appointment_end = None
 
     if appointment_date or provider_name:
         if appointment_date:
-            resolved_date = _resolve_appointment_date(appointment_date)
-            if not resolved_date:
+            resolved_range = _resolve_appointment_range(appointment_date)
+            if not resolved_range:
                 msg = (
                     f"Could not parse appointment date '{appointment_date}'. "
-                    "Use 'YYYY-MM-DD', 'today', or 'yesterday'."
+                    "Use 'YYYY-MM-DD', 'today', 'tomorrow', 'yesterday', 'this week', "
+                    "'next week', 'this month', 'next month', or a range such as "
+                    "'2025-06-01 to 2025-06-07'."
                 )
                 return tr(
                     label="Invalid appointment date",
@@ -685,8 +728,9 @@ def cross_patient_lookup(
                     query_results=msg,
                     save_results=msg
                 )
+            appointment_start, appointment_end = resolved_range
         else:
-            resolved_date = datetime.now().strftime("%Y-%m-%d")
+            appointment_start = appointment_end = datetime.now().strftime("%Y-%m-%d")
 
         appt_provider_filter = ""
         if provider_name:
@@ -722,7 +766,7 @@ def cross_patient_lookup(
                 ORDER BY a.start_time SEPARATOR '\\n'
             ) AS appointments
         FROM appointment a
-        WHERE a.appointment_date = '{resolved_date}'
+        WHERE a.appointment_date BETWEEN '{appointment_start}' AND '{appointment_end}'
           AND a.demographic_no <> 0
           {appt_provider_filter}
         GROUP BY a.demographic_no
@@ -804,7 +848,10 @@ def cross_patient_lookup(
         f"{_CROSS_LOOKUP_SOURCES[key]['label']}s {values}" for key, values in sources.items()
     )
     if appointment_select:
-        desc += f" with an appointment on {resolved_date}"
+        if appointment_start == appointment_end:
+            desc += f" with an appointment on {appointment_start}"
+        else:
+            desc += f" with an appointment between {appointment_start} and {appointment_end}"
         if provider_name:
             desc += f" with {provider_name}"
 
