@@ -37,7 +37,11 @@ def _names_for(db_conn, demo_numbers) -> dict:
     rows = db_conn.query_database(f"""
     SELECT demographic_no, first_name, last_name
     FROM demographic
-    WHERE demographic_no IN ({", ".join(demos)});
+    WHERE demographic_no IN ({", ".join(demos)})
+        AND first_name NOT IN ('Test', 'Tester')
+        AND last_name NOT IN ('Test', 'Tester')
+        AND first_name NOT REGEXP '^Test[0-9]+$'
+        AND last_name NOT REGEXP '^Test[0-9]+$';
     """)
     return {
         str(r["demographic_no"]): f"{r['first_name']} {r['last_name']}".title()
@@ -160,33 +164,35 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
       {date_filter}
       AND m.dataField REGEXP {num_regexp}
       AND {cond}
-    ORDER BY {num} ASC
     LIMIT {_MAX_RESULTS + 1};
     """
 
     res = db_conn.query_database(query)
-    truncated = len(res) > _MAX_RESULTS
-    res = res[:_MAX_RESULTS]
 
     names = _names_for(db_conn, [entry["demographicNo"] for entry in res])
     mapped_results = []
     for entry in res:
-        mapped_results.append({
+        patient_name = names.get(str(entry["demographicNo"]), False)
+        if patient_name: mapped_results.append({
             "demographic_number": entry["demographicNo"],
-            "patient_name": names.get(str(entry["demographicNo"]), "Unknown"),
+            "patient_name": patient_name,
             "value": entry["dataField"],
             "date_observed": entry["dateObserved"],
         })
+    mapped_results.sort(key=lambda x: x["patient_name"].lower())
+    
+    truncated = len(mapped_results) > _MAX_RESULTS
+    truncated_results = mapped_results[:_MAX_RESULTS]
 
     if truncated:
-        label = f"Top {_MAX_RESULTS} patients with {desc} (showing the closest matches)"
+        label = f"Top {_MAX_RESULTS} patients with {desc} (listed alphabetically)"
     else:
-        label = f"Patients with {desc} ({len(mapped_results)} found)"
+        label = f"Patients with {desc} ({len(truncated_results)} found)"
     return tr(
         label=label,
         send_to_ai=True,
-        query_results=mapped_results,
-        save_results=mapped_results
+        query_results=truncated_results,
+        save_results=truncated_results
     )
 
 
@@ -458,14 +464,18 @@ def condition_lookup(db_conn, conditions : list[str], period : str):
     AND (
         {condition_filter}
         )
+    AND d.first_name NOT IN ('Test', 'Tester')
+    AND d.last_name NOT IN ('Test', 'Tester')
+    AND d.first_name NOT REGEXP '^Test[0-9]+$'
+    AND d.last_name NOT REGEXP '^Test[0-9]+$';
     GROUP BY
         d.demographic_no,
         d.last_name,
         d.first_name,
         d.provider_no
     ORDER BY
-        d.last_name,
-        d.first_name
+        d.first_name,
+        d.last_name
     LIMIT {MAX_RESULTS + 1};
     """
 
@@ -769,6 +779,10 @@ def cross_patient_lookup(
     AND (
         {" OR ".join(match_filters)}
     )
+    AND d.first_name NOT IN ('Test', 'Tester')
+    AND d.last_name NOT IN ('Test', 'Tester')
+    AND d.first_name NOT REGEXP '^Test[0-9]+$'
+    AND d.last_name NOT REGEXP '^Test[0-9]+$';
     GROUP BY
         d.demographic_no,
         d.last_name,
@@ -776,8 +790,8 @@ def cross_patient_lookup(
         d.provider_no
     HAVING {" AND ".join(having_filters)}
     ORDER BY
-        d.last_name,
-        d.first_name
+        d.first_name,
+        d.last_name
     LIMIT {_MAX_RESULTS + 1};
     """
 
