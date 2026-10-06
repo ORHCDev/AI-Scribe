@@ -1028,7 +1028,6 @@ def send_text_to_chatgpt(edited_text, context_length=None):
 
 def get_labs_from_response():
     """Analyze text and open the lab panel with suggested checkboxes."""
-    from utils.read_files import extract_plan_section
     
     # Shrink response_display to make room for lab panel
     response_display.grid(row=3, column=1, columnspan=7, padx=5, pady=15, sticky='nsew')
