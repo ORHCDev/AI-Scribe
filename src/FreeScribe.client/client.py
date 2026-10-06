@@ -1321,6 +1321,11 @@ def generate_note(formatted_message):
                     total_start = time.perf_counter()
 
                     step_start = time.perf_counter()
+                    if not info:
+                        print(f"Error: no patient's encounter page is selected")
+                        display_text(f"Error: no patient's encounter page is selected")
+                        return False
+                    
                     demo_no = info["demographic_no"]
                     measurement_query = f"""
                     SELECT m.*
