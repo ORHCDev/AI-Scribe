@@ -1,1 +1,5 @@
 WHISPER_API_KEY: api_key
+# Whisper model size: tiny, base, small, medium, large
+WHISPER_MODEL: medium
+# "auto" uses GPU (CUDA) if available, otherwise CPU. Force with "cuda" or "cpu".
+WHISPER_DEVICE: auto

@@ -48,28 +48,34 @@ def _names_for(db_conn, demo_numbers) -> dict:
 @tool(
     category="cross_patient_data",
     description=(
-        "Returns patients whose MOST RECENT value of a numeric measurement satisfies a comparison, "
+        "Returns active patients whose MOST RECENT value of a numeric measurement satisfies a comparison, "
         "up to 100 patients. Use for cohort questions like 'patients with EF less than 40', 'patients "
         "with LDL greater than 3.5', 'patients with an A1C between 6 and 8', 'EF equal to 55', "
-        "'patients with systolic BP over 140'. Supports numeric measurements such as EF, BP, HR, "
+        "'patients with systolic BP over 140', or with a time window such as 'patients with EF between "
+        "25 and 30 over the last month'. Supports numeric measurements such as EF, BP, HR, "
         "weight, BMI, BSA, A1C, LDL, HDL, TG, cholesterol, EGFR, CRCL, HGB, HCT, INR, FBS, sodium, "
         "potassium. For BP the systolic value is used. Compares each patient's latest value across "
-        "all patients; not for a single patient's history."
+        "all patients; when a period is given, only patients whose latest value was recorded within "
+        "that period are included. Not for a single patient's history."
     ),
     context=(
         "Here are the patients (name, demographic number, value, date) whose latest measurement matches. "
-        "Output all fields in a table format."
+        "Output all fields in a table format, including each patient's value and date observed."
     ),
     parameters={
         "measurement": "The numeric measurement, e.g. 'EF', 'LDL', 'A1C'.",
         "comparison": "One of: less than, at most, greater than, at least, equal to, between (or symbols < <= > >= =).",
         "value": "The threshold value (or the lower bound when comparison is between).",
         "value2": "Optional. The upper bound, required only when comparison is between.",
+        "period": "Optional. Only include patients whose latest value was recorded within this time window, "
+                  "expressed as a duration such as '30d', '1m', '6m', or '1y'. Omit when no time window is asked for.",
     }
 )
-def patients_by_measurement(db_conn, measurement : str, comparison : str, value : float, value2 : float = None) -> list[dict]:
+def patients_by_measurement(db_conn, measurement : str, comparison : str, value : float, value2 : float = None,
+                            period : str = None) -> list[dict]:
     """
-    Returns patients whose most recent value of a numeric measurement satisfies the comparison.
+    Returns active patients whose most recent value of a numeric measurement satisfies the comparison,
+    optionally limited to patients whose latest value was recorded within the given period.
     """
     # Validate inputs so a typo or bad argument is reported clearly instead of
     # silently running a query that returns nothing (a false "no patients found").
@@ -125,6 +131,18 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
         cond = f"{num} {op} {float(value)}"
         desc = f"{mtype} {op} {float(value)}"
 
+    # m.dateObserved is each patient's latest date, so this keeps only patients whose
+    # latest value falls inside the window (not any value inside the window).
+    date_filter = ""
+    if period:
+        start_date = period_parser(str(period).strip())
+        if not start_date:
+            msg = f"Could not parse period '{period}'. Use a duration such as '30d', '6m', or '1y'."
+            return tr(label="Invalid period", send_to_ai=True,
+                      query_results=msg, save_results=msg)
+        date_filter = f"AND m.dateObserved >= '{start_date}'"
+        desc += f" recorded since {start_date}"
+
     query = f"""
     SELECT m.demographicNo, m.dataField, DATE(m.dateObserved) AS dateObserved
     FROM measurements m
@@ -135,7 +153,11 @@ def patients_by_measurement(db_conn, measurement : str, comparison : str, value 
         GROUP BY demographicNo
     ) latest
       ON m.demographicNo = latest.demographicNo AND m.dateObserved = latest.maxDate
+    JOIN demographic d
+      ON m.demographicNo = d.demographic_no
     WHERE m.type = '{mtype}'
+      AND d.patient_status = 'AC'
+      {date_filter}
       AND m.dataField REGEXP {num_regexp}
       AND {cond}
     ORDER BY {num} ASC
