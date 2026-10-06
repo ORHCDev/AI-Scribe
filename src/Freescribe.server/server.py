@@ -17,15 +17,6 @@ from dailylogger import setup_daily_logger
 setup_daily_logger(log_dir="logs", log_filename="server.log")
 logger = logging.getLogger(__name__)
 
-# Initialize Whisper model
-print("Loading Whisper model 'medium'...")
-logger.info("Loading Whisper model 'medium'...")
-model = whisper.load_model("medium")
-print("Whisper model loaded successfully")
-logger.info("Whisper model loaded successfully")
-
-MODEL_LOCK = threading.Lock()
-
 DEFAULT_MAX_UPLOAD_SIZE = 1024 * 1024 * 1024  # 1 GB
 
 with open(r".\configs\config.yaml", "r", encoding="utf-8") as f:
@@ -35,6 +26,21 @@ WHISPER_API_KEY = config.get("WHISPER_API_KEY")
 MAX_UPLOAD_SIZE = config.get("MAX_UPLOAD_SIZE", DEFAULT_MAX_UPLOAD_SIZE)
 print("Loaded API key")
 logger.info("Loaded API key")
+
+WHISPER_MODEL = config.get("WHISPER_MODEL", "medium")
+WHISPER_DEVICE = config.get("WHISPER_DEVICE", "auto")
+
+# Initialize Whisper model
+print(f"Loading Whisper model '{WHISPER_MODEL}' on device '{WHISPER_DEVICE}'...")
+logger.info("Loading Whisper model '%s' on device '%s'...", WHISPER_MODEL, WHISPER_DEVICE)
+if WHISPER_DEVICE == "auto":
+    model = whisper.load_model(WHISPER_MODEL)
+else:
+    model = whisper.load_model(WHISPER_MODEL, device=WHISPER_DEVICE)
+print("Whisper model loaded successfully")
+logger.info("Whisper model loaded successfully")
+
+MODEL_LOCK = threading.Lock()
 
 class RequestHandler(BaseHTTPRequestHandler):
     def handle_one_request(self):
