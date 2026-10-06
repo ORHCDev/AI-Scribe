@@ -209,9 +209,7 @@ def extract_plan_section(text: str) -> str:
     Extracts the PLAN section from SOAP note text.
 
     Strategy:
-    - Look for a heading like "PLAN:", "Plan:", "PLAN section:" (case-insensitive)
-    - Return content from that heading to the next known section or end of text
-    - If heading not found, return empty string
+    - Look for the exact heading "PLAN", and returns all text following it (since PLAN is always the last section)
 
     Args:
     -----
@@ -222,31 +220,8 @@ def extract_plan_section(text: str) -> str:
         str: The PLAN section text, or empty string if not found
     """
     try:
-        lower_text = text.lower()
-        # Identify start index
-        plan_markers = ["plan:", "plan section:", "planning:"]
-        start = -1
-        for marker in plan_markers:
-            idx = lower_text.find(marker)
-            if idx != -1:
-                start = idx + len(marker)
-                break
-
-        if start == -1:
-            return ""
-
-        # Identify end index (next section or end of text)
-        end_markers = [
-            "assessment:", "objective:", "subjective:", "soap:", "note:",
-            "\n\n\n", "\n\n---", "---\n"
-        ]
-        end = len(text)
-        for marker in end_markers:
-            idx = lower_text.find(marker, start)
-            if idx != -1:
-                end = min(end, idx)
-
-        return text[start:end].strip()
+        text_after_plan = text.split("PLAN", 1)[1] if "PLAN" in text else ""
+        return text_after_plan
     except Exception:
         return ""
 
