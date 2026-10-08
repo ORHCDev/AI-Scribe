@@ -1518,6 +1518,116 @@ def generate_note(formatted_message):
                         f"[TIMING] TOTAL Consult Complete: "
                         f"{time.perf_counter() - total_start:.2f}s"
                     )
+
+                    TEST_MEASUREMENT_EXCLUSION = False # set to True to run prototype code for better measurement querying
+                    if TEST_MEASUREMENT_EXCLUSION:
+                        total_start = time.perf_counter()
+                        for measurement_type in ["ECG", "ECHO", "EST", "SECHO", "HOLT"]:
+                            measurement_start = time.perf_counter()
+
+                            step_start = time.perf_counter()
+                            first_date_query = f"""
+                            SELECT DATE(MAX(dateObserved)) AS target_date
+                            FROM measurements m
+                            WHERE demographicNo = {demo_no}
+                            AND type = '{measurement_type}'
+                            """
+                            most_recent_result = chatbot.db_conn.query_database(first_date_query)
+                            most_recent_date = most_recent_result[0]["target_date"] if most_recent_result else None
+                            print(f"most_recent_date for {measurement_type}: {most_recent_date}")
+                            print(
+                                f"[TIMING] {measurement_type}, STEP 1: "
+                                f"{time.perf_counter() - step_start:.2f}s"
+                            )
+                            if not most_recent_date: continue
+
+                            step_start = time.perf_counter()
+                            second_date_query = f"""
+                            SELECT DATE(MAX(dateObserved)) AS target_date
+                            FROM measurements m
+                            WHERE demographicNo = {demo_no}
+                            AND type = '{measurement_type}'
+                            AND DATE(dateObserved) < '{most_recent_date}'
+                            """
+                            second_result = chatbot.db_conn.query_database(second_date_query)
+                            second_most_recent_date = (
+                                second_result[0]["target_date"]
+                                if second_result and second_result[0]["target_date"]
+                                else None
+                            )
+                            print(f"second_most_recent_date for {measurement_type}: {second_most_recent_date}")
+                            print(
+                                f"[TIMING] {measurement_type}, STEP 2: "
+                                f"{time.perf_counter() - step_start:.2f}s"
+                            )
+                            if not second_most_recent_date: continue
+
+                            step_start = time.perf_counter()
+                            type_map = {
+                                "ECG": ["ECG"],
+                                "ECHO": ["ECHO", "ECHO1", "ECHO2"],
+                                "EST": ["EST"],
+                                "SECHO": ["SECHO", "SECHO1"],
+                                "HOLT": ["HOLT", "HOLT1", "HOLT2"]
+                            }
+                            second_measurements_query = f"""
+                            SELECT m.type, m.dataField
+                            FROM measurements m
+                            JOIN (
+                                SELECT type, MAX(dateObserved) AS latest_time
+                                FROM measurements
+                                WHERE demographicNo = {demo_no}
+                                AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
+                                AND DATE(dateObserved) = '{second_most_recent_date}'
+                                GROUP BY type
+                            ) latest
+                                ON m.type = latest.type
+                                AND m.dateObserved = latest.latest_time
+                            WHERE m.demographicNo = {demo_no}
+                            """
+                            second_measurements = chatbot.db_conn.query_database(second_measurements_query)
+                            datafields_toexclude = {row["dataField"] for row in second_measurements}
+                            print(f"datafields_toexclude for {measurement_type}: " f"{datafields_toexclude}")
+                            print(
+                                f"[TIMING] {measurement_type}, STEP 3: "
+                                f"{time.perf_counter() - step_start:.2f}s"
+                            )
+
+                            step_start = time.perf_counter()
+                            exclude_clause = ", ".join(
+                                f"'{field.replace(chr(39), chr(39) + chr(39))}'"
+                                for field in datafields_toexclude
+                            )
+                            first_measurement_query = f"""
+                            SELECT *
+                            FROM measurements m
+                            JOIN (
+                                SELECT type, MAX(dateObserved) AS latest_time
+                                FROM measurements
+                                WHERE demographicNo = {demo_no}
+                                AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
+                                AND DATE(dateObserved) = '{most_recent_date}'
+                                AND dataField NOT IN ({exclude_clause})
+                                GROUP BY type
+                            ) latest
+                                ON m.type = latest.type
+                                AND m.dateObserved = latest.latest_time
+                            WHERE m.demographicNo = {demo_no}
+                            """
+                            results = chatbot.db_conn.query_database(first_measurement_query)
+                            print(f"results for {measurement_type}: {results}")
+                            print(
+                                f"[TIMING] {measurement_type}, STEP 4: "
+                                f"{time.perf_counter() - step_start:.2f}s"
+                            )
+                            print(
+                                f"[TIMING] {measurement_type}, TOTAL: "
+                                f"{time.perf_counter() - measurement_start:.2f}s"
+                            )
+                        print(
+                            f"[TIMING] GRAND TOTAL: "
+                            f"{time.perf_counter() - total_start:.2f}s"
+                        )
                 
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
