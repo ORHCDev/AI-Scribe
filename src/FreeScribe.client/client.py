@@ -65,6 +65,7 @@ from utils.auto_processing import AutoProcessor
 from utils.patient_details import PatientDetailsDB, find_details_from_db
 from utils.referral_form_processor import get_referral_labels
 from utils.lab_analysis import analyze_plan_for_labs
+from utils import med_eform
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
@@ -1877,176 +1878,13 @@ def download_results():
 
 
 
-# Visible text of the button clicked once the medication eForm opens, so it refreshes to the
-# patient's current meds (and drops any stale pre-filled content) ready for a new / dose change.
-# Change to "clear" if the clinic prefers to blank the form instead.
-_MED_FORM_RESET_BUTTON = "new or dose change"
-
-
 # How to analyse the plan for eForms: "keyword" (free, instant, can only decide whether to open
 # the forms) or "llm" (one extra model call per Insert Consult, more accurate, and also extracts
 # the specific medication changes used to pre-fill the medication eForm). Flip to switch.
+# The analysis and form-filling logic lives in utils/med_eform.py.
 _MED_GATE_MODE = "llm"
 
 _MED_FORM_PREFIX = "0.1Rfx"
-
-# Prescription body textarea on the medication eForm (filled after the reset button is clicked).
-_MED_FORM_RX_FIELD = "druglist_generic"
-
-# Medication actions the prescription body understands, plus common LLM synonyms for them.
-_MED_ACTIONS = {
-    "start": "start", "add": "start", "initiate": "start", "begin": "start",
-    "increase": "increase", "titrate up": "increase", "uptitrate": "increase",
-    "decrease": "decrease", "reduce": "decrease", "titrate down": "decrease", "downtitrate": "decrease",
-    "stop": "stop", "discontinue": "stop", "hold": "stop",
-}
-
-
-def _plan_mentions_medication_or_labs_keyword(text: str) -> dict:
-    """Keyword check: looks for medication-change verbs, and for a lab action plus a lab test
-    name. Fast but cannot tell whether the verb refers to a medication (e.g. 'start a stress
-    test' would match). Returns {"medication": bool, "labs": bool}."""
-    t = str(text or "").lower()
-    med_pattern = (r"\b(start\w*|stop\w*|discontinu\w*|increas\w*|decreas\w*|reduc\w*|switch\w*|"
-               r"titrat\w*|initiat\w*|wean\w*|hold\b|add(ed|ing|s)?\b)")
-    lab_action_pattern = (
-        r"\b(order|ordered|obtain|obtained|check|checked|repeat|recheck|"
-        r"measure|monitor|draw|complete|perform|do|get|request|requested)\w*\b"
-    )
-    lab_test_pattern = (
-        r"\b(lab|labs|laboratory|bloodwork|blood\s+work|blood\s+test\w*|"
-        r"blood\s+panel\w*|cbc|bmp|cmp|lipid\w*|cholesterol|"
-        r"creatinine|egfr|electrolytes?|potassium|sodium|"
-        r"glucose|a1c|hba1c|tsh|thyroid|lft\w*|"
-        r"liver\s+function|renal\s+function|kidney\s+function|"
-        r"bnp|nt-probnp|troponin|inr|ptt?|ferritin|iron\s+studies|"
-        r"urinalysis|urine\s+test\w*)\b"
-    )
-    return {
-        "medication": bool(re.search(med_pattern, t)),
-        "labs": bool(re.search(lab_action_pattern, t) and re.search(lab_test_pattern, t)),
-    }
-
-
-def _as_flag(value) -> bool:
-    """Coerce an LLM JSON value to bool. bool("false") is True, so strings are matched explicitly."""
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("true", "yes", "1")
-
-
-def _clean_med_changes(raw) -> list[dict]:
-    """Keep only well-formed {"action", "name", "text"} entries from the LLM output, mapping
-    action synonyms (e.g. "discontinue") onto start/increase/decrease/stop."""
-    changes = []
-    for item in raw if isinstance(raw, list) else []:
-        if not isinstance(item, dict):
-            continue
-        action = _MED_ACTIONS.get(str(item.get("action", "")).strip().lower())
-        name = str(item.get("name", "") or "").strip()
-        text = str(item.get("text", "") or "").strip().rstrip(",").strip()
-        if action is None or not name:
-            continue
-        if action != "stop" and not text:
-            continue
-        changes.append({"action": action, "name": name, "text": text})
-    return changes
-
-
-def _extract_med_changes_llm(plan: str) -> dict:
-    """LLM call: decides whether the plan orders labs and lists each medication change, using the
-    prescription eForm's own wording where possible.
-    Returns {"open": bool, "changes": list, "labs": bool}. "open" is True whenever the model
-    reported any medication change, even one that could not be turned into a prescription line,
-    so the form still opens (unfilled) for the clinician.
-    Raises on a failed call or unusable output so the caller can fall back to keywords."""
-    from utils.rx_med_options import RX_MED_OPTIONS
-    options = "\n".join(f"- {o}" for o in RX_MED_OPTIONS)
-    prompt = (
-        "You are reviewing the PLAN section of a cardiology note. Return JSON in exactly this format:\n"
-        '{"medication": [{"action": "start|increase|decrease|stop", "name": "drug name", '
-        '"text": "prescription line"}], "labs": true or false}\n\n'
-        '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
-        "Continuing an existing medication unchanged does NOT count. Tests, imaging, procedures, "
-        "lifestyle advice, and appointments do NOT count. Use an empty list if there are none. "
-        "A switch from one drug to another is a stop of the old drug plus a start of the new one.\n"
-        '- "name" is the drug name exactly as it begins "text" (e.g. "Furosemide" for '
-        '"Furosemide 80 mg daily"); for "stop", the drug name as written in the plan.\n'
-        '- "text" is the new prescription line (drug, dose, frequency). If the drug and dose match '
-        "an entry in the STANDARD LINES below, copy that entry exactly, including any LU code. "
-        "Otherwise write it as 'Drug dose frequency'. Never invent a dose that is not in the plan. "
-        'For "stop", "text" may be empty.\n\n'
-        '"labs" is true only if the plan orders or requests laboratory blood or urine tests (e.g. '
-        "bloodwork, CBC, electrolytes, creatinine/eGFR, lipids, A1C, TSH, BNP, troponin, INR, "
-        "urinalysis). Imaging, ECG, echo, Holter, and stress tests do NOT count.\n\n"
-        f"STANDARD LINES:\n{options}\n\n"
-        f"PLAN:\n{plan}\n\n"
-        "Return ONLY the JSON object, with no other text."
-    )
-    resp = (send_text_to_chatgpt(prompt) or "").strip()
-    match = re.search(r"\{.*\}", resp, re.DOTALL)
-    if not match:
-        raise ValueError(f"no JSON in response: {resp[:200]!r}")
-    try:
-        parsed = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        # Some models write Python-style True/False; the response is not lowercased as a whole
-        # because that would also lowercase the drug names.
-        parsed = json.loads(re.sub(r"\b(True|False)\b", lambda m: m.group(1).lower(), match.group(0)))
-    if not isinstance(parsed, dict):
-        raise ValueError(f"no usable JSON in response: {resp[:200]!r}")
-    raw = parsed.get("medication")
-    return {
-        "open": isinstance(raw, list) and len(raw) > 0,
-        "changes": _clean_med_changes(raw),
-        "labs": _as_flag(parsed.get("labs", False)),
-    }
-
-
-def _analyze_plan_for_eforms(scope: str) -> dict:
-    """Work out which eForms to open after a consult upload and what to pre-fill them with.
-    `scope` is the PLAN section (or the whole consult if no PLAN heading was found).
-
-    Returns
-    -------
-    {"medication": {"open": bool, "changes": [{"action", "name", "text"}, ...]},
-     "labs": bool}
-    "changes" may be empty while "open" is True (e.g. keyword fallback), in which case the
-    medication form is opened without pre-filling."""
-    scope = str(scope or "").strip()
-    if not scope:
-        return {"medication": {"open": False, "changes": []}, "labs": False}
-
-    if _MED_GATE_MODE != "llm":
-        flags = _plan_mentions_medication_or_labs_keyword(scope)
-        return {"medication": {"open": flags["medication"], "changes": []}, "labs": flags["labs"]}
-
-    try:
-        med = _extract_med_changes_llm(scope)
-    except Exception as e:
-        print(f"eForm LLM gate failed, falling back to keyword: {e}")
-        flags = _plan_mentions_medication_or_labs_keyword(scope)
-        med = {"open": flags["medication"], "changes": [], "labs": flags["labs"]}
-    return {"medication": {"open": med["open"], "changes": med["changes"]}, "labs": med["labs"]}
-
-
-def _format_rx_lines(changes: list[dict]) -> str:
-    """Render medication changes as prescription-body text in the eForm's own style
-    ('Start X', 'Increase X to ...'), one per line, comma-separated like the form's menu."""
-    lines = []
-    for c in changes:
-        action, name, text = c["action"], c["name"], c["text"]
-        if action == "stop":
-            lines.append(f"Stop {name}")
-        elif action == "start":
-            lines.append(f"Start {text}")
-        else:
-            verb = action.capitalize()
-            if text.lower().startswith(name.lower()):
-                lines.append(f"{verb} {name} to {text[len(name):].strip()}")
-            else:
-                lines.append(f"{verb} to {text}")
-    return ",\n".join(lines) + ("," if lines else "")
 
 
 def _find_eform_fid(prefix: str):
@@ -2070,7 +1908,7 @@ def _open_relevant_eforms(consult_text: str = ""):
     print(f"plan text: {plan_text}")
     scope = plan_text or consult_text
     print(f"scope: {scope}")
-    decisions = _analyze_plan_for_eforms(scope)
+    decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE)
     print(f"eForm decisions: {decisions}")
     if decisions["medication"]["open"]:
         _open_medication_eform(decisions["medication"]["changes"])
@@ -2106,32 +1944,16 @@ def _open_medication_eform(changes: list[dict] | None = None):
         print(f"Could not auto-open medication eForm: {e}")
         return
 
-    # Click the form's reset button so it does not carry stale pre-filled meds.
-    target = _MED_FORM_RESET_BUTTON.lower()
-    find_js = ("var t=arguments[0];"
-               "return document.readyState==='complete' && "
-               "Array.from(document.querySelectorAll('input,button,a')).some(function(x){"
-               "return (x.value||x.textContent||'').trim().toLowerCase().indexOf(t)>=0;});")
-    click_js = ("var t=arguments[0];"
-                "var b=Array.from(document.querySelectorAll('input,button,a')).find(function(x){"
-                "return (x.value||x.textContent||'').trim().toLowerCase().indexOf(t)>=0;});"
-                "if(b){b.click();return (b.tagName+' '+(b.value||b.textContent||'')).trim().slice(0,60);}"
-                "return 'button-not-found';")
-    fill_js = ("var el=document.getElementById(arguments[0]);"
-               "if(!el){return 'field-not-found';}"
-               "el.value=arguments[1];return 'filled';")
+    # Reset the form so it does not carry stale pre-filled meds, then fill the prescription body.
     try:
         after = oscar.driver.window_handles
         new_windows = [h for h in after if h not in before]
         med_window = new_windows[-1] if new_windows else after[-1]
         oscar.driver.switch_to.window(med_window)
-        oscar.wait.until(lambda d: d.execute_script(find_js, target))
-        result = oscar.driver.execute_script(click_js, target)
-        print(f"Medication form reset button -> {result}")
-        if changes and result != "button-not-found":
-            rx_text = _format_rx_lines(changes)
-            result = oscar.driver.execute_script(fill_js, _MED_FORM_RX_FIELD, rx_text)
-            print(f"Medication form prescription body -> {result}: {rx_text!r}")
+        result = med_eform.prepare_med_form(oscar.driver, oscar.wait, changes)
+        print(f"Medication form reset button -> {result['reset']}")
+        if result["fill"] is not None:
+            print(f"Medication form prescription body -> {result['fill']}: {result['rx_text']!r}")
     except Exception as e:
         print(f"Could not prepare medication form: {e}")
     finally:
