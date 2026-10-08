@@ -1522,6 +1522,117 @@ def generate_note(formatted_message):
                     TEST_MEASUREMENT_EXCLUSION = False # set to True to run prototype code for better measurement querying
                     if TEST_MEASUREMENT_EXCLUSION:
                         total_start = time.perf_counter()
+                        
+                        query_start = time.perf_counter()
+
+                        type_map = {
+                            "ECG": ["ECG"],
+                            "ECHO": ["ECHO", "ECHO1", "ECHO2"],
+                            "EST": ["EST"],
+                            "SECHO": ["SECHO", "SECHO1"],
+                            "HOLT": ["HOLT", "HOLT1", "HOLT2"]
+                        }
+                        # supertypes = type_map.keys()
+                        all_types = [
+                            measurement_type
+                            for types in type_map.values()
+                            for measurement_type in types
+                        ]
+
+                        measurement_query = f"""
+                        SELECT *
+                        FROM measurements
+                        WHERE demographicNo = {demo_no}
+                        AND type IN ({",".join(f"'{t}'" for t in all_types)})
+                        ORDER BY dateObserved DESC
+                        """
+                        results = chatbot.db_conn.query_database(measurement_query)
+                        print(f"results: {results}")
+                        
+                        print(
+                            f"[TIMING] querying: "
+                            f"{time.perf_counter() - query_start:.2f}s"
+                        )
+
+                        from datetime import date, datetime
+                        all_data = {}
+                        for measurement_type in all_types:
+                            measurement_start = time.perf_counter()
+
+                            typed_results = list(filter(lambda x: x["type"] == measurement_type, results))
+                            print(f"typed_results: {typed_results}")
+                            sorted_results = sorted(typed_results, key=lambda x: x["dateObserved"], reverse=True)
+                            print(f"sorted_results: {sorted_results}")
+                            mapped_results = map(
+                                lambda x: datetime.strptime(
+                                    x["dateObserved"],
+                                    "%Y-%m-%d %H:%M:%S.%f"
+                                ).date(),
+                                sorted_results
+                            )
+                            print(f"mapped_results: {mapped_results}")
+                            deduped_results = list(dict.fromkeys(mapped_results))
+                            print(f"deduped_results: {deduped_results}")
+
+                            if deduped_results:
+                                first_date = deduped_results[0]
+                                print(f"first_date: {first_date}")
+
+                                today = date.today()
+                                if (today - first_date).days <= 30:
+                                    if len(deduped_results) == 1:
+                                        measurement_data = sorted_results[0]
+                                    else:
+                                        second_date = deduped_results[1]
+                                        print(f"second_date: {second_date}")
+
+                                        second_results = list(filter(
+                                            lambda x: datetime.strptime(
+                                                x["dateObserved"],
+                                                "%Y-%m-%d %H:%M:%S.%f"
+                                            ).date() == second_date,
+                                            sorted_results
+                                        ))
+                                        print(f"second_results: {second_results}")
+
+                                        excluded_datafield = second_results[0]["dataField"] if second_results else None
+                                        print(f"excluded_datafield: {excluded_datafield}")
+
+                                        first_results = list(filter(
+                                            lambda x: (
+                                                datetime.strptime(
+                                                    x["dateObserved"],
+                                                    "%Y-%m-%d %H:%M:%S.%f"
+                                                ).date() == first_date
+                                                and x["dataField"] != excluded_datafield
+                                            ),
+                                            sorted_results
+                                        ))
+                                        print(f"first_results: {first_results}")
+                                        measurement_data = first_results[0] if first_results else sorted_results[0]
+
+                                    all_data[measurement_type] = measurement_data
+                                    print(f"measurement_data: {measurement_data}")
+                                else:
+                                    print(f"measurement_data: None")
+                            else:
+                                print(f"measurement_data: None")
+                            
+                            print(
+                                f"[TIMING] {measurement_type}: "
+                                f"{time.perf_counter() - measurement_start:.2f}s"
+                            )
+                            
+                        print(f"all_data: {all_data}")
+                        print(
+                            f"[TIMING] total: "
+                            f"{time.perf_counter() - total_start:.2f}s"
+                        )
+
+
+                    TEST_MEASUREMENT_EXCLUSION_OLD = False # set to True to run prototype code for better measurement querying
+                    if TEST_MEASUREMENT_EXCLUSION_OLD:
+                        total_start = time.perf_counter()
                         for measurement_type in ["ECG", "ECHO", "EST", "SECHO", "HOLT"]:
                             measurement_start = time.perf_counter()
 
