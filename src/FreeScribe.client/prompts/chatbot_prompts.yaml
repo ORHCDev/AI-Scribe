@@ -253,6 +253,16 @@ rag_tool_prompt: |
   - Use structured mappings:
       "latest" → "most_recent": true
       "last visit" → "date": "last_visit"
+  - When filling a list parameter that names medications, conditions, or medical history
+    (e.g. medication_lookup.meds, cross_patient_lookup.medications/conditions/medical_history),
+    expand the user's term into EVERY plausible alternate form the EMR might store: generic and
+    brand names, common clinical abbreviations, and known synonyms. Keep the original term and
+    add the alternates to the SAME list. For example:
+      "vincristine" → ["vincristine", "VCR"]
+      "metoprolol" → ["metoprolol", "Lopressor"]
+      "atrial fibrillation" → ["atrial fibrillation", "AF", "AFib"]
+    Never pass only the term the user typed when plausible alternates exist; searching the
+    alternates is what prevents missing records stored under a different name.
 
   - If a required parameter is missing or genuinely ambiguous → return []
   - For optional parameters, use the tool's documented default unless the user explicitly requests a different value
@@ -323,6 +333,7 @@ followup: |
   - If patient names are present in the tool results, include them.
   - If only demographic numbers are present in a tool result, identify patients by looking up their demographic numbers.
   - Do not claim that the patient information is insufficient merely because patient names are not available.
+  - When a search used alternate names, abbreviations, or synonyms for a medication, condition, or medical history term (for example, searching "vincristine" together with "VCR"), explicitly state in the answer which alternate terms were assumed and searched, and make clear that matching may depend on those assumed equivalents.
 
   User Question:
   "{user_input}"
@@ -391,6 +402,7 @@ oscar_followup: |
   - If patient names are present in the tool results, include them.
   - If only demographic numbers are present in a tool result, identify patients by looking up their demographic numbers.
   - Do not claim that the patient information is insufficient merely because patient names are not available.
+  - When a search used alternate names, abbreviations, or synonyms for a medication, condition, or medical history term (for example, searching "vincristine" together with "VCR"), explicitly state in the answer which alternate terms were assumed and searched, and make clear that matching may depend on those assumed equivalents.
 
   User Question:
   "{user_input}"

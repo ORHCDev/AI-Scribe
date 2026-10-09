@@ -183,11 +183,17 @@ def get_prescription_by_drug(db_conn, demo_no : str, drug_name : str):
         "Only active patients are included, and only medication entries recorded on or after the calculated start date "
         "based on the provided period are considered. "
         "This tool is most relevant for population-level medication audits, cohort identification, quality improvement initiatives, "
-        "clinical reporting, or identifying patients currently or recently documented as taking specific medications."
+        "clinical reporting, or identifying patients currently or recently documented as taking specific medications. "
+        "When a medication is named, populate 'meds' with that name plus every plausible alternate form the EMR might store "
+        "(generic and brand names, common clinical abbreviations, and synonyms) so entries recorded under an alternate name "
+        "are not missed; the final answer must state which alternate terms were assumed."
     ),
-    context="Population-level lookup of patients associated with specific medications over a recent time window",
+    context=(
+        "Population-level lookup of patients associated with specific medications over a recent time window. "
+        "If alternate medication names, abbreviations, or synonyms were searched, state in the answer which alternate terms were assumed."
+    ),
     parameters={
-        "meds": "List of medication names or partial names to search for in medication measurement entries",
+        "meds": "List of medication names or partial names to search for in medication measurement entries. Expand the user's drug into every plausible alternate form - generic and brand names, common clinical abbreviations, and synonyms (e.g. 'vincristine' also 'VCR'; 'metoprolol' also 'Lopressor'). Include the original term as well.",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'",
     }
 )
