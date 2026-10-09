@@ -2144,17 +2144,20 @@ def _open_medication_eform(changes: list[dict] | None = None):
 def _open_labs_eform(plan_text: str):
     LABS_FORM_FID = 659
     try:
-        checkbox_strings = analyze_plan_for_labs(plan_text, send_text_to_chatgpt, False)
+        checkbox_strings = {
+            s.strip() for s in analyze_plan_for_labs(plan_text, send_text_to_chatgpt, False)
+            if isinstance(s, str)
+        }
         print(f"checkbox_strings: {checkbox_strings}")
 
         checkbox_data = oscar.get_eform_checkboxes(LABS_FORM_FID)
         checkbox_vars = {}
         for checkbox in checkbox_data:
-            var = checkbox["name"] in checkbox_strings
             name = checkbox["name"]
+            var = name.strip() in checkbox_strings
             checkbox_vars[name] = var
-        data_lookup = {cb["name"]: cb for cb in checkbox_data} if checkbox_data else {}
-        checkboxes = [data_lookup[k] for k, v in checkbox_vars.items() if v and k in data_lookup]
+        data_lookup = {cb["name"].strip(): cb for cb in checkbox_data} if checkbox_data else {}
+        checkboxes = [data_lookup[k.strip()] for k, v in checkbox_vars.items() if v and k.strip() in data_lookup]
 
         oscar.open_new_eform(LABS_FORM_FID, checkboxes)
     except Exception as e:
