@@ -616,7 +616,7 @@ class Oscar:
             const colonIndex = headingTextContent.indexOf(":");
 
             if (colonIndex === -1) {
-                return -1;
+                return -2;
             }
 
             // Find next heading/signature
@@ -658,7 +658,7 @@ class Oscar:
             }
 
             if (!startNode) {
-                return -1;
+                return -3;
             }
 
             const range = document.createRange();
@@ -778,7 +778,8 @@ class Oscar:
             }
 
             if (!colonNode) {
-                return -1;
+                console.log("Failed: no colon node found");
+                return -4;
             }
 
             const range = document.createRange();
@@ -823,7 +824,7 @@ class Oscar:
 
         try:
             # Preprocessing of text
-            HEADING_PATTERN = "|".join(re.escape(h) for h in HEADINGS)
+            HEADING_PATTERN = "|".join(re.escape(h) for h in [*HEADINGS, "IMPRESSION/ASSESSMENT"])
 
             sections = re.split(
                 rf'(?=^(?:{HEADING_PATTERN})\s*$)',
@@ -836,6 +837,7 @@ class Oscar:
             for section in sections:
                 heading, separator, content = section.partition("\n")
                 stripped_heading = heading.strip()
+                if stripped_heading.upper() == "IMPRESSION/ASSESSMENT": stripped_heading = "ASSESSMENT"
                 stripped_contents = content.strip()
                 parsed_sections[stripped_heading] = stripped_contents
                 print(f"Processed section {stripped_heading}")
@@ -863,6 +865,14 @@ class Oscar:
                         print(f"Replaced section {heading}")
                     elif result == 1:
                         print(f"Inserted section {heading}")
+                    elif result == -1:
+                        print(f"Failed to handle section {heading}: nextHeadingPara not found")
+                    elif result == -2:
+                        print(f"Failed to handle section {heading}: colonIndex not found")
+                    elif result == -3:
+                        print(f"Failed to handle section {heading}: startNode not found")
+                    elif result == -4:
+                        print(f"Failed to handle section {heading}: colonNode not found")
 
             # Click submit
             self.driver.switch_to.default_content()
