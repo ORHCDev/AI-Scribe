@@ -1,0 +1,643 @@
+<!--
+  Test fixture: the 0.1Rfx medication (Rx) eForm template from Oscar (fid 725, copied 2026-10-07).
+  Template only - no patient data. Oscar fills the oscarDB fields server-side; the tests do the same
+  by injecting text into the druglist_generic and m$MEDS#value textareas before loading.
+
+  Kept verbatim: everything that runs on load (reloadSignature, replacer, SignForm, ...), the
+  "Click for new or dose change" button (clearMe2), the prescription body, CURRENT MEDS, the
+  "Update Med List" button (med_update), the submit buttons, and the original broken <script> blocks.
+  Trimmed: the drug-interaction tables inside interactions(), and most of the drug search list and
+  dose pickers (a few kept as examples). Those only run on manual clicks.
+
+  To refresh from Oscar: python tests/med_eform/refresh_rx_fixture.py
+-->
+<html>
+<head>
+    <title></title>
+    <style type="text/css" media="print">
+        .DoNotPrint {
+            display: none;
+        }
+        .noborder {
+            border : 0px;
+            background: transparent;
+            overflow: hidden;
+        }
+    </style>
+    <style type="text/css">
+        .vertical-menu {
+            width: 500px;
+            height: 100px;
+            overflow-y: auto;
+        }
+        .vertical-menu a {
+            background-color: #eee;
+            color: black;
+            display: block;
+            padding: 10px;
+            text-decoration: none;
+        }
+        .vertical-menu a:hover {
+            background-color: #ccc;
+        }
+    </style>
+
+        <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+        <script language="JavaScript1.2" src="${oscar_image_path}DHTMLmain.js" type="text/javascript"></script>
+        <script language="javascript" type="text/javascript" src="${oscar_image_path}DHTMLmain.js"></script>
+        <script language="javascript" type="text/javascript" src="${oscar_image_path}ComboStrokeRisk2.js">
+            <script language="javascript" type="text/javascript" src="${oscar_image_path}1ddc.js">
+            </script>
+
+            <script language="javascript">
+                function formPrint(){
+                    window.print();
+                }
+            </script>
+            <script type="text/javascript">
+        function changePageTitle() {
+            newPageTitle =  document.getElementById('patient_nameL').value + ', ' + document.getElementById('patient_nameF').value + ', rx';
+            document.title = newPageTitle;}
+    </script>
+
+            <!-- scripts to confirm closing of window if it hadn't been saved yet -->
+            <script language="javascript">
+                //keypress events trigger dirty flag
+                var needToConfirm = false;
+                document.onkeyup=setDirtyFlag;
+                function setDirtyFlag(){
+                    needToConfirm = true;
+                }
+                function releaseDirtyFlag(){
+                    needToConfirm = false; //Call this function if doesn't requires an alert.
+                    //this could be called when save button is clicked
+                }
+                window.onbeforeunload = confirmExit;
+                function confirmExit(){
+                    if (needToConfirm){
+                        return "You have attempted to leave this page. If you have made any changes to the fields without clicking the Save button, your changes will be lost. Are you sure you want to exit this page?";
+                    }
+                }
+                function show(x){
+                    document.getElementById(x).style.display = 'block';
+                }
+                function hide(x){
+                    document.getElementById(x).style.display = 'none';
+                }
+
+            </script>
+
+              <script language="JavaScript">
+	 top.window.moveTo(0,0);
+        window.resizeTo(screen.availWidth, screen.availHeight);
+          </script>
+
+            <script type="text/javascript">
+                function preloadImg(){
+                    // create object
+                    imageObj = new Image();
+                    // set image list
+                    images = new Array();
+                    images[0]='${oscar_image_path}Petersig.png'
+                    images[1]='${oscar_image_path}Mahessig.png'
+                    images[2]='${oscar_image_path}Ramyasig.png'
+                    images[3]='${oscar_image_path}AVigerSigsm8.png'
+                    // start preloading
+                    for(i=0; i<=images.length; i++){
+                        imageObj.src=images[i];
+                    }
+                }
+                <!-- very simple function, if the text exists in the textbox, dont add. Otherwise add-->
+                function add(x,test){
+                    if (document.getElementById(x).value.indexOf(test)==-1){
+                        document.getElementById(x).value += test
+                    }
+                }
+
+
+                function clearMe() {
+
+                    document.getElementById('Aut').value='';
+                    document.getElementById('Inst').value='';
+                    document.getElementById('subject').value='';
+
+
+                }
+                var pi="INSTRUCTIONS: ";
+                var au="Order written under delegation established by medical directive number ORHC - 8 as authorized by:  ";
+                var dr="Start this medication after stress test ";
+                var ca="Start this medication 5 days before the cardiac cath (angiogram)";
+                var ep="Start this medication 3 days after stopping Warfarin ";
+                var bp="Blood pressure monitor please ";
+
+                function reloadSignature(){
+
+                       var string = document.getElementById("druglist_generic").value;
+                             string = string.replace('Ezetrol 10 mg daily', "Ezetrol 10 mg daily, LU code 380");
+                             string = string.replace('Ezetimibe 10 mg daily', "Ezetrol 10 mg daily, LU code 380");
+                             string = string.replace('Dabigatran 110 mg bid', "Dabigatran 110 mg BID, LU code 431");
+                             string = string.replace('Dabigatran 150 mg BID', "Dabigatran 150 mg BID, LU code 431");
+                             string = string.replace('Rivaroxaban 15 mg daily', "Rivaroxaban 15 mg daily, LU code 435");
+                             string = string.replace('Rivaroxaban 20 mg daily', "Rivaroxaban 20 mg daily, LU code 435");
+                             string = string.replace('Rivaroxaban 2.5 mg BID', "Rivaroxaban 2.5 mg BID, LU code 539");
+                             string = string.replace('Rivaroxaban 2.5 mg bid', "Rivaroxaban 2.5 mg BID, LU code 539");
+                             string = string.replace('Apixaban 2.5 mg BID', "Apixaban 2.5 mg BID, LU code 448");
+                             string = string.replace('Apixaban 5 mg BID', "Apixaban 5 mg BID, LU code 448");
+                             string = string.replace('Edoxaban 30 mg daily', "Edoxaban 30 mg daily, LU code 554");
+                             string = string.replace('Edoxaban 60 mg daily', "Edoxaban 60 mg daily, LU code 554");
+                             string = string.replace('Pantoloc 40 mg daily', "Pantoloc 40 mg daily, LU code 297");
+                             string = string.replace('Pantoprazole 40 mg daily', "Pantoprazole 40 mg daily, LU code 297");
+                             string = string.replace('Entresto 97-103 mg BID', "Entresto 97/103 mg BID, LU code 497");
+                     document.getElementById("druglist_generic").value = string ;
+
+                    preloadImg();
+                    var SubmittedBy = document.getElementById('SubmittedBy').value;
+                    if (!SubmittedBy){
+                        SignForm('current_user');
+                    } else {
+                        SignForm(SubmittedBy);
+                    }
+                    resizeSignature();
+
+
+
+
+                }
+
+                function SignForm(SignBy){
+                    var SignatureHolder = document.getElementById('SignatureHolder');
+                    var DoctorName = document.getElementById('DoctorName').value;
+                    var CurrentUserName = document.getElementById('CurrentUserName').value;
+                    if(SignBy == 'doctor'){
+                        if (DoctorName.indexOf('Mahes') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}Mahessigsm.png'>";
+                        }else if(DoctorName.indexOf('Ramya') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}Ramyasigsm.png'>";
+                        }else if(DoctorName.indexOf('Peter') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}Petersigsm.png'>";
+                        }else if(DoctorName.indexOf('Angel') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}AVigerSigsm8.png'>";
+                        } else {
+                            SignatureHolder.innerHTML = "<div id='SignatureImage'></div>";
+                        }
+                        document.getElementById('SubmittedBy').value = SignBy;
+                    }else if (SignBy == 'current_user'){
+                        if (CurrentUserName.indexOf('Peter') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}Petersigsm.png'>";
+                        }else if(CurrentUserName.indexOf('Mahes') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}Mahessigsm.png'>";
+                        }else if(CurrentUserName.indexOf('Angel') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}AVigerSigsm8.png'>";
+                        }else if(CurrentUserName.indexOf('Ramya') >= 0){
+                            SignatureHolder.innerHTML = "<img id='SignatureImage' src='${oscar_image_path}Ramyasigsm.png'>";
+                        } else {
+                            SignatureHolder.innerHTML = "<div id='SignatureImage'></div>";
+                        }
+                        document.getElementById('SubmittedBy').value = SignBy;
+                    }else if (SignBy == 'none'){
+                        SignatureHolder.innerHTML = "<div id='SignatureImage'></div>";
+                    }
+                    resizeSignature();
+                }
+                function resizeSignature(){
+                    //resize signature image to fit inside SignatureHolder
+                    if (document.getElementById('SignatureImage')){
+                        var Holder = document.getElementById('SignatureHolder')
+                        var Image = document.getElementById('SignatureImage')
+                        var HolderW = parseInt(document.getElementById('SignatureHolder').style.width);
+                        var HolderH = parseInt(document.getElementById('SignatureHolder').style.height);
+                        var ImageW = document.getElementById('SignatureImage').width;
+                        var ImageH = document.getElementById('SignatureImage').height;
+                        if (ImageW > HolderW){
+                            Image.style.width = HolderW;
+                            var NewH = (HolderW * (ImageH/ImageW));
+                            Image.style.height = parseInt(NewH);
+                            if (NewH > HolderH){
+                                Image.style.height = HolderH;
+                                var NewW = (HolderH * (ImageW/ImageH));
+                                Image.style.width = parseInt(NewW);
+                            }
+                        }else if (ImageW < HolderW){
+                            if (ImageH > HolderH){
+                                Image.style.height = HolderH;
+                                var NewW = (HolderH * (ImageW/ImageH));
+                                Image.style.width = parseInt(NewW);
+                            }
+                        }
+                        reorderSignature();
+                    }
+                }
+            </script>
+
+            <script type="text/javascript">
+                function reorderSignature(){
+                    document.getElementById('BGImage').style.zIndex = '-10';
+                    document.getElementById('SignatureHolder').style.zIndex = '-9';
+                    document.getElementById('SignatureImage').style.zIndex = '-8';
+                }
+
+                function incdose(){
+                    var str2 = document.getElementById('medic').value;
+                    var str = document.getElementById('druglist_generic').value;
+                    var str3 = "Increase " + str2 + " to ";
+                    var res = str.replace(str2 ,str3);   document.getElementById('druglist_generic').value = res;
+                }
+                function decdose(){
+                    var str2 = document.getElementById('medic').value;
+                    var str = document.getElementById('druglist_generic').value;
+                    var str3 = "Decrease " + str2 + " to ";
+                    var res = str.replace(str2 ,str3);   document.getElementById('druglist_generic').value = res;
+                }
+
+                function interactions(){
+                    // [fixture] drug-drug and drug-condition interaction tables trimmed; only runs
+                    // when the "Drug drug Interactions" checkbox is clicked.
+                    document.getElementById('dd').value += "\n" + "no drug-drug interactions to report";
+                    document.getElementById('dh').value = "\n" + "no other medication cautions to report";
+                }
+            </script>
+
+
+                    <script language="javascript" type="text/javascript" src="${oscar_image_path}editControl15_5.js"></script>
+
+                    <script language="javascript" type="text/javascript" src="${oscar_image_path}1EBM2.js"></script>
+
+                    <script language="javascript">
+
+                        //put any of the optional configuration variables that you want here
+                        cfg_width = '640';                    //editor control width in pixels
+                        cfg_height = '740';                   //editor control height in pixels
+                        cfg_editorname = 'edit';                //the handle for the editor
+                        cfg_isrc = '${oscar_image_path}';         //location of the button icon files
+                        cfg_filesrc = '${oscar_image_path}';         //location of the html files
+                        cfg_template = 'blank.html';	    //default style and content template
+                        insertEditControl(); // Initialise the edit control and sets it at this point in the webpage
+
+                        function Start() {document.getElementById("druglist_generic").value = 'test';
+                            // set eventlistener for the iframe to flag changes in the text displayed
+                            var agent=navigator.userAgent.toLowerCase(); //for non IE browsers
+                            if ((agent.indexOf("msie") == -1) || (agent.indexOf("opera") != -1)){
+                                document.getElementById(cfg_editorname).contentWindow.addEventListener('keypress',setDirtyFlag, true);
+
+                             var string = document.getElementById("druglist_generic").value.
+                             string = string.replace('Ezetrol 10 mg daily', "Ezetrol 10 mg daily, LU code 380");  string = string.replace('Ezetimibe 10 mg daily', "Ezetrol 10 mg daily, LU code 380");
+                             document.getElementById("druglist_generic").value = 'string';
+
+
+                            }
+
+
+
+                            // reformat values of multiline database values from \n lines to <br>
+                            htmlLine('label');
+                            htmlLine('reminders');
+                            htmlLine('ongoingconcerns');
+                            htmlLine('medical_history');document.getElementById('allergies_des').value
+                            htmlLine('other_medications_history');  //family history  ... don't ask
+                            htmlLine('social_family_history');  //social history
+                            htmlLine('address');
+                            htmlLine('NameAddress');
+                            htmlLine('clinic_label');
+                            htmlLine('clinic_address');
+                            htmlLine('druglist_generic');
+                            htmlLine('druglist_trade');
+                            htmlLine('recent_rx');
+                        </script>
+                        <script>
+
+                            function updateSearch(id) {
+                                // Declare variables
+                                var input, filter, ul, a,b, i, txtValue;
+                                input = document.getElementById(id);
+                                filter = input.value.toUpperCase();
+                                if(id == "medSearcher"){
+                                    ul = document.getElementById("medSearchLst")
+                                }
+                                else if (id == "HPISearcher"){
+                                    ul = document.getElementById("HPISearchLst")
+                                }
+
+                                else {
+                                    ul = document.getElementById("pmhsearchlst");
+                                }
+                                a = ul.getElementsByTagName('a');
+                                for (i = 0; i < a.length ; i++) {
+                                    b = a[i].innerHTML
+
+                                    if (b.toUpperCase().indexOf(filter) > -1) {
+                                        a[i].style.display = "";
+                                    } else {
+                                        a[i].style.display = "none";
+                                    }
+                                }
+                            }
+
+                            function replacer () {
+                                // This function has a two array for each medication. The first is the brand name and the second one is the generic name. Then a master array the loops through them all. When looping, it takes the first entry of each array and replaces any instances of it with the second entry.
+                                var med1 = ["Aspirin","ECASA"];
+                                var med2 = ["Plavix","Clopidogrel"];
+                                var med3 = ["Brillinta","Ticagrelor"];
+                                var med4 = ["Zocor","Simastatin"];
+                                var med5 = ["Lipitor","Atorvastatin"];
+                                var med6 = ["Crestor","Rosuvastatin"];
+                                var med7 = ["Ezetrol","Ezetimibe"];
+                                var med8 = ["Mg" ,"Magnesium"];
+                                var med9 = ["Coq10","Co-enzyme Q10"];
+                                var med10 = ["Mavik","Trandolapril"];
+                                var med11 = ["Coversyl","Perindopril"];
+                                var med12 = ["Altace","Ramipril"];
+                                var med13 = ["Monocor","Bisoprolol"];
+                                var med14 = ["Coreg","Carvedilol"];
+                                var med15 = ["Eliquis","Apixaban"];
+                                var med17 = ["Xarelto","Rivaroxaban"];
+                                var med18 = ["Pradaxa","Dabigatran"];
+                                var med19 = ["Norvasc","Amlodipine"];
+                                var med20 = ["Adalat","Nifedipine"];
+                                var med21 = ["Cardizem","Diltiazem CD"];
+                                var med22 = ["Lasix","Furosemide"];
+                                var med23 = ["HCTZ","hydrochlorthiazide"];
+                                var med24 = ["Jardiance","Empagliflozin"];
+                                var med25 = ["Micardis","Telmisartan"];
+                                var med26 = ["Atacand","Candesartan"];
+                                var med27 = ["Avapro","Irbesartan"];
+                                var med28 = ["Diovan","Valsartan"];
+                                var med29 = ["Aldactone","Spironolactone"];
+                                var med30 = ["Flomax","Tamsulosin"];
+                                var med31 = ["Eltroxin","Synthroid"];
+                                var med33 = ["Acetaminophen","Tylenol"];
+                                var med34 = ["Ativan","Lorazepam"];
+                                var med35 = ["Ca2+","Calcium"];
+                                var med36 = ["Docusate","Colace"];
+                                var med37 = ["Fe","Iron"];
+                                var med38 = ["Lansoprazole","Prevacid"];
+                                var med39 = ["Omeprazole","Losec"];
+                                var med40 = ["Rabeprazole","Pariet"];
+                                var med41 = ["Varenicline","Champix"];
+                                var med42 = ["Potassium","K+"];
+                                var med43 = ["Colchicine","colchicine"];
+                                var med44 = ["Ozempic","Ozempic"];
+                                var med45 = ["Wellbutrin","Zyban"];
+
+                                masterMed = [med1,med2,med3,med4,med5,med6,med7,med8,med9,med10,med11,med12,med13,med14,med15,med17,med18,med19,med20,med21,med22,med23,med24,med25,med26,med27,med28,med29,med30,med31,med33,med34,med35,med36,med37,med38,med39,med40,med41,med42,med43,med44,med45]
+                                var len = masterMed.length;
+                                var len = masterMed.length;
+                                for (i = 0; i < len; ++i) {
+                                    document.getElementById("m$MEDS#value").value = document.getElementById("m$MEDS#value").value.replace(masterMed[i][0], masterMed[i][1]);
+                                    document.getElementById("druglist_generic").value = document.getElementById("druglist_generic").value.replace(masterMed[i][0], masterMed[i][1]);
+                                }
+                            }
+
+                              function med_update() {
+                                //This function is used to update the medication list such that it records dosage change and medications added!
+                                var ogArray = document.getElementById("m$MEDS#value").value.replace("increase ", "");
+                                var ogArray = ogArray.replace("Increase ", "");
+                                var ogArray = ogArray.replace("decrease ","");
+                                var ogArray = ogArray.replace("Decrease ", "");
+                                var ogArray = ogArray.replace("to ","");
+                                var ogArray = ogArray.replace("LU code 441, " , "");
+                                var ogArray = ogArray.replace("LU code 449, ", "");
+                                var ogArray = ogArray.replace("LU code 435, ", "");
+                                var ogArray = ogArray.replace("LU code 448, ", "");
+                                var ogArray = ogArray.replace("LU code 539, ", "");
+                                var ogArray = ogArray.replace("LU code 431, ", "");
+                                var ogArray = ogArray.replace("LU code 554, ", "");
+                                console.log(ogArray);
+                                var ogArray = ogArray.split(",");
+
+                                var text = document.getElementById("druglist_generic").value.replace("increase ", "");
+                                var text= text.replace("Increase ", "");
+                                var text= text.replace("decrease ","");
+                                var text= text.replace("Decrease ", "");
+                                var text = text.replace("to ","");
+                                var text = text.replace("LU code 441, " , "");
+                                var text = text.replace("LU code 449, ", "");
+                                var text = text.replace("LU code 435, ", "");
+                                var text = text.replace("LU code 448, ", "");
+                                var text = text.replace("LU code 539, ", "");
+                                var text = text.replace("LU code 431, ", "");
+                                var text = text.replace("LU code 554, ", "");
+                                var med = text.split(",");
+                                var medname = [];
+                                var num2 = med.length;
+                                for (i = 0; i < num2; ++i) {
+                                    med[i] = med[i].trim();
+                                    medname.push(med[i].split(" "));
+                                }
+                                var num3 = med.length;
+                                document.getElementById("m$MEDS#value").value = "";
+                                var num = ogArray.length;
+                                for (i = 0; i < num3 ; ++i){
+
+                                    if (i == 0) {
+                                        for (j = 0; j < num; ++j) {
+                                            if (ogArray[j].includes(medname[i][0])) {
+                                                ogArray[j]= med[i];
+
+                                                break;
+                                            }
+                                            else if (!ogArray[j].includes(medname[i][0])) {
+                                                if (j == num - 1) {
+                                                    ogArray.unshift(med[i]);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else if (i != num3 -1) {
+                                        for (j = 0; j < num; ++j) {
+                                            if (ogArray[j].includes(medname[i][0])) {
+                                                ogArray[j]= med[i];
+                                                break;
+                                            }
+                                            else if (!ogArray[j].includes(medname[i][0])) {
+                                                if (j == num - 1) {
+                                                    ogArray.unshift(med[i]);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                var num4 = ogArray.length;
+                                document.getElementById("m$MEDS#value").value = "";
+                                for (i = 0; i < num4; ++i) {
+                                    if (ogArray[i] == "" || ogArray[i] == " ") {
+                                        continue;
+                                    }
+                                    document.getElementById("m$MEDS#value").value += ogArray[i] + ", ";
+                                }
+                            }
+
+        function clearMe2() {
+
+	document.getElementById('druglist_generic').value='';
+        document.getElementById('dd').value='';
+        document.getElementById('dh').value='';
+            }
+
+
+
+
+                  </script>
+                    </head>
+
+                    <body onload="reloadSignature(); replacer();"">
+                        <img id='BGImage' src="${oscar_image_path}Rx.png" style="position: absolute; left: 0px; top: 0px; width:750px">
+
+                        <form method="post" action="" name="lab" id="lab" >
+
+                          <input type="hidden" name="medic" id="medic"  >
+                          <input type="hidden" name="history1" id="history1" oscarDB=m$PMH#value>
+                          <input type="hidden" name="history2" id="history2" oscarDB=m$CARD#value>
+                          <input type="hidden" name="history7" id="history7" oscarDB=m$PLAN#value>
+                          <input type="hidden" name="Kpl" id="Kpl" oscarDB=m$Kpl#value>
+                          <input type="hidden" name="EF" id="EF" oscarDB=m$EF_B#value>
+                         <input type="hidden" name="patient_nameF" id="patient_nameF" oscarDB=patient_nameF>
+                         <input type="hidden" name="patient_nameL" id="patient_nameL" oscarDB=patient_nameL>
+
+                            <div id="LabPage" style="font-family:sans-serif; font-style:normal; font-weight:normal; text-align:left; font-size:12;">
+                                <textarea name="clinic" id="address" type="text" class="noborder" style="position:absolute; left:49px; top:45px; width:129px; height:68px;"  oscarDB=clinic_address></textarea>
+                                <input name="doctor" id="doctor" type="text" class="noborder" style="position:absolute; left:190px; top:576px; width:170px; height:18px;"  oscarDB=doctor>
+                                <input name="today" id="today" type="text" class="noborder" style="position:absolute; left:294px; top:179px; width:116px; height:20px;"  oscarDB=today>
+                                <textarea name="label" id="label" class="noborder" style="position:absolute; left:63px; top:171px; width:189px; height:70px;"  oscarDB=label></textarea>
+
+                                <textarea name="subject" id="druglist_generic" class="noborder" style="position:absolute; left:63px; top:251px; width:333px; height:94px; font-family:sans-serif; font-style:normal; font-weight:normal; font-size:12px; text-align:left; background-color:transparent;"  oscarDB=m$MEDS#value><!--FIXTURE:DRUGLIST--></textarea>
+
+<textarea id="APLAN" name="m$APLAN#value" oscarDB="m$PLAN#value" style="display:none;"></textarea>
+
+<script>
+function extractMedicationInfo() {
+    clearMe2();
+    const fullPlan = document.getElementById('APLAN')?.value || '';
+
+    // Match from starting/increase/decrease to daily/BID
+    const match = fullPlan.match(/(starting|increase|decrease|start)[\s\S]*?(daily|BID)/i);
+    let extracted = match ? match[0].trim() : '';
+
+    // Remove pronouns
+    extracted = extracted
+        .replace(/\b(he|she|they|his|her|him|them|their|theirs|himself|herself|themselves)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const medsValue = document.getElementById('druglist_generic')?.value || '';
+    const combined = [extracted, medsValue].filter(Boolean).join('\n\n');
+
+    document.getElementById('druglist_generic').value = combined;
+}
+</script>
+
+                                <textarea name="page1_-1" id="Inst" class="noborder" style="position:absolute; left:63px; top:352px; width:331px; height:89px;" >All PO daily unless otherwise noted above, Mitte:100 days, Repeats:3                    </textarea>
+                                <textarea name="page1_0" id="Aut" class="noborder" style="position:absolute; left:63px; top:520px; width:341px; height:55px;" >  </textarea>
+                                <input name="doctor_cpsid" id="doctor_cpsid" type="text" class="noborder" style="position:absolute; left:177px; top:598px; width:76px; height:15px;"  oscarDB=doctor_cpsid>
+                            </div>
+
+                            <div class="DoNotPrint" style="position:absolute; left:500px; top:210px;">
+  <input type="checkbox" id="extractMeds" onclick="extractMedicationInfo()">
+  <label for="extractMeds" style="font-size:12px; font-family:Arial, sans-serif;">Extract meds from APLAN</label>
+</div>
+                            <div id="LabQuickSelect" class="DoNotPrint" style="position:absolute; left:500; top:250px; width:220px; background-color:LightYellow; border-style:solid; border-color:black; border-width:1px; font-family: sans-serif; font-size:12;">
+
+                              <font><u>CURRENT MEDS:</u></font><br>
+	                      <textarea  name="m$MEDS#value" id="m$MEDS#value" class="noborder" style="font-size:14px; width:616px; height:40px;" oscarDB=m$MEDS#value ><!--FIXTURE:CURRENTMEDS--></textarea><br>
+                              <input name="update_med" id="update_med" type="button" class="noborder" value="Update Med List" onclick="med_update();"> <br>
+                               <font><u>MEDICATION CAUTIONS:</u></font><br>
+                              <textarea name="dd" id="dd" class="formtext" style="font-size:14px; width:616px; height:120;" wrap="virtual"  ></textarea>  <br>
+	                      <textarea name="dh" id="dh" class="formtext" style="font-size:14px; width:616px; height:120;" wrap="virtual"  ></textarea>  <br>
+                              <font><u>CONDITIONS:</u></font><br>
+	                      <textarea name="dc" id="dc" class="formtext" style="font-size:14px; width:616px; height:10;" wrap="virtual"  ></textarea>  <br>
+
+                                <font><u>AUTHORIZATION:</u></font><br>
+                                <input type="checkbox" name="Autho"
+                                onClick="
+                                add('Aut',au);
+                                ">Authorization<br>
+                                <font><u>Drug drug Interactions:</u></font><br>
+                                <input type="checkbox" name="Autho"
+                                onClick="
+                                interactions();
+                                ">Drug drug Interactions<br>
+                                <font><u>INSTRUCTIONS:</u></font><br>
+                                <input type="checkbox" name="incr"
+                                onClick=" incdose();
+                                ">increase dose<br> <input type="checkbox" name="dec"
+                                onClick=" decdose();
+                                ">decrease dose<br>
+                                <input type="checkbox" name="stress test"
+                                onClick="
+                                add('Inst',pi);
+                                add('Inst',dr);
+                                ">stress test Instructions<br>
+                                <input type="checkbox" name="Start med"
+                                onClick="
+                                add('druglist_generic','Start ');
+                                ">Start<br>
+                                <input type="checkbox" name="BP monitor"
+                                onClick="
+                                add('druglist_generic',bp);
+                                ">BP monitor<br> </div>
+
+                               <div class="DoNotPrint">
+                                <input type="button" class="butn" name="Medications " value="Click for new or dose change" 	style="width:180; position: absolute; left: 500px;" onclick="clearMe2();">
+
+                                <td class="normaltext">
+                                    <input class="form-control" type="text" id='medSearcher' onkeyup="updateSearch('medSearcher')" placeholder="Search ..."style=" position: absolute; left:700px;top: 35px;">
+                                    <div id="medSearchLst" class="vertical-menu" style="position: absolute; left:500px; top: 70px;">
+                                       <!-- [fixture] list trimmed to a few examples of each kind -->
+                                       <a onclick="add('druglist_generic','ECASA 81 mg daily, ');" >Aspirin/ASA</a>
+                                        <a onclick="add('druglist_generic','Ticagrelor 90 mg BID, LU code 441, ');" >Ticagrelor/Brillinta</a>
+                                        <a onclick="show('Metoprolol');document.getElementById('medic').value = 'Metoprolol';">Metoprolol</a>
+                                        <a onclick="show('Eliquis');document.getElementById('medic').value = 'Apixaban'; ">Apixaban/Eliquis</a>
+                                        <a onclick="show('Furosemide'); document.getElementById('medic').value = 'Furosemide';">Furosemide/Lasix</a>
+                                        <a  onclick="add('druglist_generic','Metformin, ');">Metformin</a>
+                                    </span>
+                                </div>
+                         </div>
+                                <div class="DoNotPrint" name="Furosemide" id="Furosemide" style="position:absolute; left:500px; top: 130px; background-color:#dddddd;  height:69; display:none;" onmouseover="show(this.id)" onmouseout="hide(this.id)">
+                                    <span style="font-family:sans-serif; font-size:12px; font-weight:bold">
+                                        Pick Lasix Dose:<br>
+                                        <input type="radio" name="l10" id="l10"  onclick="add('druglist_generic','Furosemide 20 mg daily, ');">20 mg daily
+                                        <input type="radio" name="l10" id="l10"  onclick="add('druglist_generic','Furosemide 40 mg daily, ');">40 mg daily
+                                        <input type="radio" name="l10" id="l10"  onclick="add('druglist_generic','Furosemide 80 mg daily, ');">80 mg daily
+                                    </span>
+                                </div>
+                                <div class="DoNotPrint" name="Meto" id="Metoprolol" style="position:absolute; left:500px; top: 130px; background-color:#dddddd; height:69; display:none;" onmouseover="show(this.id)" onmouseout="hide(this.id)">
+                                    <span style="font-family:sans-serif; font-size:12px; font-weight:bold">
+                                        Pick Dose:<br>
+                                        <input type="radio" name="m12" id="m12"  onclick="add('druglist_generic','Metoprolol 12.5 mg BID, ');"> 12.5 mg BID
+                                        <input type="radio" name="m12" id="m12"  onclick="add('druglist_generic','Metoprolol 25 mg BID, ');" >25 mg BID
+                                    </span>
+                                </div>
+                                <div class="DoNotPrint" name="Eliquis" id="Eliquis" style="position:absolute; left:500px; top: 130px; background-color:#dddddd;height:39; display:none;" onmouseover="show(this.id)" onmouseout="hide(this.id)">
+                                    <span style="font-family:sans-serif; font-size:12px; font-weight:bold">
+                                        Pick Dose:<br>
+                                        <input type="radio" name="e1" id="e1"  onclick="add('druglist_generic','Apixaban 2.5 mg BID, LU code 448, ');" >2.5
+                                        <input type="radio" name="e1" id="e1"  onclick="add('druglist_generic','Apixaban 5 mg BID, LU code 448, ');">5
+                                    </span>
+                                </div>
+                            </div> <input type="hidden" name="DoctorName" id="DoctorName" oscarDB="doctor" >
+                            <input type="hidden" name="CurrentUserName" id="CurrentUserName" oscarDB="current_user">
+                            <input type="hidden" name="SubmittedBy" id="SubmittedBy">
+                            <div name="SignatureHolder" id="SignatureHolder" style="position:absolute; left:144px; top:447px; width:271px; height:55px" onmouseover="show('SignaturePicker');" onmouseout="hide('SignaturePicker');">
+                            </div>
+                            <div class="DoNotPrint" name="SignaturePicker" id="SignaturePicker" style="position:absolute; background-color:#dddddd; left:144px; top:447px; width:271px; height:55px; display:none;" onmouseover="show(this.id)" onmouseout="hide(this.id)">
+                                <span style="font-family:sans-serif; font-size:12px; font-weight:bold">
+                                    Signature:<br>
+                                    <input type="radio" name="SignBy" id="SignDoctor" value="doctor" onclick="SignForm(this.value);" onmouseout="resizeSignature();">Patient's Doctor
+                                    <input type="radio" name="SignBy" id="SignCurrentUser" value="current_user" onclick="SignForm(this.value);" onmouseout="resizeSignature();">Current User
+                                    <input type="radio" name="SignBy" id="SignNone" value="none" onclick="SignForm(this.value);">None
+                                </span>
+                            </div>
+
+
+                            <div class="DoNotPrint" id="BottomButtons" style="position: absolute; top:1000px; left:0px;">
+                                <table><tr><td>
+                                    Subject: <input name="subject" size="40" type="text">
+                                    <input value="Submit" name="SubmitButton" id="SubmitButton" type="submit" onclick=" releaseDirtyFlag();">
+                                    <input value="Reset" name="ResetButton" id="ResetButton" type="reset">
+                                    <input value="Clear" name="Clear" id="Clear" type="button" onclick="clearMe();">
+                                    <input value="Print" name="PrintButton" id="PrintButton" type="button" onclick="changePageTitle(); formPrint();">
+                                    <input value="Print & Submit" name="PrintSubmitButton" id="PrintSubmitButton" type="button" onclick="changePageTitle(); formPrint();releaseDirtyFlag();setTimeout('SubmitButton.click()',1000);">
+                                </td></tr></table>
+                            </div>
+                        </form>
+                    </body>
+                    </html>
