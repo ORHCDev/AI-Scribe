@@ -1325,39 +1325,106 @@ def generate_note(formatted_message):
                         return False
                     
                     demo_no = info["demographic_no"]
-                    measurement_query = f"""
-                    SELECT m.*
-                    FROM measurements m
-                    JOIN (
-                        SELECT
-                            type,
-                            MAX(dateObserved) AS latest_date
+
+                    measurement_results = []
+                    for measurement_type in ["ECG", "ECHO", "EST", "SECHO", "HOLT"]:
+                        measurement_start = time.perf_counter()
+
+                        substep_start = time.perf_counter()
+                        first_date_query = f"""
+                        SELECT DATE(MAX(dateObserved)) AS target_date
+                        FROM measurements m
+                        WHERE demographicNo = {demo_no}
+                        AND type = '{measurement_type}'
+                        """
+                        most_recent_result = chatbot.db_conn.query_database(first_date_query)
+                        most_recent_date = most_recent_result[0]["target_date"] if most_recent_result else None
+                        print(f"most_recent_date for {measurement_type}: {most_recent_date}")
+                        print(
+                            f"[TIMING] {measurement_type}, STEP 1: "
+                            f"{time.perf_counter() - substep_start:.2f}s"
+                        )
+                        if not most_recent_date: continue
+
+                        substep_start = time.perf_counter()
+                        second_date_query = f"""
+                        SELECT DATE(MAX(dateObserved)) AS target_date
+                        FROM measurements m
+                        WHERE demographicNo = {demo_no}
+                        AND type = '{measurement_type}'
+                        AND DATE(dateObserved) < '{most_recent_date}'
+                        """
+                        second_result = chatbot.db_conn.query_database(second_date_query)
+                        second_most_recent_date = (
+                            second_result[0]["target_date"]
+                            if second_result and second_result[0]["target_date"]
+                            else None
+                        )
+                        print(f"second_most_recent_date for {measurement_type}: {second_most_recent_date}")
+                        print(
+                            f"[TIMING] {measurement_type}, STEP 2: "
+                            f"{time.perf_counter() - substep_start:.2f}s"
+                        )
+                        if not second_most_recent_date: continue
+
+                        substep_start = time.perf_counter()
+                        type_map = {
+                            "ECG": ["ECG"],
+                            "ECHO": ["ECHO", "ECHO1", "ECHO2"],
+                            "EST": ["EST"],
+                            "SECHO": ["SECHO", "SECHO1"],
+                            "HOLT": ["HOLT", "HOLT1", "HOLT2"]
+                        }
+                        second_measurements_query = f"""
+                        SELECT m.type, m.dataField
+                        FROM measurements m
+                        JOIN (
+                            SELECT type, MAX(dateObserved) AS latest_time
+                            FROM measurements
+                            WHERE demographicNo = {demo_no}
+                            AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
+                            AND DATE(dateObserved) = '{second_most_recent_date}'
+                            GROUP BY type
+                        ) latest
+                            ON m.type = latest.type
+                            AND m.dateObserved = latest.latest_time
+                        WHERE m.demographicNo = {demo_no}
+                        """
+                        second_measurements = chatbot.db_conn.query_database(second_measurements_query)
+                        datafields_toexclude = {row["dataField"] for row in second_measurements}
+                        print(f"datafields_toexclude for {measurement_type}: " f"{datafields_toexclude}")
+                        print(
+                            f"[TIMING] {measurement_type}, STEP 3: "
+                            f"{time.perf_counter() - substep_start:.2f}s"
+                        )
+
+                        substep_start = time.perf_counter()
+                        first_measurement_query = f"""
+                        SELECT *
                         FROM measurements
                         WHERE demographicNo = {demo_no}
-                        AND type IN (
-                            'ECG',
-                            'ECHO', 'ECHO1', 'ECHO2',
-                            'EST',
-                            'SECHO', 'SECHO1',
-                            'HOLT', 'HOLT1', 'HOLT2'
+                        AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
+                        AND DATE(dateObserved) = '{most_recent_date}'
+                        """
+                        unfiltered_results = chatbot.db_conn.query_database(first_measurement_query)
+                        print(f"unfiltered_results for {measurement_type}: {unfiltered_results}")
+
+                        for subtype in type_map[measurement_type]:
+                            subtyped_results = list(filter(lambda x: x["type"] == subtype, unfiltered_results))
+                            for result in subtyped_results:
+                                if result["dataField"] not in datafields_toexclude:
+                                    measurement_results.append(result)
+                                    break
+                        print(f"measurement_results for {measurement_type}: {measurement_results}")
+
+                        print(
+                            f"[TIMING] {measurement_type}, STEP 4: "
+                            f"{time.perf_counter() - substep_start:.2f}s"
                         )
-                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                        GROUP BY type
-                    ) latest
-                        ON m.type = latest.type
-                        AND m.dateObserved = latest.latest_date
-                    WHERE m.demographicNo = {demo_no}
-                    AND m.type IN (
-                        'ECG',
-                        'ECHO', 'ECHO1', 'ECHO2',
-                        'EST',
-                        'SECHO', 'SECHO1',
-                        'HOLT', 'HOLT1', 'HOLT2'
-                    )
-                    AND m.dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
-                    ORDER BY m.dateObserved DESC, m.type ASC
-                    """
-                    measurement_results = chatbot.db_conn.query_database(measurement_query)
+                        print(
+                            f"[TIMING] {measurement_type}, TOTAL: "
+                            f"{time.perf_counter() - measurement_start:.2f}s"
+                        )
                     print(f"measurement_results: {measurement_results}")
                     print(
                         f"[TIMING] DB: "
@@ -1519,226 +1586,116 @@ def generate_note(formatted_message):
                         f"{time.perf_counter() - total_start:.2f}s"
                     )
 
-                    TEST_MEASUREMENT_EXCLUSION = False # set to True to run prototype code for better measurement querying
-                    if TEST_MEASUREMENT_EXCLUSION:
-                        total_start = time.perf_counter()
+                    # TEST_MEASUREMENT_EXCLUSION = False # set to True to run prototype code for better measurement querying
+                    # print("TEST A")
+                    # if TEST_MEASUREMENT_EXCLUSION:
+                    #     total_start = time.perf_counter()
                         
-                        query_start = time.perf_counter()
+                    #     query_start = time.perf_counter()
 
-                        type_map = {
-                            "ECG": ["ECG"],
-                            "ECHO": ["ECHO", "ECHO1", "ECHO2"],
-                            "EST": ["EST"],
-                            "SECHO": ["SECHO", "SECHO1"],
-                            "HOLT": ["HOLT", "HOLT1", "HOLT2"]
-                        }
-                        # supertypes = type_map.keys()
-                        all_types = [
-                            measurement_type
-                            for types in type_map.values()
-                            for measurement_type in types
-                        ]
+                    #     type_map = {
+                    #         "ECG": ["ECG"],
+                    #         "ECHO": ["ECHO", "ECHO1", "ECHO2"],
+                    #         "EST": ["EST"],
+                    #         "SECHO": ["SECHO", "SECHO1"],
+                    #         "HOLT": ["HOLT", "HOLT1", "HOLT2"]
+                    #     }
+                    #     # supertypes = type_map.keys()
+                    #     all_types = [
+                    #         measurement_type
+                    #         for types in type_map.values()
+                    #         for measurement_type in types
+                    #     ]
 
-                        measurement_query = f"""
-                        SELECT *
-                        FROM measurements
-                        WHERE demographicNo = {demo_no}
-                        AND type IN ({",".join(f"'{t}'" for t in all_types)})
-                        ORDER BY dateObserved DESC
-                        """
-                        results = chatbot.db_conn.query_database(measurement_query)
-                        print(f"results: {results}")
+                    #     measurement_query = f"""
+                    #     SELECT *
+                    #     FROM measurements
+                    #     WHERE demographicNo = {demo_no}
+                    #     AND type IN ({",".join(f"'{t}'" for t in all_types)})
+                    #     ORDER BY dateObserved DESC
+                    #     """
+                    #     results = chatbot.db_conn.query_database(measurement_query)
+                    #     print(f"results: {results}")
                         
-                        print(
-                            f"[TIMING] querying: "
-                            f"{time.perf_counter() - query_start:.2f}s"
-                        )
+                    #     print(
+                    #         f"[TIMING] querying: "
+                    #         f"{time.perf_counter() - query_start:.2f}s"
+                    #     )
 
-                        from datetime import date, datetime
-                        all_data = {}
-                        for measurement_type in all_types:
-                            measurement_start = time.perf_counter()
+                    #     from datetime import date, datetime
+                    #     all_data = {}
+                    #     for measurement_type in all_types:
+                    #         measurement_start = time.perf_counter()
 
-                            typed_results = list(filter(lambda x: x["type"] == measurement_type, results))
-                            print(f"typed_results: {typed_results}")
-                            sorted_results = sorted(typed_results, key=lambda x: x["dateObserved"], reverse=True)
-                            print(f"sorted_results: {sorted_results}")
-                            mapped_results = map(
-                                lambda x: datetime.strptime(
-                                    x["dateObserved"],
-                                    "%Y-%m-%d %H:%M:%S.%f"
-                                ).date(),
-                                sorted_results
-                            )
-                            print(f"mapped_results: {mapped_results}")
-                            deduped_results = list(dict.fromkeys(mapped_results))
-                            print(f"deduped_results: {deduped_results}")
+                    #         typed_results = list(filter(lambda x: x["type"] == measurement_type, results))
+                    #         print(f"typed_results: {typed_results}")
+                    #         sorted_results = sorted(typed_results, key=lambda x: x["dateObserved"], reverse=True)
+                    #         print(f"sorted_results: {sorted_results}")
+                    #         mapped_results = map(
+                    #             lambda x: datetime.strptime(
+                    #                 x["dateObserved"],
+                    #                 "%Y-%m-%d %H:%M:%S.%f"
+                    #             ).date(),
+                    #             sorted_results
+                    #         )
+                    #         print(f"mapped_results: {mapped_results}")
+                    #         deduped_results = list(dict.fromkeys(mapped_results))
+                    #         print(f"deduped_results: {deduped_results}")
 
-                            if deduped_results:
-                                first_date = deduped_results[0]
-                                print(f"first_date: {first_date}")
+                    #         if deduped_results:
+                    #             first_date = deduped_results[0]
+                    #             print(f"first_date: {first_date}")
 
-                                today = date.today()
-                                if (today - first_date).days <= 30:
-                                    if len(deduped_results) == 1:
-                                        measurement_data = sorted_results[0]
-                                    else:
-                                        second_date = deduped_results[1]
-                                        print(f"second_date: {second_date}")
+                    #             today = date.today()
+                    #             if (today - first_date).days <= 30:
+                    #                 if len(deduped_results) == 1:
+                    #                     measurement_data = sorted_results[0]
+                    #                 else:
+                    #                     second_date = deduped_results[1]
+                    #                     print(f"second_date: {second_date}")
 
-                                        second_results = list(filter(
-                                            lambda x: datetime.strptime(
-                                                x["dateObserved"],
-                                                "%Y-%m-%d %H:%M:%S.%f"
-                                            ).date() == second_date,
-                                            sorted_results
-                                        ))
-                                        print(f"second_results: {second_results}")
+                    #                     second_results = list(filter(
+                    #                         lambda x: datetime.strptime(
+                    #                             x["dateObserved"],
+                    #                             "%Y-%m-%d %H:%M:%S.%f"
+                    #                         ).date() == second_date,
+                    #                         sorted_results
+                    #                     ))
+                    #                     print(f"second_results: {second_results}")
 
-                                        excluded_datafield = second_results[0]["dataField"] if second_results else None
-                                        print(f"excluded_datafield: {excluded_datafield}")
+                    #                     excluded_datafield = second_results[0]["dataField"] if second_results else None
+                    #                     print(f"excluded_datafield: {excluded_datafield}")
 
-                                        first_results = list(filter(
-                                            lambda x: (
-                                                datetime.strptime(
-                                                    x["dateObserved"],
-                                                    "%Y-%m-%d %H:%M:%S.%f"
-                                                ).date() == first_date
-                                                and x["dataField"] != excluded_datafield
-                                            ),
-                                            sorted_results
-                                        ))
-                                        print(f"first_results: {first_results}")
-                                        measurement_data = first_results[0] if first_results else sorted_results[0]
+                    #                     first_results = list(filter(
+                    #                         lambda x: (
+                    #                             datetime.strptime(
+                    #                                 x["dateObserved"],
+                    #                                 "%Y-%m-%d %H:%M:%S.%f"
+                    #                             ).date() == first_date
+                    #                             and x["dataField"] != excluded_datafield
+                    #                         ),
+                    #                         sorted_results
+                    #                     ))
+                    #                     print(f"first_results: {first_results}")
+                    #                     measurement_data = first_results[0] if first_results else sorted_results[0]
 
-                                    all_data[measurement_type] = measurement_data
-                                    print(f"measurement_data: {measurement_data}")
-                                else:
-                                    print(f"measurement_data: None")
-                            else:
-                                print(f"measurement_data: None")
+                    #                 all_data[measurement_type] = measurement_data
+                    #                 print(f"measurement_data: {measurement_data}")
+                    #             else:
+                    #                 print(f"measurement_data: None")
+                    #         else:
+                    #             print(f"measurement_data: None")
                             
-                            print(
-                                f"[TIMING] {measurement_type}: "
-                                f"{time.perf_counter() - measurement_start:.2f}s"
-                            )
+                    #         print(
+                    #             f"[TIMING] {measurement_type}: "
+                    #             f"{time.perf_counter() - measurement_start:.2f}s"
+                    #         )
                             
-                        print(f"all_data: {all_data}")
-                        print(
-                            f"[TIMING] total: "
-                            f"{time.perf_counter() - total_start:.2f}s"
-                        )
-
-
-                    TEST_MEASUREMENT_EXCLUSION_OLD = False # set to True to run prototype code for better measurement querying
-                    if TEST_MEASUREMENT_EXCLUSION_OLD:
-                        total_start = time.perf_counter()
-                        for measurement_type in ["ECG", "ECHO", "EST", "SECHO", "HOLT"]:
-                            measurement_start = time.perf_counter()
-
-                            step_start = time.perf_counter()
-                            first_date_query = f"""
-                            SELECT DATE(MAX(dateObserved)) AS target_date
-                            FROM measurements m
-                            WHERE demographicNo = {demo_no}
-                            AND type = '{measurement_type}'
-                            """
-                            most_recent_result = chatbot.db_conn.query_database(first_date_query)
-                            most_recent_date = most_recent_result[0]["target_date"] if most_recent_result else None
-                            print(f"most_recent_date for {measurement_type}: {most_recent_date}")
-                            print(
-                                f"[TIMING] {measurement_type}, STEP 1: "
-                                f"{time.perf_counter() - step_start:.2f}s"
-                            )
-                            if not most_recent_date: continue
-
-                            step_start = time.perf_counter()
-                            second_date_query = f"""
-                            SELECT DATE(MAX(dateObserved)) AS target_date
-                            FROM measurements m
-                            WHERE demographicNo = {demo_no}
-                            AND type = '{measurement_type}'
-                            AND DATE(dateObserved) < '{most_recent_date}'
-                            """
-                            second_result = chatbot.db_conn.query_database(second_date_query)
-                            second_most_recent_date = (
-                                second_result[0]["target_date"]
-                                if second_result and second_result[0]["target_date"]
-                                else None
-                            )
-                            print(f"second_most_recent_date for {measurement_type}: {second_most_recent_date}")
-                            print(
-                                f"[TIMING] {measurement_type}, STEP 2: "
-                                f"{time.perf_counter() - step_start:.2f}s"
-                            )
-                            if not second_most_recent_date: continue
-
-                            step_start = time.perf_counter()
-                            type_map = {
-                                "ECG": ["ECG"],
-                                "ECHO": ["ECHO", "ECHO1", "ECHO2"],
-                                "EST": ["EST"],
-                                "SECHO": ["SECHO", "SECHO1"],
-                                "HOLT": ["HOLT", "HOLT1", "HOLT2"]
-                            }
-                            second_measurements_query = f"""
-                            SELECT m.type, m.dataField
-                            FROM measurements m
-                            JOIN (
-                                SELECT type, MAX(dateObserved) AS latest_time
-                                FROM measurements
-                                WHERE demographicNo = {demo_no}
-                                AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
-                                AND DATE(dateObserved) = '{second_most_recent_date}'
-                                GROUP BY type
-                            ) latest
-                                ON m.type = latest.type
-                                AND m.dateObserved = latest.latest_time
-                            WHERE m.demographicNo = {demo_no}
-                            """
-                            second_measurements = chatbot.db_conn.query_database(second_measurements_query)
-                            datafields_toexclude = {row["dataField"] for row in second_measurements}
-                            print(f"datafields_toexclude for {measurement_type}: " f"{datafields_toexclude}")
-                            print(
-                                f"[TIMING] {measurement_type}, STEP 3: "
-                                f"{time.perf_counter() - step_start:.2f}s"
-                            )
-
-                            step_start = time.perf_counter()
-                            exclude_clause = ", ".join(
-                                f"'{field.replace(chr(39), chr(39) + chr(39))}'"
-                                for field in datafields_toexclude
-                            )
-                            first_measurement_query = f"""
-                            SELECT *
-                            FROM measurements m
-                            JOIN (
-                                SELECT type, MAX(dateObserved) AS latest_time
-                                FROM measurements
-                                WHERE demographicNo = {demo_no}
-                                AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
-                                AND DATE(dateObserved) = '{most_recent_date}'
-                                AND dataField NOT IN ({exclude_clause})
-                                GROUP BY type
-                            ) latest
-                                ON m.type = latest.type
-                                AND m.dateObserved = latest.latest_time
-                            WHERE m.demographicNo = {demo_no}
-                            """
-                            results = chatbot.db_conn.query_database(first_measurement_query)
-                            print(f"results for {measurement_type}: {results}")
-                            print(
-                                f"[TIMING] {measurement_type}, STEP 4: "
-                                f"{time.perf_counter() - step_start:.2f}s"
-                            )
-                            print(
-                                f"[TIMING] {measurement_type}, TOTAL: "
-                                f"{time.perf_counter() - measurement_start:.2f}s"
-                            )
-                        print(
-                            f"[TIMING] GRAND TOTAL: "
-                            f"{time.perf_counter() - total_start:.2f}s"
-                        )
+                    #     print(f"all_data: {all_data}")
+                    #     print(
+                    #         f"[TIMING] GRAND TOTAL: "
+                    #         f"{time.perf_counter() - total_start:.2f}s"
+                    #     )
                 
                 elif prompt_type in HL7_PROMPTS or prompt_type == "Auto":
                     if not 'file_path' in globals():
