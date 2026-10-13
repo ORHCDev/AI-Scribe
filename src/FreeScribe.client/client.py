@@ -2133,7 +2133,7 @@ def _open_medication_eform(changes: list[dict] | None = None):
         if result["fill"] is not None:
             print(f"Medication form prescription body -> {result['fill']}: {result['rx_text']!r}")
     except Exception as e:
-        print(f"Could not prepare medication form: {e}")
+        print(f"Could not prepare medication form ({type(e).__name__}): {e}")
     finally:
         try:
             oscar.driver.switch_to.window(oscar.home_window)
@@ -2166,9 +2166,17 @@ def _open_labs_eform(plan_text: str):
         data_lookup = {cb["name"].strip(): cb for cb in checkbox_data} if checkbox_data else {}
         checkboxes = [data_lookup[k.strip()] for k, v in checkbox_vars.items() if v and k.strip() in data_lookup]
 
+        # Codes the model returned that are not checkboxes on this form are otherwise dropped
+        # silently, which looks the same as "no labs in the plan".
+        unknown = sorted(checkbox_strings - set(data_lookup))
+        if unknown:
+            print(f"Lab codes from the LLM not found on eForm {LABS_FORM_FID}: {unknown}")
+        if not checkboxes:
+            print("No lab checkboxes to tick; opening the labs eForm without pre-selection")
+
         oscar.open_new_eform(LABS_FORM_FID, checkboxes)
     except Exception as e:
-        print(f"Could not auto-open labs eForm: {e}")
+        print(f"Could not auto-open labs eForm ({type(e).__name__}): {e}")
         return
 
 

@@ -1,0 +1,856 @@
+
+<html>
+<head>
+<title>LABNew</title>
+<script type="text/javascript">
+        function changePageTitle() {
+            newPageTitle =  document.getElementById('txtPatientLastName').value + ', ' + document.getElementById('txtPatientFirstName').value + ', LR to email pt';
+            document.title = newPageTitle;}
+    </script>
+
+<script type="text/javascript" language="javascript">
+function checkGender(){
+	 document.getElementById('Male').value = '';
+	 document.getElementById('Female').value = '';
+	 if (document.getElementById('PatientGender').value == 'M'){
+	 document.getElementById('Male').value = 'X';
+	 }else if (document.getElementById('PatientGender').value == 'F'){
+	 document.getElementById('Female').value = 'X';
+	}
+ }
+
+function dater1() {
+var today = document.getElementById('today').value;
+var date = new Date(document.getElementById("today").value);
+var nextDate = date.getDate() + 7;
+date.setDate(nextDate);
+var newDate = date.toLocaleString()  ;
+var d = newDate ;
+d = d.split(' ')[0];
+document.getElementById('Posttestd').value = d;
+}
+
+function dater2() {
+var today = document.getElementById('today').value;
+var date = new Date(document.getElementById("today").value);
+var nextDate = date.getDate() + 30;
+date.setDate(nextDate);
+var newDate = date.toLocaleString()  ;
+var d = newDate ;
+d = d.split(' ')[0];
+document.getElementById('Posttestd').value = d;
+document.getElementById('subject').value='Do in 1 month.';
+}
+
+function daterm2(x) {  var today = document.getElementById('today').value;
+var date = new Date(document.getElementById("today").value);
+var nextDate = date.getDate() + 30*x;
+date.setDate(nextDate);
+var newDate = date.toLocaleString()  ;
+var d = newDate ;
+d = d.split(' ')[0];
+document.getElementById('Posttestd').value = d;
+document.getElementById('subject').value='Do in ' + x + ' months.';
+}
+
+function dater21() {  var today = document.getElementById('today').value;
+var date = new Date(document.getElementById("today").value);
+var nextDate = date.getDate() + 14;
+date.setDate(nextDate);
+var newDate = date.toLocaleString()  ;
+var d = newDate ;
+d = d.split(' ')[0];
+document.getElementById('Posttestd').value = d;
+}
+
+function dater22() {  var today = document.getElementById('today').value;
+var date = new Date(document.getElementById("today").value);
+var nextDate = date.getDate() + 19;
+date.setDate(nextDate);
+var newDate = date.toLocaleString()  ;
+var d = newDate ;
+d = d.split(' ')[0];
+document.getElementById('Posttestd').value = d;
+}
+
+function dater23() {  var today = document.getElementById('today').value;
+var date = new Date(document.getElementById("today").value);
+var nextDate = date.getDate() + 39;
+date.setDate(nextDate);
+var newDate = date.toLocaleString()  ;
+var d = newDate ;
+d = d.split(' ')[0];
+document.getElementById('Posttestd').value = d;
+}
+
+function dater24() {  var today = document.getElementById('today').value;
+var date = new Date(document.getElementById("today").value);
+var nextDate = date.getDate() + 69;
+date.setDate(nextDate);
+var newDate = date.toLocaleString()  ;
+var d = newDate ;
+d = d.split(' ')[0];
+document.getElementById('Posttestd').value = d;
+}
+
+</script>
+<script language="javascript">
+function show(x){
+	document.getElementById(x).style.display = 'block';
+}
+function hide(x){
+	document.getElementById(x).style.display = 'none';
+}
+</script>
+
+<script language="javascript">
+function formPrint(){
+			window.print();
+}
+</script>
+
+<script language="javascript">
+var needToConfirm = false;
+document.onkeyup=setDirtyFlag;
+function setDirtyFlag(){
+		needToConfirm = true;
+}
+function releaseDirtyFlag(){
+		needToConfirm = false;
+}
+window.onbeforeunload = confirmExit;
+function confirmExit(){
+	 if (needToConfirm){
+		 return "You have attempted to leave this page. If you have made any changes to the fields without clicking the Save button, your changes will be lost. Are you sure you want to exit this page?";
+	 }
+}
+</script>
+
+<script type="text/javascript">
+function preloadImg(){
+	imageObj = new Image();
+	images = new Array();
+	images[0]='${oscar_image_path}Mahessigsm.png'
+	images[1]='${oscar_image_path}Ramyasigsm.png'
+	images[2]='${oscar_image_path}Petersigsm.png'
+	images[3]='${oscar_image_path}AVigerSig.png'
+	for(i=0; i<=images.length; i++){
+		imageObj.src=images[i];
+	}
+}
+
+function add(x,test){
+	if (document.getElementById(x).value.indexOf(test)==-1){
+			document.getElementById(x).value += test
+	}
+}
+
+function clearMe() {
+	for(i=0; i<document.lab.elements.length; i++){
+		if (document.lab.elements[i].value == 'X') { document.lab.elements[i].value =''; }
+		if (document.lab.elements[i].type == 'checkbox') { document.lab.elements[i].checked=false; }
+	}
+	document.getElementById('subject').value='';
+	document.getElementById('OtherTests').value='';
+	document.getElementById('Instructions').value='';
+       document.getElementById('OtherTo').value='';
+	document.getElementById('chkOHIP').value='X';
+        document.getElementById('chkCopyToPhysician').value='X';
+	checkGender();
+	localise();
+}
+
+	var pi="INSTRUCTIONS: ";
+	var fa="Nothing to eat or drink, except for water, for 10 hours prior to the test. ";
+	var dr="Take your medication AFTER getting your blood drawn. ";
+        var ca="cardiac cath lab at SRHC Fax 905 830 5802.";
+        var ep="EP lab at SRHC Fax 905 830 5806.";
+
+function reloadSignature(){
+	preloadImg();
+	var SubmittedBy = document.getElementById('SubmittedBy').value;
+	if (!SubmittedBy){
+		SignForm('current_user');
+	} else {
+		SignForm(SubmittedBy);
+	}
+	resizeSignature();
+}
+
+function SignForm(SignBy){
+	var SignatureHolder = document.getElementById('SignatureHolder');
+	var DoctorName = document.getElementById('DoctorName').value;
+	var CurrentUserName = document.getElementById('CurrentUserName').value;
+		if(SignBy == 'doctor'){
+			SignatureHolder.innerHTML = "<div id='SignatureImage'></div>";
+			document.getElementById('SubmittedBy').value = SignBy;
+		}else if (SignBy == 'current_user'){
+			SignatureHolder.innerHTML = "<div id='SignatureImage'></div>";
+			document.getElementById('SubmittedBy').value = SignBy;
+		}else if (SignBy == 'none'){
+			SignatureHolder.innerHTML = "<div id='SignatureImage'></div>";
+		}
+		resizeSignature();
+}
+function resizeSignature(){
+	if (document.getElementById('SignatureImage')){
+		reorderSignature();
+	}
+}
+</script>
+
+<!-- [fixture] stand-in for ${oscar_image_path}labDecisionSupport.js -->
+<script type="text/javascript">function decisionSupport(){}</script>
+
+<!-- xBox scripts (verbatim, including the missing closing brace of key()) -->
+<script language="javascript" type="text/javascript">
+function flip(x){
+	if (document.getElementById(x).value == '')
+		document.getElementById(x).value = 'X';
+	else
+		document.getElementById(x).value = '';
+	}
+
+function key(evt,x) {
+	var charCode = (evt.which) ? evt.which : event.keyCode
+	if (charCode != 9){
+		flip(x);
+		return false;
+	}
+
+</script>
+
+<script type="text/javascript">
+function reorderSignature(){
+	document.getElementById('BGImage').style.zIndex = '-10';
+	document.getElementById('SignatureHolder').style.zIndex = '-9';
+	document.getElementById('SignatureImage').style.zIndex = '-8';
+}
+</script>
+
+</head>
+
+<body onload="checkGender();reloadSignature();decisionSupport();">
+
+<img id='BGImage' src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" style="position: absolute; left: 0px; top: 0px; width:750px">
+
+<form method="post" action="" name="lab" id="lab" >
+
+<input type="hidden" name="today" id="today" value="2026-10-13">
+
+<div id="LabPage">
+<input name="chkOHIP" id="chkOHIP" type="text" value='X'>
+<textarea name="subject" id="subject"></textarea>
+<input type="text" name="LABE" id="Posttestd2" value="Please do by">
+<input type="text" name="oscarDB=m$LABE#value" id="Posttestd">
+<input name="chkCopyToPhysician" id="chkCopyToPhysician" type="text" value='X'>
+<textarea name="OtherTo" id="OtherTo"></textarea>
+<input name="PatientGender" id="PatientGender" type="hidden" value="M">
+<input name="Male" id="Male" type="text">
+<input name="Female" id="Female" type="text">
+<input name="txtPatientLastName" id="txtPatientLastName" type="text" value="test">
+<input name="txtPatientFirstName" id="txtPatientFirstName" type="text" value="AN1">
+<textarea name="Instructions" id="Instructions"></textarea>
+<input name="Glucose" id="Glucose" type="text">
+<input name="GlucoseRandom" id="GlucoseRandom" type="text">
+<input name="GlucoseFasting" id="GlucoseFasting" type="text">
+<input name="HbA1C" id="HbA1C" type="text">
+<input name="Creatinine" id="Creatinine" type="text">
+<input name="UricAcid" id="UricAcid" type="text">
+<input name="Sodium" id="Sodium" type="text">
+<input name="Potassium" id="Potassium" type="text">
+<input name="Chloride" id="Chloride" type="text">
+<input name="CK" id="CK" type="text">
+<input name="ALT" id="ALT" type="text">
+<input name="ALP" id="ALP" type="text">
+<input name="Bilirubin" id="Bilirubin" type="text">
+<input name="Albumin" id="Albumin" type="text">
+<input name="Lipids" id="Lipids" type="text">
+<input name="ACR" id="ACR" type="text">
+<input name="Urinalysis" id="Urinalysis" type="text">
+<input name="DrugMonitoring" id="DrugMonitoring" type="text">
+<input name="DrugName1" id="DrugName1" type="text" value="">
+<input name="CBC" id="CBC" type="text">
+<input name="PTINR" id="PTINR" type="text">
+<input name="UrineCulture" id="UrineCulture" type="text">
+<input name="Hepatitis_Acute" id="Hepatitis_Acute" type="text">
+<input name="Hepatitis_Chronic" id="Hepatitis_Chronic" type="text">
+<textarea name="OtherTests" id="OtherTests"></textarea>
+</div>
+
+
+<!-- ----------- Side Menu Items (verbatim) ------------------------ -->
+
+<div id="LabQuickSelect" class="DoNotPrint" style="position:absolute; left:750px; top:22px; width:220px; background-color:LightYellow; border-style:solid; border-color:black; border-width:1px; font-family: sans-serif; font-size:12;">
+
+
+<!-------------Base Info----------------------->
+	<font><u>CONDITIONS:</u></font><br>
+	<textarea  name="searchbox" id="searchbox" class="noborder" style="font-size:8px; width:216px; height:10px;" onblur="decisionSupport()" ></textarea><br>
+	<font><u>CURRENT MEDS:</u></font><br>
+	<textarea  name="searchboxRx" id="searchboxRx" class="noborder" style="font-size:8px; width:216px; height:10px;" onblur="decisionSupport()"></textarea><br>
+<!-------------Instructions & Copies ----------------------->
+	<font><u>INSTRUCTIONS:</u></font><br>
+
+	<div name="LOCAL1" id="LOCAL1" class="temiskaming">
+	</div>
+	<div name="CCMD1" id="CCMD1"></div>
+	<input type="checkbox" name="FastingInfo"
+	onClick="
+		add('Instructions',pi);
+		add('Instructions',fa);
+	">Fasting Instructions<br>
+
+<!-------------Pre-procedure---------------->
+<div name="Procedure" id="Procedure">
+	<font><u>PRE-PROCEDURE</u></font><br>
+	<div name="PROC2" id="PROC2"> </div>
+	</div>
+        <input type="checkbox" name="cath"
+	onClick="document.getElementById('subject').value='';
+		add('OtherTo',ca);
+                add('subject','pre - cath: Please do as soon as possible, no need to fast');
+		document.lab.CBC.value='X';
+                document.lab.PTINR.value='X';
+                document.lab.Glucose.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';  dater21()
+        ">pre-cath<br>
+
+   <input type="checkbox" name="EP"
+	onClick="document.getElementById('subject').value='';
+		add('OtherTo',ep);
+                add('subject','pre-electrophysiology procedure: Please do as soon as possible, no need to fast');
+		document.lab.CBC.value='X';
+                document.lab.PTINR.value='X';
+                document.lab.Glucose.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';  dater21()
+        ">pre-EP procedure<br>
+
+<!-------------Therapeutic monitoring---------------->
+	<div name="DRUG1" id="DRUG1">
+	<font><u>THERAPEUTIC MONITORING</u></font><br>
+	<div name="DRUG2" id="DRUG2">
+
+	<input type="checkbox" name="Amiodarone"
+	onClick="document.getElementById('subject').value='';
+		add('subject','Amiodarone monitoring ');
+		add('OtherTests','TSH,\n ');
+		document.lab.Albumin.value='X';
+		document.lab.ALT.value='X';
+		add('OtherTests','GGT, ');
+		document.lab.ALP.value='X';
+		document.lab.Bilirubin.value='X';  dater24()
+
+        ">Amiodarone follow up<br>
+
+	<input type="checkbox" name="Digoxin"
+	onClick="
+		add('subject','Digoxin monitoring ');
+		add('OtherTests','Digoxin , '); document.lab.DrugMonitoring.value='X';
+		 add('DrugName1','DIGOXIN ');
+
+        ">Digoxin level<br>
+ </div>
+	</div>
+<!-------------comprehensive---------------->
+	<div name="comprehensive" id="comprehensive">
+<a href="http://www.bcguidelines.ca/gpac/guideline_heart_failure_care.html" target="_blank">comprehensive cardiac:</a><br>
+	<input type="checkbox" name="comprehensive"
+	 onClick="
+		add('subject','comprehensive cardiac blood work,   ');
+		document.lab.CBC.value='X';
+                document.lab.PTINR.value='X';
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		add('OtherTests','TSH,\n ');
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X';
+		document.lab.Albumin.value='X';
+		add('OtherTests','serum Fe, \nTIBC, \nferritin, \nMagnesium, \nCalcium, ');
+                document.lab.HbA1C.value='X';
+		document.lab.Lipids.value='X';
+		add('Instructions',pi);
+		add('Instructions',fa);    dater23()
+	">comprehensive
+	</div>
+	 <div name="mini comprehensive" id="mini comprehensive">
+<a href="http://www.bcguidelines.ca/gpac/guideline_heart_failure_care.html" target="_blank">comprehensive cardiac:</a><br>
+	<input type="checkbox" name="minicomprehensive"
+	 onClick="
+
+		document.lab.CBC.value='X';  document.lab.PTINR.value='X';
+		document.lab.Glucose.value='X';
+                document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X'; document.lab.HbA1C.value='X';  document.lab.ACR.value='X';
+		document.lab.Lipids.value='X';
+		document.lab.Albumin.value='X';  add('OtherTests',' Magnesium, \nCalcium, \nHS CRP, \nLP(a)');  add('Instructions',fa); dater22()
+	">minicomprehensive
+
+
+	<input type="checkbox" name="COMRR"
+	 onClick="
+                document.lab.Sodium.value='X';
+                document.lab.CK.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X'; document.lab.HbA1C.value='X';  document.lab.ACR.value='X';
+		document.lab.Lipids.value='X';
+		document.lab.Albumin.value='X';  add('OtherTests',' Magnesium and Calcium,');  dater2();
+	">RR
+
+        <br>
+
+	<input type="checkbox" name="NewCardiomyopathy"
+	 onClick="
+		document.lab.Creatinine.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+                document.lab.CK.value='X';
+		document.lab.ALT.value='X';
+		document.lab.ALP.value='X';
+		document.lab.ACR.value='X';
+		document.lab.Bilirubin.value='X';
+		document.lab.Albumin.value='X';
+                document.lab.CBC.value='X';
+		dater1();
+		add('subject','IHD INSTRUCTIONS - do in 1-2 weeks');
+        	add('OtherTests','GGT, Protein, Magnesium,Calcium, phosphate,NT-proBNP, Ferritin,serum iron, TSH,CRP,angiotensin converting enz.,urine & plasma proteinimmunofixation,free light chains ');
+	">Cardiomyopathy<br>
+
+	</div>
+
+<!-------------CHF---------------->
+
+	<div name="CHF1" id="CHF1">
+<a href="http://www.bcguidelines.ca/gpac/guideline_heart_failure_care.html" target="_blank">CHF:</a><br>
+
+
+	<input type="checkbox" name="CHFBaseline"
+	 onClick="
+		add('subject','CHF,   ');
+		document.lab.CBC.value='X';
+                document.lab.PTINR.value='X';
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		add('OtherTests','TSH, \n serum Fe, \n TIBC, \n ferritin, \n Magnesium, \n Calcium, \n serum and urine protein immunofixation');
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X';   document.lab.ALP.value='X';
+		document.lab.Albumin.value='X';
+		add('Instructions',pi);    dater21()
+	">Baseline
+
+	<input type="checkbox" name="CHFFollowUp"
+	 onClick="
+		add('subject','INSTRUCTIONS - do in 1-2 weeks  ');
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+                 document.lab.Albumin.value='X';
+		add('OtherTests','Magnesium & Calcium, \n NT-proBNP');
+		dater21();
+
+	">Follow-up<br>
+
+	<input type="checkbox" name="CHFFollowUpStandingQ3months"
+	 onClick="
+		add('subject','CHF ');
+		add('OtherTests','Standing order: Na/K/Mg/eGFR Q3monthly for 1 year, ');
+	">Standing Order Q3M<br>
+
+       <input type="checkbox" name="thiazideFollowUp"
+	 onClick="
+		add('subject','INSTRUCTIONS - do in 2 weeks  ');
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.Glucose.value='X';
+                 document.lab.Albumin.value='X'; document.lab.UricAcid.value='X';
+		add('OtherTests','Magnesium & Calcium, ');
+		dater21();
+
+	">Follow-up post thiazide<br>
+
+       <input type="checkbox" name="SGLT2FollowUp"
+	 onClick="
+		add('subject','INSTRUCTIONS - do in 5 months');
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.Glucose.value='X';
+                 document.lab.Albumin.value='X';
+                 document.lab.HbA1C.value='X';    document.lab.GlucoseRandom.value='X';
+		add('OtherTests','Magnesium & Calcium, ');
+		dater21();
+
+	">Follow-up post SGLT2<br>
+
+
+	</div>
+
+<!----------CKD-------------------->
+	<div name="CKD3" id="CKD3">
+<a href="http://www.oaml.com/PDF/FINAL%20DRAFT%20OAML%20eGFR%20Communique%20July%2012.pdf" target="_blank">CKD Stage 3:</a><br>
+	<input type="checkbox" name="CKDAnnual"
+	 onClick="
+		add('subject','CKD ');
+		document.lab.CBC.value='X';
+		document.lab.HbA1C.value='X';
+		document.lab.ACR.value='X';
+		document.lab.Lipids.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		add('OtherTests','Ca, ');
+		document.lab.Albumin.value='X';
+		add('OtherTests','Iron, Transferrin, ');
+		add('OtherTests','Phosphorus, iPTH, ');  dater23()
+	">Annual
+
+	<input type="checkbox" name="CKDQ6months"
+	 onClick="
+		add('subject','Chronic Kidney Disease ');
+		document.lab.ACR.value='X';
+		document.lab.Creatinine.value='X';
+		add('OtherTests','Standing order: eGFR/ACR Q6monthly for 2 years, ');
+	">eGFR/ACR Q6M<br>
+	</div>
+<!------DM--------------------->
+	<div name="DM1" id="DM1">
+<a href="http://www.bcguidelines.ca/gpac/guideline_diabetes.html" target="_blank">DM:</a><br>
+	<input type="checkbox" name="DMAnnual"
+	 onClick="
+		add('subject','Diabetes ');
+		document.lab.HbA1C.value='X';
+		document.lab.ACR.value='X';
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.Lipids.value='X';
+		add('OtherTests','Simultaneous fasting glucose meter/lab comparison, ');
+		add('Instructions',pi);
+		add('Instructions',fa);
+		add('Instructions','Please bring your glucometer for calibration. ');   dater23()
+	">Annual
+
+	<input type="checkbox" name="DMStandingQ3months"
+	onClick="
+		add('subject','Diabetes ');
+		add('OtherTests','Standing order: A1C Q3months for 2 years, ');
+	">A1C Q3M<br>
+	</div>
+<!--------Dyslipidemia--------------->
+	<div name="LIPID1" id="LIPID1">
+<a href="http://www.oaml.com/PDF/2010/OAML%20Guideline%20for%20Adult%20Lipid%20Testing%20FINAL-Aug%2025%202010.pdf" target="_blank">DYSLIPIDEMIA:</a><br>
+	<input type="checkbox" name="CholesterolFBS"
+	 onClick="
+		add('subject','Dyslipidemia ');
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		document.lab.HbA1C.value='X';
+		document.lab.Lipids.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X';
+		add('Instructions',pi);
+		add('Instructions',fa);  dater23()
+	">Screening
+
+	<input type="checkbox" name="DyslipidemiaOnStatin"
+	 onClick="
+		add('subject','Dyslipidemia ');
+		add('subject','Statin - Do in 2 months ');
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		document.lab.HbA1C.value='X';
+		document.lab.Lipids.value='X';
+		document.lab.Creatinine.value='X';
+                document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.ALT.value='X';
+		add('Instructions',pi);
+		add('Instructions',fa);   dater24()
+	">On Statin<br>
+	</div>
+
+<!--------HTN-------------------->
+	<div name="HBP1" id="HBP1">
+<a href="http://www.bcguidelines.ca/gpac/guideline_hypertension.html" target="_blank">HYPERTENSION:</a><br>
+	<input type="checkbox" name="HypertensionAnnual"
+	 onClick="
+		add('subject','Hypertension ');
+		document.lab.ACR.value='X';
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		document.lab.Lipids.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+                add('OtherTests','TSH, a.m. cortisol');
+		add('Instructions',pi);
+		add('Instructions',fa);  dater23()
+	">Annual<br>
+
+	<input type="checkbox" name="NewHypertension"
+	 onClick="
+		document.lab.ACR.value='X';
+		document.lab.HbA1C.value='X';
+		document.lab.Lipids.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Creatinine.value='X';
+	">Hypertension<br>
+
+	<input type="checkbox" name="NewHypotension"
+	 onClick="
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.CBC.value='X';
+		document.lab.ALT.value='X';
+		document.lab.ALP.value='X';
+		document.lab.Bilirubin.value='X';
+		document.lab.Albumin.value='X';
+		dater23();
+		add('subject','Warfarin ');
+		add('subject','Hypothyroidism ');
+        	add('OtherTests','TSH \n Free T4 \n serum B12 ');
+	">Hypotension<br>
+
+	</div>
+<!-------Other-------------------->
+	<u>OTHERS:</u><br>
+	<input type="checkbox" name="Autoimmune"
+	onClick="
+		add('subject','?autoimmune ');
+		add('OtherTests','ANA, ');
+		add('OtherTests','RF, ');
+	">Autoimmune
+<a href="http://www.bcguidelines.ca/gpac/guideline_ana_testing.html" target="_blank">ANA, </a>
+<a href="http://www.bcguidelines.ca/gpac/guideline_ra.html" target="_blank">RF </a><br>
+	<div name="CBC1" id="CBC1">
+		<input type="checkbox" name="CompleteBloodCount"
+		onClick="
+			document.lab.CBC.value='X';
+		">CBC<br>
+	</div>
+
+	<input type="checkbox" name="Pericarditis"
+	onClick="
+		add('subject','Pericarditis ');
+		document.lab.CBC.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X';
+		document.lab.Bilirubin.value='X';
+		document.lab.Albumin.value='X';
+		add('OtherTests',' AST,   Alk Phos, ESR, CRP ');  dater23()
+	">Pericarditis follow up<br>
+	<input type="checkbox" name="CTDSerology"
+	onClick="
+		add('subject','Connective tissue disease ');
+		add('OtherTests','ANA, ');
+		add('OtherTests','RF, ');
+		add('OtherTests','CRP, ');add('OtherTests','ENA, ');
+		add('OtherTests','ESR, ');
+		add('OtherTests',' HLA-B27, ');
+		document.lab.CBC.value='X';  dater23()
+        ">CTD Workup<br>
+
+	<input type="checkbox" name="Dementia"
+	 onClick="
+		add('subject','Memory issues ');
+		document.lab.CBC.value='X';
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		add('OtherTests','TSH, ');
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		add('OtherTests','Ca, ');
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X';
+		add('OtherTests','GGT, ');
+ 		document.lab.UrineCulture.value='X';
+		add('OtherTests','B12, ');
+		add('Instructions',pi);
+		add('Instructions',fa);  dater23()
+	">Dementia<br>
+
+	<input type="checkbox" name="Eatingdisorderworkup"
+	 onClick="
+		add('subject','Eating disorder ');
+		document.lab.CBC.value='X';
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		document.lab.Lipids.value='X';
+		add('OtherTests','TSH, ');
+		add('OtherTests','Ferritin, ');
+		document.lab.UrineCulture.value='X';
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		add('OtherTests','Ca, ');
+		document.lab.ALT.value='X';
+		add('OtherTests','GGT, ');
+		document.lab.ALP.value='X';
+		document.lab.Bilirubin.value='X';
+		document.lab.Albumin.value='X';
+		add('OtherTests','Protein, ');
+		add('OtherTests','EKG, ');
+		add('OtherTests','Mg, PO4, ');
+		add('Instructions',pi);
+		add('Instructions',fa);  dater23()
+	">Eating disorder workup<br>
+
+	<input type="checkbox" name="Fatigue"
+	 onClick="
+		add('subject','Fatigue ');
+		document.lab.CBC.value='X';
+		document.lab.Glucose.value='X';
+		document.lab.GlucoseFasting.value='X';
+		add('OtherTests','TSH, ');
+		add('OtherTests','Ferritin, ');
+		document.lab.Sodium.value='X';
+		document.lab.Potassium.value='X';
+		document.lab.Chloride.value='X';
+		document.lab.Creatinine.value='X';
+		document.lab.ALT.value='X';
+		add('OtherTests','GGT, ');
+		add('Instructions',pi);
+		add('Instructions',fa);  dater23()
+	">Fatigue<br>
+
+
+	<div id="INR1" name="INR1">
+		<input type="checkbox" name="INRStanding"
+		onClick="
+			add('subject','Warfarin ');
+			add('OtherTests','Standing Order: INR PRN for 6 months. ');
+		">INR - Standing Order<br>
+	</div>
+	<div id="LFT1" name="LFT1">
+		<input type="checkbox" name="LFT"
+		onClick="
+			document.lab.ALT.value='X';
+			add('OtherTests','GGT, ');
+			document.lab.ALP.value='X';
+			document.lab.Bilirubin.value='X';
+			document.lab.Albumin.value='X';
+			add('OtherTests','Protein, ');  dater23();
+		">LFTs<br>
+	</div>
+	<input type="checkbox" name="AcuteElevatedLFT"
+	onClick="
+		add('subject','Acute Elevated LFT ');
+        document.lab.CBC.value='X';
+        document.lab.PTINR.value='X';
+		document.lab.ALT.value='X';
+		add('OtherTests','GGT, ');
+		document.lab.ALP.value='X';
+		document.lab.Bilirubin.value='X';
+		document.lab.Albumin.value='X';
+		add('OtherTests','Protein, ');
+		document.lab.Hepatitis_Acute.value='X'
+		document.lab.AST.value='X';   dater22()
+	">LFT Elevation Acute
+
+	<input type="checkbox" name="ChronicElevatedLFT"
+	onClick="document.getElementById('subject').value='';
+		add('subject','Chronic Elevated LFT ');
+		document.lab.Glucose.value='X';
+        document.lab.GlucoseFasting.value='X';
+		document.lab.Lipids.value='X';
+		add('OtherTests','Ferritin, ');
+		document.lab.Hepatitis_Chronic.value='X'
+		add('OtherTests','ANA, Anti-mitochondrial AB, Ceruloplasmin, Alpha-1 antitrypsin, ');
+		add('Instructions',pi);
+		add('Instructions',fa);   dater23()
+	">Chronic <br>
+
+
+	<div id="LYTES1" name="LYTES1">
+		<input type="checkbox" name="RenalFunction "
+		onClick="	document.getElementById('subject').value='';
+			document.lab.Sodium.value='X';
+			document.lab.Potassium.value='X';
+			document.lab.Chloride.value='X';
+			document.lab.Creatinine.value='X';
+                        add('subject','INSTRUCTIONS - do in 1 week  '); dater21();
+		">Renal Function (RAAS start)<br>
+	</div>
+
+
+	<input type="checkbox" name="Thrombosisscreen"
+	onClick="
+		add('subject','Thrombosis-Screen ');
+		document.lab.CBC.value='X';
+		document.lab.PTINR.value='X';
+		add('OtherTests','TSH, ');
+		add('OtherTests','Factor 5 Leiden, Protein C, Protein S, Antithrombin 3, DRVVT, ');  dater23()
+	">Thrombosis screen<br>
+
+	<div name="THYROID1" id="THYROID1">
+		<input type="checkbox" name="TSHStandingorder"
+		onClick="
+			add('subject','Hypothyroidism ');
+        		add('OtherTests','Standing Order: TSH annually for 2 years, ');
+		"><a href="http://www.oaml.com/PDF/FINALTSH%20Guideline%20July%2018,%2007.pdf" target="_blank">TSH</a>
+ Standing Order<br>
+	</div>
+	<input type="checkbox" name="UrineC&S"
+	onClick="
+		add('subject','UTI ');
+		document.lab.UrineCulture.value='X';
+		">Urine C&S<br>
+
+
+	<br><br>
+	<input value="Clear" name="ClearButton" id="ClearButton" type="button" onclick="clearMe();">
+
+</div>
+ <input type="hidden" name="DoctorName" id="DoctorName" value="">
+<input type="hidden" name="CurrentUserName" id="CurrentUserName" value="">
+<input type="hidden" name="SubmittedBy" id="SubmittedBy">
+
+<div name="SignatureHolder" id="SignatureHolder" style="position:absolute; left:25px; top:875px; width:205px; height:69">
+</div>
+
+ <div class="DoNotPrint" id="BottomButtons" style="position: absolute; top:1000px; left:0px;">
+	 <table><tr><td>
+		 Subject: <input name="subject" size="40" type="text">
+			<input value="Submit" name="SubmitButton" id="SubmitButton" type="submit" onclick=" releaseDirtyFlag();">
+			<input value="Reset" name="ResetButton" id="ResetButton" type="reset">
+	 </td></tr></table>
+ </div>
+ </form>
+
+</body>
+</html>
