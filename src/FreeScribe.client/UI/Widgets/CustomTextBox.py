@@ -227,13 +227,13 @@ class CustomTextBox(tk.Frame):
         upload_type = self.upload_type_var.get()
 
         upload_types = {
-            "Consult": ("consult", False),
-            "Consult + MH": ("mh_and_consult", False),
+            "Insert Consult": ("consult", False),
+            "Insert Consult + MH": ("mh_and_consult", False),
             "Insert Complete Consult": ("complete_consult", False),
             "Overwrite Complete Consult": ("complete_consult", True)
         }
 
-        upload_type, overwrite = upload_types[upload_type]
+        upload_type, overwrite = upload_types[self.upload_type_var.get()]
 
         self.upload_callback(upload_type, overwrite)
 
