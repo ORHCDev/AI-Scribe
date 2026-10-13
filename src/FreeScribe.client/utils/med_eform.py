@@ -13,12 +13,27 @@ RESET_BUTTON_TEXT = "new or dose change"
 RX_FIELD = "druglist_generic"
 
 # Medication actions the prescription body understands, plus common LLM synonyms for them.
-ACTIONS = {
-    "start": "start", "add": "start", "initiate": "start", "begin": "start",
-    "increase": "increase", "titrate up": "increase", "uptitrate": "increase",
-    "decrease": "decrease", "reduce": "decrease", "titrate down": "decrease", "downtitrate": "decrease",
-    "stop": "stop", "discontinue": "stop", "hold": "stop",
-}
+# Matched on word stems so tense/form does not matter: the note prompt often writes the PLAN in
+# the past tense ("I increased furosemide ...") and the model may echo "increased"/"started".
+ACTION_STEMS = (
+    ("titrate up", "increase"), ("uptitrat", "increase"), ("increas", "increase"),
+    ("titrate down", "decrease"), ("downtitrat", "decrease"), ("decreas", "decrease"),
+    ("reduc", "decrease"), ("lower", "decrease"),
+    ("start", "start"), ("add", "start"), ("initiat", "start"), ("begin", "start"),
+    ("began", "start"), ("commenc", "start"), ("new", "start"),
+    ("stop", "stop"), ("discontinu", "stop"), ("hold", "stop"), ("held", "stop"),
+    ("cease", "stop"), ("ceasing", "stop"),
+)
+
+
+def normalize_action(value) -> str | None:
+    """Map an LLM action word ("Increased", "started", "discontinue", ...) to
+    start/increase/decrease/stop, or None if it is not one of those."""
+    word = str(value or "").strip().lower()
+    for stem, action in ACTION_STEMS:
+        if word.startswith(stem):
+            return action
+    return None
 
 
 def keyword_flags(text: str) -> dict:
@@ -61,12 +76,14 @@ def clean_med_changes(raw) -> list[dict]:
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
             continue
-        action = ACTIONS.get(str(item.get("action", "")).strip().lower())
+        action = normalize_action(item.get("action"))
         name = str(item.get("name", "") or "").strip()
         text = str(item.get("text", "") or "").strip().rstrip(",").strip()
         if action is None or not name:
+            print(f"[med eForm] dropped LLM entry with unusable action/name: {item!r}")
             continue
         if action != "stop" and not text:
+            print(f"[med eForm] dropped LLM entry with no prescription line: {item!r}")
             continue
         changes.append({"action": action, "name": name, "text": text})
     return changes
@@ -129,7 +146,11 @@ def parse_med_response(resp: str) -> dict:
 def extract_med_changes(plan: str, send_fn) -> dict:
     """One LLM call via `send_fn(prompt) -> str`; see parse_med_response for the result.
     Raises on a failed call or unusable output so the caller can fall back to keywords."""
-    return parse_med_response(send_fn(build_med_prompt(plan)))
+    prompt = build_med_prompt(plan)
+    print(f"[med eForm] calling LLM ({len(plan)} chars of PLAN)")
+    resp = send_fn(prompt)
+    print(f"[med eForm] LLM replied: {str(resp)[:300]!r}")
+    return parse_med_response(resp)
 
 
 def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
@@ -148,6 +169,7 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         return {"medication": {"open": False, "changes": []}, "labs": False}
 
     if mode != "llm":
+        print(f"[med eForm] mode={mode!r}: keyword check only, no LLM call, form will not be pre-filled")
         flags = keyword_flags(scope)
         return {"medication": {"open": flags["medication"], "changes": []}, "labs": flags["labs"]}
 
@@ -200,9 +222,12 @@ def prepare_med_form(driver, wait, changes: list[dict] | None) -> dict:
     current-meds list is written back to the chart on submit, so it is left for the clinician.
     Nothing is submitted. Returns {"reset": str, "fill": str | None, "rx_text": str | None}."""
     target = RESET_BUTTON_TEXT.lower()
+    print(f"[med eForm] waiting for reset button in window titled {driver.title!r} ({driver.current_url[:80]})")
     wait.until(lambda d: d.execute_script(_FIND_RESET_JS, target))
     reset = driver.execute_script(_CLICK_RESET_JS, target)
     fill = rx_text = None
+    if not changes:
+        print("[med eForm] no changes to fill (LLM found none it could turn into prescription lines)")
     if changes and reset != "button-not-found":
         rx_text = format_rx_lines(changes)
         fill = driver.execute_script(_FILL_JS, RX_FIELD, rx_text)

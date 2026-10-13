@@ -47,6 +47,15 @@
   expect_open: true
   expect_lines: ["Stop ramipril", "Start sacubitril/valsartan 24/26 mg BID, LU 497"]
 
+- id: past-tense-plan-from-consult-prompt
+  # Wording produced by the consult2 note prompt (real case 2026-10-09: form opened empty).
+  plan: >
+    I increased the furosemide dosage to 80 mg daily. I advised the patient to continue ramipril
+    5 mg daily. I ordered a recheck of electrolytes and creatinine in one week.
+  expect_open: true
+  expect_lines: ["Increase Furosemide to 80 mg daily"]
+  expect_labs: true
+
 # --- should NOT open ---------------------------------------------------------------------
 - id: continue-only
   plan: "Continue current medications. Follow up in 6 months with repeat echo."
