@@ -174,6 +174,48 @@ def get_demo_num_from_history(context: WorkflowContext):
 
     return str(patient_id)
 
+def get_default_patient_from_today(context: WorkflowContext):
+    """
+    Selects a default patient from today's most recently started appointment. 
+    
+    Used as a fallback when a query requires patient context but no patient is
+    selected or specified.
+    """
+    query = """
+    SELECT
+        a.demographic_no,
+        d.first_name,
+        d.last_name
+    FROM appointment a
+    JOIN demographic d
+        ON d.demographic_no = a.demographic_no
+    WHERE a.appointment_date = CURDATE()
+      AND a.start_time <= CURTIME()
+    ORDER BY a.start_time DESC
+    LIMIT 1;
+    """
+
+    try:
+        rows = context.db_conn.query_database(query)
+    except Exception as e:
+        logging.warning(f"Could not fetch today's appointments: {e}")
+        return None
+
+    if not rows:
+        return None
+
+    row = rows[0]
+    demo_no = row.get("demographic_no")
+
+    if not demo_no or str(demo_no) == "0":
+        return None
+
+    first_name = (row.get("first_name") or "").strip()
+    last_name = (row.get("last_name") or "").strip()
+    patient_name = f"{first_name} {last_name}".strip()
+
+    return str(demo_no), patient_name
+
 def get_demo_num(user_input: str, context: WorkflowContext):
     identifier_prompt = context.prompts.get("patient_identifier").format(
         user_input=user_input
@@ -254,6 +296,18 @@ def get_demo_num(user_input: str, context: WorkflowContext):
             f"Patient resolved from conversation history: {history_demo_no}"
         )
         return history_demo_no, None
+
+    default_patient = get_default_patient_from_today(context)
+
+    if default_patient:
+        default_demo_no, default_name = default_patient
+        logging.info(
+            f"Patient defaulted from today's latest appointment: "
+            f"{default_demo_no} ({default_name})"
+        )
+        context.assumed_patient = True
+        context.assumed_patient_name = default_name
+        return default_demo_no, None
 
     return None, None
 
