@@ -239,8 +239,10 @@ class Oscar:
         fid : str | int
             The form id. 
 
-        checkboxes : list(str)
-            List of checkbox field names to pre-select when openeing eForm.
+        checkboxes : list(dict)
+            Fields to pre-fill when opening the eForm, each {"type", "name", "value"}:
+            "checkbox" ticks the checkbox with that name (running its onclick, like a click);
+            "text" sets the value of the input/textarea with that id (or name).
 
         Returns
         -------
@@ -259,47 +261,61 @@ class Oscar:
         )
         if self.driver is None:
             raise RuntimeError("Cannot open new eForm: Selenium WebDriver has been cleaned up or was never initialized.")
+        before = set(self.driver.window_handles)
         self.driver.execute_script(f"window.open('{link}', '_blank', 'width=800,height=600');")
         if checkboxes:
-            # Switch to new window
-            self.driver.switch_to.window(self.driver.window_handles[-1])
-            # Wait for checkboxes to load
-            self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, f'input[name="{checkboxes[0]["name"]}"]'))
-            )
-
-            # Build and execute JS to check all specified boxes
-            js_checks = []
-            for field in checkboxes:
-                field_name = field["name"]
-                field_type = field["type"]
-                field_value = field["value"]
-                if field_type == "checkbox":
-                    js_checks.append(f"""
-                        var cb = document.querySelector('input[name="{field_name}"]');
-                        if (cb) {{
-                            cb.checked = true;
-                            if (cb.onclick) {{ try {{ cb.onclick(); }} catch(e) {{}} }}  // fires the add() calls too
-                        }}
-                    """)
-                elif field_type == "text":
-                    js_checks.append(f"""
-                        var cb = document.querySelector('input[id="{field_name}"]');
-                        if (cb) {{
-                            cb.value = "{field_value}";
-                        }}
-                    """)
-                    print(f"""
-                        var cb = document.querySelector('input[id="{field_name}"]');
-                        if (cb) {{
-                            cb.value = "{field_value}";
-                        }}
-                    """)
-            # Execute JS
-            self.driver.execute_script("\n".join(js_checks))
+            try:
+                self._fill_new_eform_window(before, checkboxes)
+            finally:
+                # Always return to the main window, even if the form never loaded, so later
+                # calls do not run against the eForm window.
+                self.driver.switch_to.window(self.home_window)
+            return True
         self.driver.switch_to.window(self.home_window)
 
         return True
+
+    # Ticks/fills the given fields. Fields are passed as a script argument (not pasted into the
+    # source) so quotes in names/values cannot break it. A checkbox the form already ticked on its
+    # own (e.g. the lab form's checkLetterPlan() on load) is left alone: clicking it again would
+    # untick it and run its onclick a second time.
+    _FILL_EFORM_JS = """
+        var result = {ticked: [], already: [], missing: []};
+        arguments[0].forEach(function (f) {
+            if (f.type === "checkbox") {
+                var cb = Array.from(document.getElementsByName(f.name))
+                    .find(function (el) { return el.type === "checkbox"; });
+                if (!cb) { result.missing.push(f.name); return; }
+                if (cb.checked) { result.already.push(f.name); return; }
+                cb.click();  // ticks it and runs its onclick, like a clinician clicking it
+                result.ticked.push(f.name);
+            } else if (f.type === "text") {
+                var el = document.getElementById(f.name) || document.getElementsByName(f.name)[0];
+                if (!el) { result.missing.push(f.name); return; }
+                el.value = f.value == null ? "" : String(f.value);
+                result.ticked.push(f.name);
+            }
+        });
+        return result;
+    """
+
+    def _fill_new_eform_window(self, before: set, fields: list[dict]):
+        """Switch to the eForm window opened after `before` was taken, wait until it has fully
+        loaded (its onload scripts have run), then tick/fill `fields`."""
+        # The new window, found by comparing handles rather than assuming it is last.
+        self.wait.until(lambda d: len(set(d.window_handles) - before) > 0)
+        new_window = next(h for h in self.driver.window_handles if h not in before)
+        self.driver.switch_to.window(new_window)
+
+        # A new window starts on about:blank, which already reports readyState "complete".
+        self.wait.until(lambda d: d.execute_script(
+            "return document.readyState === 'complete' && location.href !== 'about:blank';"))
+
+        payload = [{"type": f.get("type"), "name": f.get("name"), "value": f.get("value")} for f in fields]
+        result = self.driver.execute_script(self._FILL_EFORM_JS, payload)
+        print(f"eForm fields -> ticked: {result['ticked']}, already ticked by the form: {result['already']}, "
+              f"not found: {result['missing']}")
+        return result
 
 
     def get_document_bytes(self, doc_no):
@@ -901,6 +917,10 @@ class Oscar:
 
         # Get HTML
         html = self._get_blank_eform_html(fid)
+        if not html:
+            # e.g. expired session / non-200 response: no checkboxes rather than a TypeError
+            print(f"No HTML for eForm {fid}; returning no checkboxes")
+            return []
 
         # Organize HTML
         soup = BeautifulSoup(html, "lxml")
