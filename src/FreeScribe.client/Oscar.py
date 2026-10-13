@@ -257,6 +257,8 @@ class Oscar:
             fid=fid,
             demo_no=demo_no
         )
+        if self.driver is None:
+            raise RuntimeError("Cannot open new eForm: Selenium WebDriver has been cleaned up or was never initialized.")
         self.driver.execute_script(f"window.open('{link}', '_blank', 'width=800,height=600');")
         if checkboxes:
             # Switch to new window
