@@ -17,12 +17,14 @@ Usage (from src/FreeScribe.client):
   python tests/med_eform/eval_med_extraction.py tests/med_eform/med_extraction_gold.example.yaml
   python tests/med_eform/eval_med_extraction.py gold.yaml --settings path/to/settings.txt --runs 3
   python tests/med_eform/eval_med_extraction.py gold.yaml --note-prompt my_consult_prompt.txt
+  MED_EVAL_API_KEY=... python tests/med_eform/eval_med_extraction.py gold.yaml --endpoint URL --model NAME
 
 Do not put real patient text in gold files that are committed; keep those as *.phi.yaml (untracked).
 """
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -35,7 +37,7 @@ sys.path.insert(0, str(CLIENT_ROOT))
 from utils import med_eform  # noqa: E402
 
 
-def make_sender(settings_path, endpoint=None, model=None, api_key=None):
+def make_sender(settings_path, endpoint=None, model=None, api_key=None, insecure=False):
     """Build send(prompt) -> str mirroring client.send_text_to_api for the given settings file."""
     settings = {}
     if settings_path and Path(settings_path).exists():
@@ -43,7 +45,8 @@ def make_sender(settings_path, endpoint=None, model=None, api_key=None):
     editable = settings.get("editable_settings", {})
     endpoint = (endpoint or editable.get("Model Endpoint", "")).rstrip("/")
     model = (model or editable.get("Model", "")).strip()
-    key = api_key or settings.get("openai_api_key", "")
+    # The key can come from the environment so it never has to be typed on the command line.
+    key = api_key or os.environ.get("MED_EVAL_API_KEY") or settings.get("openai_api_key", "")
     if not endpoint or not model:
         sys.exit("No model endpoint/model: pass --settings pointing at the app's settings.txt, "
                  "or --endpoint and --model.")
@@ -54,7 +57,10 @@ def make_sender(settings_path, endpoint=None, model=None, api_key=None):
         headers.update(json.loads(editable.get("Model Headers") or "{}"))
     except (json.JSONDecodeError, TypeError):
         pass
-    verify = not editable.get("AI Server Self-Signed Certificates", False)
+    verify = not (insecure or editable.get("AI Server Self-Signed Certificates", False))
+    if not verify:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def num(name, default, cast):
         try:
@@ -128,13 +134,15 @@ def main():
     ap.add_argument("gold", help="gold YAML file")
     ap.add_argument("--settings", default=str(CLIENT_ROOT / "settings.txt"), help="app settings.txt")
     ap.add_argument("--endpoint"), ap.add_argument("--model"), ap.add_argument("--api-key")
+    ap.add_argument("--insecure", action="store_true",
+                    help="skip TLS verification (model server with a self-signed certificate)")
     ap.add_argument("--note-prompt", help="text file with the note-generation prompt (for transcript cases)")
     ap.add_argument("--runs", type=int, default=1, help="repeat each case to see run-to-run variation")
     ap.add_argument("--show-notes", action="store_true", help="print generated notes (transcript cases)")
     args = ap.parse_args()
 
     cases = yaml.safe_load(Path(args.gold).read_text(encoding="utf-8")) or []
-    send = make_sender(args.settings, args.endpoint, args.model, args.api_key)
+    send = make_sender(args.settings, args.endpoint, args.model, args.api_key, args.insecure)
     note_prompt = Path(args.note_prompt).read_text(encoding="utf-8") if args.note_prompt else None
     extract_plan_section = load_extract_plan_section()
 

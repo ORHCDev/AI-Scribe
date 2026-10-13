@@ -122,6 +122,10 @@ def test_keyword_flags_known_false_positive():
     ("increase", "increase"), ("uptitrate", "increase"),
     ("decrease", "decrease"), ("reduce", "decrease"),
     ("stop", "stop"), ("Discontinue", "stop"), ("hold", "stop"),
+    # past tense / other forms, as echoed from a PLAN written like "I increased ..."
+    ("increased", "increase"), ("Increasing", "increase"), ("started", "start"),
+    ("added", "start"), ("initiated", "start"), ("decreased", "decrease"), ("reduced", "decrease"),
+    ("stopped", "stop"), ("discontinued", "stop"), ("held", "stop"),
 ])
 def test_action_synonyms(action, expected):
     changes = med_eform.clean_med_changes([{"action": action, "name": "Drug", "text": "Drug 5 mg daily"}])
@@ -224,3 +228,17 @@ def test_extract_plan_section_is_case_sensitive(read_files):
     # Documents current behaviour: a "Plan:" heading is not found, so the caller falls back to
     # the whole consult (HPI meds included) when deciding about the medication form.
     assert read_files.extract_plan_section("HPI: x\nPlan: start metoprolol") == ""
+
+
+def test_past_tense_plan_from_consult_prompt_is_filled(fake_llm):
+    # Real case (2026-10-09): the consult2 prompt wrote the PLAN in the past tense and the
+    # form opened empty. The model echoing "increased" must still produce a prescription line.
+    plan = ("I increased the furosemide dosage to 80 mg daily. I advised the patient to continue "
+            "ramipril 5 mg daily. I ordered a recheck of electrolytes and creatinine in one week.")
+    llm = fake_llm(reply([{"action": "increased", "name": "Furosemide", "text": "Furosemide 80 mg daily"}],
+                         labs=True))
+    result = med_eform.analyze_plan_for_eforms(plan, llm)
+    assert result["medication"]["changes"] == [
+        {"action": "increase", "name": "Furosemide", "text": "Furosemide 80 mg daily"}]
+    assert med_eform.format_rx_lines(result["medication"]["changes"]) == "Increase Furosemide to 80 mg daily,"
+    assert result["labs"] is True
