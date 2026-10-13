@@ -224,8 +224,6 @@ class CustomTextBox(tk.Frame):
         if not self.upload_callback:
             return
 
-        upload_type = self.upload_type_var.get()
-
         upload_types = {
             "Insert Consult": ("consult", False),
             "Insert Consult + MH": ("mh_and_consult", False),

@@ -1770,6 +1770,43 @@ def generate_note(formatted_message):
                 display_text(f"An error occurred: {e}")
                 return False
 
+def get_recent_cardiac_test_dates():
+    test_types = {
+        "ECG": "ECG",
+        "ECHO": "Echo",
+        "EST": "EST",
+        "SECHO": "SEcho",
+        "HOLT": "Holter",
+    }
+
+    results = {
+        display_name: "never"
+        for display_name in test_types.values()
+    }
+
+    info = eform_selection_panel.get_patient_info(mute_popup=True)
+    if not info: return None
+    demo_no = info["demographic_no"]
+
+    measurement_query = f"""
+        SELECT m.type, MAX(m.dateObserved) AS latest_date
+        FROM measurements m
+        WHERE m.demographicNo = {demo_no}
+          AND m.type IN ('ECG', 'ECHO', 'EST', 'SECHO', 'HOLT')
+          AND m.dateObserved IS NOT NULL
+        GROUP BY m.type
+    """
+    rows = chatbot.db_conn.query_database(measurement_query)
+
+    for row in rows:
+        test_type = row["type"]
+        latest_date = row["latest_date"]
+
+        if test_type in test_types and latest_date:
+            results[test_types[test_type]] = str(latest_date)[:10]
+
+    return results
+
 def show_edit_transcription_popup(formatted_message):
     # Skip PHI scrubbing for OSCAR_FEEDBACK since extract_patient_notes already removes sensitive info
     if selected_prompt.get() == "OSCAR_FEEDBACK":
@@ -1807,6 +1844,28 @@ def show_edit_transcription_popup(formatted_message):
     text_area = scrolledtext.ScrolledText(popup, height=20, width=80)
     text_area.pack(padx=10, pady=10)
     text_area.insert(tk.END, cleaned_message)
+
+    # Show recent cardiac test dates for complete consult prompts
+    if selected_prompt.get() in {"Consult Complete", "Consult Complete + MH"}:
+        recent_tests_frame = tk.LabelFrame(popup, text="Recency of Measurements", padx=8, pady=5)
+        recent_tests_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        recent_test_dates = get_recent_cardiac_test_dates()
+        if recent_test_dates:
+            test_names = ["ECG", "Echo", "EST", "SEcho", "Holter"]
+
+            dates_text = "    ".join(
+                f"{test}: {recent_test_dates.get(test, 'never')}"
+                for test in test_names
+            )
+
+            tk.Label(
+                recent_tests_frame,
+                text=dates_text,
+                justify="left",
+                anchor="w",
+                wraplength=600,
+            ).pack(fill="x")
 
     def on_proceed():
         edited_text = text_area.get("1.0", tk.END).strip()
