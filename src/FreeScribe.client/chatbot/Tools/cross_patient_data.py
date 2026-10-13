@@ -505,7 +505,7 @@ _CROSS_LOOKUP_SOURCES = {
         "label": "condition",
     },
     "medications": {
-        "types": ("MEDS",),
+        "types": ("MEDS", "MEDS1"),
         "prefix": "new entry: ",
         "label": "medication",
     },
@@ -603,18 +603,22 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
         "grouped by patient. Only active patients are included, and only entries recorded on or after the calculated "
         "start date based on the provided period are considered. This tool is most relevant for cohort "
         "identification, combined condition/medication/history audits, appointment day-sheet filtering, quality "
-        "improvement initiatives, and clinical reporting."
+        "improvement initiatives, and clinical reporting. For each named condition, medication, or history term, include "
+        "every plausible alternate form the EMR might store (abbreviations, synonyms, generic and brand names) in the "
+        "corresponding list so entries recorded under an alternate name are not missed; the final answer must state which "
+        "alternate terms were assumed."
     ),
     context=(
         "Population-level lookup of patients matching one or more cardiac conditions, medications, and/or medical "
         "history entries over a recent time window, optionally limited to patients with an appointment on a given "
         "date or within a given range. When appointments are included, present each patient with their appointment date, time, and reason. "
+        "If alternate condition/medication/history names, abbreviations, or synonyms were searched, state in the answer which alternate terms were assumed. "
         "Output all fields in a table format."
     ),
     parameters={
-        "conditions": "Optional. List of cardiac condition names or partial names to search for in cardiac history entries.",
-        "medications": "Optional. List of medication names or partial names to search for in medication entries.",
-        "medical_history": "Optional. List of medical history terms or partial names to search for in patient medical history entries (type 'PMH').",
+        "conditions": "Optional. List of cardiac condition names or partial names to search for in cardiac history entries. Expand each condition into every plausible abbreviation and synonym (e.g. 'atrial fibrillation' also 'AF' and 'AFib'; 'myocardial infarction' also 'MI'). Include the original term.",
+        "medications": "Optional. List of medication names or partial names to search for in medication entries. Expand each drug into every plausible generic/brand name, abbreviation, and synonym (e.g. 'vincristine' also 'VCR'; 'metoprolol' also 'Lopressor'). Include the original term.",
+        "medical_history": "Optional. List of medical history terms or partial names to search for in patient medical history entries (type 'PMH'). Expand each term into every plausible abbreviation and synonym, including the original term.",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
         "appointment_date": "Optional. When set, only patients with an appointment on this date or within this range are returned, along with their appointment details. Accepts 'YYYY-MM-DD', 'today', 'tomorrow', 'yesterday', 'this week', 'next week', 'this month', 'next month', or an explicit range such as '2025-06-01 to 2025-06-07'.",
         "provider_name": "Optional. Filters appointments to a provider, given with or without 'Dr.'. If provided without appointment_date, defaults to today's appointments.",
@@ -781,7 +785,7 @@ def cross_patient_lookup(
     for key, values in sources.items():
         spec = _CROSS_LOOKUP_SOURCES[key]
         types_sql = ", ".join(f"'{mtype}'" for mtype in spec["types"])
-        like_filter = " AND ".join(
+        like_filter = " OR ".join(
             f"LOWER(m.dataField) LIKE LOWER('%{value}%')" for value in values
         )
         match = f"(m.type IN ({types_sql}) AND ({like_filter}))"
