@@ -16,6 +16,8 @@ class WorkflowContext:
     prompts: dict
     memory_needed: bool = True
     verification_feedback: str = ""
+    assumed_patient: bool = False
+    assumed_patient_name: str = ""
 
 @dataclass
 class WorkflowEntry:
