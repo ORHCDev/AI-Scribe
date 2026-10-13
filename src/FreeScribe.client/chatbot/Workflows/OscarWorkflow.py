@@ -209,6 +209,15 @@ class OscarWorkflow(Workflow):
                 user_input=convo_history,
                 context=context_str
             )
+        if context.assumed_patient:
+            assumed_name = context.assumed_patient_name or "the patient from today's most recent appointment"
+            followup_prompt = (
+                f"No patient was explicitly selected. You assumed {assumed_name} "
+                "based on today's most recent appointment. Begin your response by "
+                f"clearly stating that you assume the patient that was asked about "
+                f"is {assumed_name}, and that if this is incorrect to select a patient through OSCAR. \n\n"
+                + followup_prompt
+            )
         logging.info(f"Followup: {followup_prompt}")
         resp = context.ai_conn.send_message(followup_prompt)
 
