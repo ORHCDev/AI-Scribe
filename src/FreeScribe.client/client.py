@@ -2143,7 +2143,14 @@ def _open_medication_eform(changes: list[dict] | None = None):
 
 def _open_labs_eform(plan_text: str):
     LABS_FORM_FID = 659
+
+    print(f"oscar object: {oscar}")
+    print(f"oscar.driver: {getattr(oscar, 'driver', 'None')}")
+
     try:
+        if oscar.driver is None:
+            raise RuntimeError("Oscar WebDriver is None; it may have been cleaned up.")
+    
         checkbox_strings = {
             s.strip() for s in analyze_plan_for_labs(plan_text, send_text_to_chatgpt, False)
             if isinstance(s, str)
