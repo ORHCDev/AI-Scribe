@@ -1412,10 +1412,19 @@ def generate_note(formatted_message):
 
                         for subtype in type_map[measurement_type]:
                             subtyped_results = list(filter(lambda x: x["type"] == subtype, unfiltered_results))
+                            done = False
                             for result in subtyped_results:
                                 if result["dataField"] not in datafields_toexclude:
                                     measurement_results.append(result)
+                                    done = True
                                     break
+                            if subtyped_results and not done:
+                                # Fallback: all new measurements are identical to old measurements
+                                measurement_results.append(subtyped_results[0])
+                                print(
+                                    f"All {subtype} measurements match previous values; "
+                                    f"using the first new measurement."
+                                )
                         print(f"measurement_results for {measurement_type}: {measurement_results}")
 
                         print(
