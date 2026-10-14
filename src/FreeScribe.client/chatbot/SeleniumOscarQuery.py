@@ -16,7 +16,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class SOQ:
-    def __init__(self, user, passw, pin, oscar_url, driver_path, headless=True, oscar_version=15, query_timeout=60):
+    def __init__(self, user, passw, pin, oscar_url, driver_path, headless=True, oscar_version=15, query_timeout=15):
         self.user = user
         self.passw = passw
         self.pin = pin

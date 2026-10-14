@@ -24,7 +24,7 @@ import atexit
 import json
 import pyaudio
 import tkinter.messagebox as messagebox
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
 try:
@@ -1327,114 +1327,58 @@ def generate_note(formatted_message):
                     
                     demo_no = info["demographic_no"]
 
-                    measurement_results = []
-                    for measurement_type in ["ECG", "ECHO", "EST", "SECHO", "HOLT"]:
-                        measurement_start = time.perf_counter()
-
-                        substep_start = time.perf_counter()
-                        first_date_query = f"""
-                        SELECT DATE(MAX(dateObserved)) AS target_date
-                        FROM measurements m
-                        WHERE demographicNo = {demo_no}
-                        AND type = '{measurement_type}'
-                        """
-                        most_recent_result = chatbot.db_conn.query_database(first_date_query)
-                        most_recent_date = most_recent_result[0]["target_date"] if most_recent_result else None
-                        print(f"most_recent_date for {measurement_type}: {most_recent_date}")
+                    provider_no_query = f"""
+                    SELECT p.provider_no
+                    FROM provider AS p
+                    LEFT JOIN demographic AS d
+                    ON p.provider_no = d.provider_no
+                    WHERE demographic_no = {demo_no};
+                    """
+                    provider_no_results = chatbot.db_conn.query_database(provider_no_query)
+                    if provider_no_results:
+                        provider_no = provider_no_results[0]["provider_no"]
+                        print(f"provider_no: {provider_no}")
                         print(
-                            f"[TIMING] {measurement_type}, STEP 1: "
-                            f"{time.perf_counter() - substep_start:.2f}s"
+                            f"[TIMING] provider_no query: "
+                            f"{time.perf_counter() - step_start:.2f}s"
                         )
-                        if not most_recent_date: continue
+                    else:
+                        raise RuntimeError(f"No provider number found for patient {demo_no}")
 
-                        substep_start = time.perf_counter()
-                        second_date_query = f"""
-                        SELECT DATE(MAX(dateObserved)) AS target_date
-                        FROM measurements m
-                        WHERE demographicNo = {demo_no}
-                        AND type = '{measurement_type}'
-                        AND DATE(dateObserved) < '{most_recent_date}'
-                        """
-                        second_result = chatbot.db_conn.query_database(second_date_query)
-                        second_most_recent_date = (
-                            second_result[0]["target_date"]
-                            if second_result and second_result[0]["target_date"]
-                            else None
-                        )
-                        print(f"second_most_recent_date for {measurement_type}: {second_most_recent_date}")
-                        print(
-                            f"[TIMING] {measurement_type}, STEP 2: "
-                            f"{time.perf_counter() - substep_start:.2f}s"
-                        )
-                        if not second_most_recent_date: continue
-
-                        substep_start = time.perf_counter()
-                        type_map = {
-                            "ECG": ["ECG"],
-                            "ECHO": ["ECHO", "ECHO1", "ECHO2"],
-                            "EST": ["EST"],
-                            "SECHO": ["SECHO", "SECHO1"],
-                            "HOLT": ["HOLT", "HOLT1", "HOLT2"]
-                        }
-                        second_measurements_query = f"""
-                        SELECT m.type, m.dataField
-                        FROM measurements m
-                        JOIN (
-                            SELECT type, MAX(dateObserved) AS latest_time
-                            FROM measurements
-                            WHERE demographicNo = {demo_no}
-                            AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
-                            AND DATE(dateObserved) = '{second_most_recent_date}'
-                            GROUP BY type
-                        ) latest
-                            ON m.type = latest.type
-                            AND m.dateObserved = latest.latest_time
-                        WHERE m.demographicNo = {demo_no}
-                        """
-                        second_measurements = chatbot.db_conn.query_database(second_measurements_query)
-                        datafields_toexclude = {row["dataField"] for row in second_measurements}
-                        print(f"datafields_toexclude for {measurement_type}: " f"{datafields_toexclude}")
-                        print(
-                            f"[TIMING] {measurement_type}, STEP 3: "
-                            f"{time.perf_counter() - substep_start:.2f}s"
-                        )
-
-                        substep_start = time.perf_counter()
-                        first_measurement_query = f"""
-                        SELECT *
+                    step_start = time.perf_counter()
+                    measurement_query = f"""
+                    SELECT m.*
+                    FROM measurements m
+                    JOIN (
+                        SELECT type, MAX(dateObserved) AS latest_date
                         FROM measurements
                         WHERE demographicNo = {demo_no}
-                        AND type IN ({",".join(f"'{t}'" for t in type_map[measurement_type])})
-                        AND DATE(dateObserved) = '{most_recent_date}'
-                        """
-                        unfiltered_results = chatbot.db_conn.query_database(first_measurement_query)
-                        print(f"unfiltered_results for {measurement_type}: {unfiltered_results}")
-
-                        for subtype in type_map[measurement_type]:
-                            subtyped_results = list(filter(lambda x: x["type"] == subtype, unfiltered_results))
-                            done = False
-                            for result in subtyped_results:
-                                if result["dataField"] not in datafields_toexclude:
-                                    measurement_results.append(result)
-                                    done = True
-                                    break
-                            if subtyped_results and not done:
-                                # Fallback: all new measurements are identical to old measurements
-                                measurement_results.append(subtyped_results[0])
-                                print(
-                                    f"All {subtype} measurements match previous values; "
-                                    f"using the first new measurement."
-                                )
-                        print(f"measurement_results for {measurement_type}: {measurement_results}")
-
-                        print(
-                            f"[TIMING] {measurement_type}, STEP 4: "
-                            f"{time.perf_counter() - substep_start:.2f}s"
+                        AND (
+                            (type IN ('ECG', 'ECHO1', 'ECHO2')
+                            AND providerNo = '{provider_no}')
+                            OR type IN (
+                                'EST', 'SECHO', 'SECHO1',
+                                'HOLT', 'HOLT1', 'HOLT2'
+                            )
                         )
-                        print(
-                            f"[TIMING] {measurement_type}, TOTAL: "
-                            f"{time.perf_counter() - measurement_start:.2f}s"
+                        AND dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                        GROUP BY type
+                    ) latest
+                        ON m.type = latest.type
+                    AND m.dateObserved = latest.latest_date
+                    WHERE m.demographicNo = {demo_no}
+                    AND (
+                        (m.type IN ('ECG', 'ECHO1', 'ECHO2')
+                        AND m.providerNo = '{provider_no}')
+                        OR m.type IN (
+                            'EST', 'SECHO', 'SECHO1',
+                            'HOLT', 'HOLT1', 'HOLT2'
                         )
+                    )
+                    AND m.dateObserved >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                    ORDER BY m.dateObserved DESC, m.type ASC;
+                    """
+                    measurement_results = chatbot.db_conn.query_database(measurement_query)
                     print(f"measurement_results: {measurement_results}")
                     print(
                         f"[TIMING] DB: "
@@ -1449,7 +1393,6 @@ def generate_note(formatted_message):
                     print(f"measurements: {measurements}")
                     ecg_text = str(measurements.get("ECG", ""))
                     echo_text = "".join([
-                        str(measurements.get("ECHO", "")),
                         str(measurements.get("ECHO1", "")),
                         str(measurements.get("ECHO2", ""))
                     ])
@@ -1782,7 +1725,7 @@ def generate_note(formatted_message):
 def get_recent_cardiac_test_dates():
     test_types = {
         "ECG": "ECG",
-        "ECHO": "Echo",
+        "ECHO1": "Echo",
         "EST": "EST",
         "SECHO": "SEcho",
         "HOLT": "Holter",
@@ -1801,7 +1744,7 @@ def get_recent_cardiac_test_dates():
         SELECT m.type, MAX(m.dateObserved) AS latest_date
         FROM measurements m
         WHERE m.demographicNo = {demo_no}
-          AND m.type IN ('ECG', 'ECHO', 'EST', 'SECHO', 'HOLT')
+          AND m.type IN ('ECG', 'ECHO1', 'EST', 'SECHO', 'HOLT')
           AND m.dateObserved IS NOT NULL
         GROUP BY m.type
     """
@@ -1862,19 +1805,28 @@ def show_edit_transcription_popup(formatted_message):
         recent_test_dates = get_recent_cardiac_test_dates()
         if recent_test_dates:
             test_names = ["ECG", "Echo", "EST", "SEcho", "Holter"]
+            cutoff_date = datetime.now().date() - timedelta(days=30)
+            
+            for test in test_names:
+                date_text = recent_test_dates.get(test, "never")
 
-            dates_text = "    ".join(
-                f"{test}: {recent_test_dates.get(test, 'never')}"
-                for test in test_names
-            )
+                if date_text == "never":
+                    text_color = "red"
+                else:
+                    try:
+                        test_date = datetime.strptime(
+                            date_text[:10], "%Y-%m-%d"
+                        ).date()
+                        text_color = "red" if test_date < cutoff_date else "black"
+                    except (ValueError, TypeError):
+                        text_color = "red"
 
-            tk.Label(
-                recent_tests_frame,
-                text=dates_text,
-                justify="left",
-                anchor="w",
-                wraplength=600,
-            ).pack(fill="x")
+                tk.Label(
+                    recent_tests_frame,
+                    text=f"{test}: {date_text}",
+                    fg=text_color,
+                    anchor="w",
+                ).pack(side="left", padx=(0, 12))
 
     def on_proceed():
         edited_text = text_area.get("1.0", tk.END).strip()
