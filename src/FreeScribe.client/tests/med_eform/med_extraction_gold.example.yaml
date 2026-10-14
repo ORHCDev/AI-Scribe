@@ -1,18 +1,19 @@
 # Gold cases for eval_med_extraction.py. Synthetic text only - no real patient data in this file.
 # Each case: one of plan / note / transcript, then expect_open, optional expect_lines / expect_labs.
-# expect_lines are the exact prescription-body lines (without the trailing comma), any order.
+# expect_lines are the exact prescription-body entries ("Drug dose freq", "Increase X to ...",
+# "Stop X"), any order.
 
 # --- should open, with exact lines -------------------------------------------------------
 - id: single-start-standard-line
   plan: "Start metoprolol 25 mg BID. Follow up in 3 months."
   expect_open: true
-  expect_lines: ["Start Metoprolol 25 mg BID"]
+  expect_lines: ["Metoprolol 25 mg BID"]
   expect_labs: false
 
 - id: lu-code-copied
   plan: "Atrial fibrillation, CHA2DS2-VASc 3. Start apixaban 5 mg twice daily."
   expect_open: true
-  expect_lines: ["Start Apixaban 5 mg BID, LU code 448"]
+  expect_lines: ["Apixaban 5 mg BID, LU code 448"]
 
 - id: increase-dose
   plan: "Volume overloaded. Increase furosemide to 80 mg daily. Recheck electrolytes in 1 week."
@@ -25,17 +26,17 @@
     Start bisoprolol 2.5 mg daily. Decrease ramipril to 2.5 mg daily given low BP.
     Stop amlodipine. Continue atorvastatin 40 mg daily.
   expect_open: true
-  expect_lines: ["Start Bisoprolol 2.5 mg daily", "Decrease Ramipril to 2.5 mg daily", "Stop amlodipine"]
+  expect_lines: ["Bisoprolol 2.5 mg daily", "Decrease Ramipril to 2.5 mg daily", "Stop amlodipine"]
 
 - id: brand-name-in-plan
   plan: "Start Eliquis 5 mg BID for atrial fibrillation."
   expect_open: true
-  expect_lines: ["Start Apixaban 5 mg BID, LU code 448"]
+  expect_lines: ["Apixaban 5 mg BID, LU code 448"]
 
 - id: switch-drug
   plan: "Ankle edema on amlodipine; switch amlodipine to nifedipine XL 30 mg daily."
   expect_open: true
-  expect_lines: ["Stop amlodipine", "Start Nifedipine 30 mg XL daily"]
+  expect_lines: ["Stop amlodipine", "Nifedipine 30 mg XL daily"]
 
 - id: dose-not-in-standard-list
   plan: "Start spironolactone 37.5 mg daily."
@@ -45,7 +46,7 @@
 - id: arni
   plan: "HFrEF, EF 30%. Stop ramipril. After 36 hours start sacubitril/valsartan 24/26 mg BID."
   expect_open: true
-  expect_lines: ["Stop ramipril", "Start sacubitril/valsartan 24/26 mg BID, LU 497"]
+  expect_lines: ["Stop ramipril", "sacubitril/valsartan 24/26 mg BID, LU 497"]
 
 - id: past-tense-plan-from-consult-prompt
   # Wording produced by the consult2 note prompt (real case 2026-10-09: form opened empty).
@@ -75,6 +76,16 @@
   plan: "Increase physical activity to 150 minutes per week. Decrease salt intake."
   expect_open: false
 
+- id: recommendation-only
+  # A recommendation for the referring doctor is not a prescription: the form must not open.
+  plan: "I recommend taking metoprolol 25 mg BID. Consider adding an SGLT2 inhibitor in the future."
+  expect_open: false
+
+- id: recommendation-plus-real-change
+  plan: "Increase furosemide to 80 mg daily. I would suggest starting apixaban if AF recurs."
+  expect_open: true
+  expect_lines: ["Increase Furosemide to 80 mg daily"]
+
 # --- full note: PLAN must be found and HPI meds ignored ----------------------------------
 - id: note-hpi-meds-ignored
   note: |
@@ -82,7 +93,7 @@
     ASSESSMENT: Paroxysmal atrial fibrillation.
     PLAN: Start metoprolol 25 mg BID. Holter monitor. Follow up in 2 months.
   expect_open: true
-  expect_lines: ["Start Metoprolol 25 mg BID"]
+  expect_lines: ["Metoprolol 25 mg BID"]
 
 - id: note-lowercase-plan-heading
   # extract_plan_section only matches "PLAN"; this checks the whole-note fallback still works.
@@ -99,4 +110,4 @@
 #     Patient: Okay. Should I still take the amlodipine?
 #     Doctor: Yes, keep the amlodipine the same. We'll see you back in two months.
 #   expect_open: true
-#   expect_lines: ["Start Metoprolol 25 mg BID"]
+#   expect_lines: ["Metoprolol 25 mg BID"]
