@@ -19,7 +19,8 @@ Classes:
     SettingsWindowUI: Manages the settings window UI.
 """
 
-import json
+import json, subprocess, sys
+from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 from UI.Widgets.AudioMeter import AudioMeter
@@ -519,6 +520,7 @@ class SettingsWindowUI:
         tk.Button(self.main_frame, text="Default", width=10, command=self.reset_to_default).pack(side="right", padx=2, pady=5)
         tk.Button(self.main_frame, text="Close", width=10, command=self.close_window).pack(side="right", padx=2, pady=5)
         tk.Button(self.main_frame, text="Help", width=10, command=self.create_help_window).pack(side="left", padx=2, pady=5)
+        tk.Button(self.main_frame, text="Restart App", command=self._restart_application).pack(side="left", padx=2, pady=5)
 
     def create_help_window(self):
         """
@@ -717,3 +719,7 @@ class SettingsWindowUI:
         self.cutoff_slider.destroy()
 
         self.settings_window.destroy()
+
+    def _restart_application(self):
+        if self.settings.restart_callback:
+            self.settings.restart_callback()
