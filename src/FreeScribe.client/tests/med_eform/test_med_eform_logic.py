@@ -162,44 +162,53 @@ def test_non_list_medication_is_ignored():
 # --- prescription-body text ------------------------------------------------------------------
 
 def test_format_rx_lines():
+    # New meds as the regimen (form's drug menu), dose changes as "Increase/Decrease X to ..."
+    # (form's increase/decrease checkboxes), "Stop X" for stops, each followed by ", ".
     text = med_eform.format_rx_lines([
         {"action": "start", "name": "Metoprolol", "text": "Metoprolol 25 mg BID"},
         {"action": "increase", "name": "Furosemide", "text": "Furosemide 80 mg daily"},
         {"action": "decrease", "name": "Ramipril", "text": "Ramipril 2.5 mg daily"},
         {"action": "stop", "name": "Amlodipine", "text": ""},
     ])
-    assert text == (
-        "Start Metoprolol 25 mg BID,\n"
-        "Increase Furosemide to 80 mg daily,\n"
-        "Decrease Ramipril to 2.5 mg daily,\n"
-        "Stop Amlodipine,"
-    )
+    assert text == ("Metoprolol 25 mg BID, Increase Furosemide to 80 mg daily, "
+                    "Decrease Ramipril to 2.5 mg daily, Stop Amlodipine, ")
 
 
-def test_format_rx_lines_keeps_lu_codes():
+def test_format_rx_lines_keeps_lu_codes_with_the_forms_separator():
+    # The form's med_update strips "LU code 448, " - with the comma and space - so keep that shape.
     text = med_eform.format_rx_lines([
         {"action": "start", "name": "Apixaban", "text": "Apixaban 5 mg BID, LU code 448"}])
-    assert text == "Start Apixaban 5 mg BID, LU code 448,"
+    assert text == "Apixaban 5 mg BID, LU code 448, "
 
 
-def test_format_rx_lines_brand_generic_mismatch():
+def test_format_rx_lines_brand_generic_mismatch_uses_the_line():
     text = med_eform.format_rx_lines([
         {"action": "decrease", "name": "Lasix", "text": "Furosemide 20 mg daily"}])
-    assert text == "Decrease to Furosemide 20 mg daily,"
+    assert text == "Decrease Furosemide to 20 mg daily, "
+
+
+@pytest.mark.parametrize("change,expected", [
+    ({"action": "increase", "name": "Diltiazem", "text": "Diltiazem CD 240 mg daily"},
+     "Increase Diltiazem CD to 240 mg daily"),
+    ({"action": "increase", "name": "sacubitril/valsartan", "text": "sacubitril/valsartan 97/103 mg BID, LU 497"},
+     "Increase sacubitril/valsartan to 97/103 mg BID, LU 497"),
+    ({"action": "decrease", "name": "Apixaban", "text": "Apixaban 2.5 mg BID, LU code 448"},
+     "Decrease Apixaban to 2.5 mg BID, LU code 448"),
+    ({"action": "increase", "name": "Warfarin", "text": "Warfarin"}, "Increase Warfarin"),
+])
+def test_dose_change_wording(change, expected):
+    assert med_eform.rx_entries([change]) == [expected]
 
 
 def test_format_rx_lines_empty():
     assert med_eform.format_rx_lines([]) == ""
 
 
-def test_lines_split_back_like_the_forms_update_med_list():
-    # The form's med_update() splits the prescription body on "," and trims each piece.
-    text = med_eform.format_rx_lines([
-        {"action": "start", "name": "Metoprolol", "text": "Metoprolol 25 mg BID"},
-        {"action": "stop", "name": "Amlodipine", "text": ""},
-    ])
-    pieces = [p.strip() for p in text.split(",") if p.strip()]
-    assert pieces == ["Start Metoprolol 25 mg BID", "Stop Amlodipine"]
+def test_rx_entries():
+    assert med_eform.rx_entries([
+        {"action": "start", "name": "Apixaban", "text": "Apixaban 5 mg BID, LU code 448"},
+        {"action": "stop", "name": "Aspirin", "text": ""},
+    ]) == ["Apixaban 5 mg BID, LU code 448", "Stop Aspirin"]
 
 
 # --- prompt ----------------------------------------------------------------------------------
@@ -240,5 +249,51 @@ def test_past_tense_plan_from_consult_prompt_is_filled(fake_llm):
     result = med_eform.analyze_plan_for_eforms(plan, llm)
     assert result["medication"]["changes"] == [
         {"action": "increase", "name": "Furosemide", "text": "Furosemide 80 mg daily"}]
-    assert med_eform.format_rx_lines(result["medication"]["changes"]) == "Increase Furosemide to 80 mg daily,"
+    assert med_eform.format_rx_lines(result["medication"]["changes"]) == "Increase Furosemide to 80 mg daily, "
     assert result["labs"] is True
+
+
+# --- recommendations are not prescriptions -----------------------------------------------------
+
+def test_recommendation_only_does_not_open_form(fake_llm):
+    plan = "I recommend starting metoprolol 25 mg BID; consider increasing ramipril at follow-up."
+    llm = fake_llm(reply([
+        {"action": "start", "name": "Metoprolol", "text": "Metoprolol 25 mg BID", "ordered": False},
+        {"action": "increase", "name": "Ramipril", "text": "Ramipril 10 mg daily", "ordered": "false"},
+    ]))
+    assert med_eform.analyze_plan_for_eforms(plan, llm)["medication"] == {"open": False, "changes": []}
+
+
+def test_only_the_prescribed_change_is_filled(fake_llm):
+    plan = "Increase furosemide to 80 mg daily. I would recommend starting an SGLT2 inhibitor later."
+    llm = fake_llm(reply([
+        {"action": "increase", "name": "Furosemide", "text": "Furosemide 80 mg daily", "ordered": True},
+        {"action": "start", "name": "Jardiance", "text": "Jardiance 10 mg daily", "ordered": False},
+    ]))
+    result = med_eform.analyze_plan_for_eforms(plan, llm)["medication"]
+    assert result["open"] is True
+    assert [c["name"] for c in result["changes"]] == ["Furosemide"]
+
+
+def test_missing_ordered_field_counts_as_prescribed(fake_llm):
+    llm = fake_llm(reply([{"action": "start", "name": "Metoprolol", "text": "Metoprolol 25 mg BID"}]))
+    assert med_eform.analyze_plan_for_eforms("Start metoprolol 25 mg BID.", llm)["medication"]["open"] is True
+
+
+def test_prompt_asks_for_ordered_flag():
+    prompt = med_eform.build_med_prompt("x")
+    assert '"ordered"' in prompt and "recommend" in prompt
+
+
+@pytest.mark.parametrize("plan,med", [
+    ("I recommend taking metoprolol 25 mg BID.", False),
+    ("I would suggest starting apixaban 5 mg BID.", False),
+    ("Consider increasing furosemide to 80 mg daily.", False),
+    ("If blood pressure remains high, start amlodipine 5 mg daily.", False),
+    ("Defer to family doctor to stop the aspirin.", False),
+    ("Start metoprolol 25 mg BID.", True),
+    ("I increased the furosemide dosage to 80 mg daily.", True),
+    ("I recommend a low-salt diet. Start metoprolol 25 mg BID.", True),   # one real change
+])
+def test_keyword_fallback_ignores_recommendations(plan, med):
+    assert med_eform.keyword_flags(plan)["medication"] is med

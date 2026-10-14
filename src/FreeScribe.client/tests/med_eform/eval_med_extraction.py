@@ -7,7 +7,7 @@ Each case in a gold YAML file gives one of:
   transcript:  a mock visit transcript          -> note (needs --note-prompt) -> PLAN -> extraction
 plus the expected outcome:
   expect_open:   should the medication eForm open?
-  expect_lines:  exact prescription-body lines expected (order-insensitive), optional
+  expect_lines:  exact prescription-body entries expected (order-insensitive), optional
   expect_labs:   should the labs eForm open? optional
 
 The model is called exactly like the app's send_text_to_api (OpenAI-style /chat/completions), using
@@ -119,8 +119,7 @@ def scope_for(case, send, note_prompt, extract_plan_section):
 
 
 def lines_of(changes):
-    text = med_eform.format_rx_lines(changes)
-    return sorted(p.strip() for p in text.split(",\n") if p.strip().rstrip(","))
+    return sorted(med_eform.rx_entries(changes))
 
 
 def norm(lines):
