@@ -38,14 +38,14 @@ def test_changes_open_form_with_prefill(fake_llm):
 
 def test_no_changes_does_not_open(fake_llm):
     result = med_eform.analyze_plan_for_eforms("Continue current medications.", fake_llm(reply([])))
-    assert result == {"medication": {"open": False, "changes": []}, "labs": False}
+    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None}
 
 
 @pytest.mark.parametrize("scope", ["", "   ", None])
 def test_empty_plan_opens_nothing_and_skips_llm(fake_llm, scope):
     llm = fake_llm(reply([{"action": "start", "name": "X", "text": "X 1 mg daily"}]))
     result = med_eform.analyze_plan_for_eforms(scope, llm)
-    assert result == {"medication": {"open": False, "changes": []}, "labs": False}
+    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None}
     assert llm.prompts == []
 
 
@@ -67,7 +67,7 @@ def test_unmappable_change_still_opens_form_unfilled(fake_llm):
 def test_bad_llm_output_falls_back_to_keywords(fake_llm, bad_reply):
     result = med_eform.analyze_plan_for_eforms(PLAN, fake_llm(bad_reply))
     # Keywords see "start"/"stop" and "repeat CBC": both forms open, nothing pre-filled.
-    assert result == {"medication": {"open": True, "changes": []}, "labs": True}
+    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None}
 
 
 def test_python_style_booleans_are_accepted(fake_llm):
@@ -82,7 +82,7 @@ def test_python_style_booleans_are_accepted(fake_llm):
 def test_json_wrapped_in_prose_or_code_fence(fake_llm):
     llm = fake_llm("Here you go:\n```json\n" + reply([], labs=True) + "\n```")
     assert med_eform.analyze_plan_for_eforms(PLAN, llm) == {
-        "medication": {"open": False, "changes": []}, "labs": True}
+        "medication": {"open": False, "changes": []}, "labs": True, "lab_period": None}
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -96,7 +96,7 @@ def test_as_flag(value, expected):
 def test_keyword_mode_never_calls_llm(fake_llm):
     llm = fake_llm(RuntimeError("should not be called"))
     result = med_eform.analyze_plan_for_eforms(PLAN, llm, mode="keyword")
-    assert result == {"medication": {"open": True, "changes": []}, "labs": True}
+    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None}
     assert llm.prompts == []
 
 
@@ -297,3 +297,34 @@ def test_prompt_asks_for_ordered_flag():
 ])
 def test_keyword_fallback_ignores_recommendations(plan, med):
     assert med_eform.keyword_flags(plan)["medication"] is med
+
+
+# --- lab due period ------------------------------------------------------------------------------
+
+def test_lab_period_is_read_from_the_reply(fake_llm):
+    llm = fake_llm(json.dumps({"medication": [], "labs": {"required": True, "period": "2m"}}))
+    result = med_eform.analyze_plan_for_eforms("Repeat lipids in 2 months.", llm)
+    assert result["labs"] is True and result["lab_period"] == "2m"
+
+
+def test_lab_period_is_none_when_labs_not_required(fake_llm):
+    llm = fake_llm(json.dumps({"medication": [], "labs": {"required": False, "period": "2w"}}))
+    result = med_eform.analyze_plan_for_eforms("Echo in 3 months.", llm)
+    assert result["labs"] is False and result["lab_period"] is None
+
+
+def test_old_boolean_labs_reply_still_works(fake_llm):
+    result = med_eform.analyze_plan_for_eforms("Repeat CBC.", fake_llm(reply([], labs=True)))
+    assert result["labs"] is True and result["lab_period"] is None
+
+
+@pytest.mark.parametrize("scope,mode,llm_reply", [
+    ("", "llm", None),                                        # empty plan
+    ("Repeat CBC and potassium.", "keyword", None),           # keyword mode
+    ("Repeat CBC and potassium.", "llm", RuntimeError("x")),  # LLM failed -> keyword fallback
+])
+def test_every_branch_returns_lab_period(fake_llm, scope, mode, llm_reply):
+    # client._open_relevant_eforms reads decisions["lab_period"]; a missing key used to raise
+    # KeyError on the fallback paths, so neither eForm opened.
+    result = med_eform.analyze_plan_for_eforms(scope, fake_llm(llm_reply), mode=mode)
+    assert "lab_period" in result and result["lab_period"] is None

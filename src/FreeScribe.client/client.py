@@ -2205,18 +2205,25 @@ def _open_labs_eform(plan_text: str, labwork_period: str = "2w"):
         if not checkboxes:
             print("No lab checkboxes to tick; opening the labs eForm without pre-selection")
 
+        driver = oscar.driver
+        before = set(driver.window_handles)
         oscar.open_new_eform(LABS_FORM_FID, checkboxes)
 
-        # Update labwork date element
-        driver = oscar.driver
-        WebDriverWait(driver, 10).until(lambda d: len(d.window_handles) > 1)
-        driver.switch_to.window(driver.window_handles[-1])
-        posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
-        test_date = _calculate_lab_date(labwork_period).strftime("%Y-%m-%d")
+        # Update labwork date element in the window just opened (found by comparing handles, since
+        # the medication eForm may have opened just before it), then always return to the main
+        # window so later driver calls do not run against the labs eForm.
+        try:
+            WebDriverWait(driver, 10).until(lambda d: len(set(d.window_handles) - before) > 0)
+            labs_window = next(h for h in driver.window_handles if h not in before)
+            driver.switch_to.window(labs_window)
+            posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
+            test_date = _calculate_lab_date(labwork_period).strftime("%Y-%m-%d")
 
-        posttestd.clear()
-        posttestd.send_keys(test_date)
-        print(f"Updated labwork completion date to {test_date}")
+            posttestd.clear()
+            posttestd.send_keys(test_date)
+            print(f"Updated labwork completion date to {test_date}")
+        finally:
+            driver.switch_to.window(oscar.home_window)
     except Exception as e:
         print(f"Could not auto-open labs eForm ({type(e).__name__}): {e}")
         return
