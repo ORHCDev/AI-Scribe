@@ -117,7 +117,8 @@ def build_med_prompt(plan: str) -> str:
     return (
         "You are reviewing the PLAN section of a cardiology note. Return JSON in exactly this format:\n"
         '{"medication": [{"action": "start|increase|decrease|stop", "name": "drug name", '
-        '"text": "prescription line", "ordered": true or false}], "labs": true or false}\n\n'
+        '"text": "prescription line", "ordered": true or false}], "labs": {"required": true or false, '
+        '"period": string (such as "7d", "2w", "1m", etc)} }\n\n'
         '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
         "Continuing an existing medication unchanged does NOT count. Tests, imaging, procedures, "
         "lifestyle advice, and appointments do NOT count. Use an empty list if there are none. "
@@ -134,9 +135,12 @@ def build_med_prompt(plan: str) -> str:
         "an entry in the STANDARD LINES below, copy that entry exactly, including any LU code. "
         "Otherwise write it as 'Drug dose frequency'. Never invent a dose that is not in the plan. "
         'For "stop", "text" may be empty.\n\n'
-        '"labs" is true only if the plan orders or requests laboratory blood or urine tests (e.g. '
+        '"labs"["required"] is true only if the plan orders or requests laboratory blood or urine tests (e.g. '
         "bloodwork, CBC, electrolytes, creatinine/eGFR, lipids, A1C, TSH, BNP, troponin, INR, "
         "urinalysis). Imaging, ECG, echo, Holter, and stress tests do NOT count.\n\n"
+        'If "labs"["required"] is true, then "labs"["period"] should represent when the lab work is requested '
+        'to be completed. For example, if the note says "complete in 2 months", the value should be "2m". '
+        'If "labs"["required"] is false, "labs"["period"] should simply be null.\n\n'
         f"STANDARD LINES:\n{options}\n\n"
         f"PLAN:\n{plan}\n\n"
         "Return ONLY the JSON object, with no other text."
@@ -144,7 +148,7 @@ def build_med_prompt(plan: str) -> str:
 
 
 def parse_med_response(resp: str) -> dict:
-    """Parse the model's reply into {"open": bool, "changes": list, "labs": bool}.
+    """Parse the model's reply into {"open": bool, "changes": list, "labs": bool, "lab_period": str | None}.
     "open" is True whenever the model reported a medication change prescribed at this visit, even
     one that could not be turned into a prescription line, so the form still opens (unfilled) for
     the clinician. Changes that are only recommended/suggested do not open it.
@@ -164,13 +168,30 @@ def parse_med_response(resp: str) -> dict:
             raise ValueError(f"invalid JSON in response: {resp[:200]!r}") from e
     if not isinstance(parsed, dict):
         raise ValueError(f"no usable JSON in response: {resp[:200]!r}")
+    
+    # Medication changes
     raw = parsed.get("medication")
     ordered = [item for item in raw if is_ordered(item)] if isinstance(raw, list) else []
+
+    # Lab requirements
+    labs_data = parsed.get("labs")
+    if isinstance(labs_data, dict):
+        labs_required = as_flag(labs_data.get("required", False))
+        lab_period = labs_data.get("period") if labs_required else None
+
+        if lab_period is not None:
+            lab_period = str(lab_period).strip() or None
+    else:
+        # Handle older version where labs was simply a boolean flag
+        labs_required = as_flag(labs_data)
+        lab_period = None
+
     return {
         # Recommendations alone do not open the form.
         "open": len(ordered) > 0,
         "changes": clean_med_changes(raw),
-        "labs": as_flag(parsed.get("labs", False)),
+        "labs": labs_required,
+        "lab_period": lab_period
     }
 
 
@@ -210,7 +231,11 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         print(f"eForm LLM gate failed, falling back to keyword: {e}")
         flags = keyword_flags(scope)
         med = {"open": flags["medication"], "changes": [], "labs": flags["labs"]}
-    return {"medication": {"open": med["open"], "changes": med["changes"]}, "labs": med["labs"]}
+    return {
+        "medication": {"open": med["open"], "changes": med["changes"]}, 
+        "labs": med["labs"], 
+        "lab_period": med["lab_period"]
+    }
 
 
 def format_rx_lines(changes: list[dict]) -> str:
