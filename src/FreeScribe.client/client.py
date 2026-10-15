@@ -70,6 +70,7 @@ from utils.patient_details import PatientDetailsDB, find_details_from_db
 from utils.referral_form_processor import get_referral_labels
 from utils.lab_analysis import analyze_plan_for_labs
 from utils import med_eform
+from utils.note_prompts import with_speaker_rules, TRANSCRIPT_SPEAKER_RULES
 import ctypes
 import sys
 from UI.DebugWindow import DualOutput
@@ -1534,6 +1535,8 @@ def generate_note(formatted_message):
                     To complete the remaining sections, use the following information. Ensure to write everything in 
                     paragraphs, rather than bullet points. Do NOT invent new sections that were not listed above.
 
+{TRANSCRIPT_SPEAKER_RULES}
+
                     {formatted_message}
 
                     Output the complete note.
@@ -1720,7 +1723,7 @@ def generate_note(formatted_message):
 
                 
                 else:
-                    prompt = ai_prompts.get(prompt_type)
+                    prompt = with_speaker_rules(ai_prompts.get(prompt_type))
                     ai_response = send_text_to_chatgpt(f"{prompt}\nPATIENT'S SEX: {sex}\n\n{formatted_message}")
                     update_gui_with_response(ai_response)
 
@@ -2409,7 +2412,7 @@ def upload_consult_and_mh():
     #prompt_dropdown.set("Consult")
     #generate_note(encounter_convo)
     
-    prompt = ai_prompts.get("Consult")
+    prompt = with_speaker_rules(ai_prompts.get("Consult"))
     consult = chatbot.ai_conn.send_message(content=encounter_convo, pre_prompt=prompt)
     #consult = response_display.scrolled_text.get("1.0", tk.END).strip()
 
