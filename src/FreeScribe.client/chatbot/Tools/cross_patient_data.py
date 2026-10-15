@@ -586,7 +586,8 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
     category="cross_patient_data",
     description=(
         "Unified population-level lookup that returns active patients matching any combination of cardiac "
-        "conditions, medications, and/or medical history within a recent time period in a single call. When "
+        "conditions, medications, and/or medical history within a recent time period in a single call. Use conditions "
+        "ONLY for obviously cardiac issues; put all other conditions in medical_history. When "
         "appointment_date is provided, results are further limited to patients who have an appointment on that "
         "date or within that range and each patient's appointment details are included. Prefer this over calling condition_lookup and "
         "medication_lookup separately, especially when the question combines a condition with a medication "
@@ -616,9 +617,9 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
         "Output all fields in a table format."
     ),
     parameters={
-        "conditions": "Optional. List of cardiac condition names or partial names to search for in cardiac history entries. Expand each condition into every plausible abbreviation and synonym (e.g. 'atrial fibrillation' also 'AF' and 'AFib'; 'myocardial infarction' also 'MI'). Include the original term.",
-        "medications": "Optional. List of medication names or partial names to search for in medication entries. Expand each drug into every plausible generic/brand name, abbreviation, and synonym (e.g. 'vincristine' also 'VCR'; 'metoprolol' also 'Lopressor'). Include the original term.",
-        "medical_history": "Optional. List of medical history terms or partial names to search for in patient medical history entries (type 'PMH'). Expand each term into every plausible abbreviation and synonym, including the original term.",
+        "conditions": "Optional. Cardiac conditions ONLY. Never put non-cardiac conditions here. Expand each into every plausible abbreviation and synonym; include the original term.",
+        "medications": "Optional. List of medication names or partial names to search for in medication entries. Expand each drug into every plausible generic/brand name, abbreviation, and synonym; include the original term.",
+        "medical_history": "Optional. Use for ALL non-cardiac conditions and general past medical history terms. Never put these in conditions. Expand each into every plausible abbreviation and synonym; include the original term.",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
         "appointment_date": "Optional. When set, only patients with an appointment on this date or within this range are returned, along with their appointment details. Accepts 'YYYY-MM-DD', 'today', 'tomorrow', 'yesterday', 'this week', 'next week', 'this month', 'next month', or an explicit range such as '2025-06-01 to 2025-06-07'.",
         "provider_name": "Optional. Filters appointments to a provider, given with or without 'Dr.'. If provided without appointment_date, defaults to today's appointments.",
