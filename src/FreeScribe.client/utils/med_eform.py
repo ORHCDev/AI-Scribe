@@ -213,28 +213,30 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
     Returns
     -------
     {"medication": {"open": bool, "changes": [{"action", "name", "text"}, ...]},
-     "labs": bool}
+     "labs": bool, "lab_period": str | None}
     "changes" may be empty while "open" is True (e.g. keyword fallback), in which case the
     medication form is opened without pre-filling."""
     scope = str(scope or "").strip()
     if not scope:
-        return {"medication": {"open": False, "changes": []}, "labs": False}
+        return {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None}
 
     if mode != "llm":
         print(f"[med eForm] mode={mode!r}: keyword check only, no LLM call, form will not be pre-filled")
         flags = keyword_flags(scope)
-        return {"medication": {"open": flags["medication"], "changes": []}, "labs": flags["labs"]}
+        return {"medication": {"open": flags["medication"], "changes": []}, "labs": flags["labs"],
+                "lab_period": None}
 
     try:
         med = extract_med_changes(scope, send_fn)
     except Exception as e:
         print(f"eForm LLM gate failed, falling back to keyword: {e}")
         flags = keyword_flags(scope)
-        med = {"open": flags["medication"], "changes": [], "labs": flags["labs"]}
+        # No period from keywords; the labs form then uses its default due date.
+        med = {"open": flags["medication"], "changes": [], "labs": flags["labs"], "lab_period": None}
     return {
-        "medication": {"open": med["open"], "changes": med["changes"]}, 
-        "labs": med["labs"], 
-        "lab_period": med["lab_period"]
+        "medication": {"open": med["open"], "changes": med["changes"]},
+        "labs": med["labs"],
+        "lab_period": med.get("lab_period"),
     }
 
 
