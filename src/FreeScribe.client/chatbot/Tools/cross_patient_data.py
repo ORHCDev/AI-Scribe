@@ -604,10 +604,11 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
         "grouped by patient. Only active patients are included, and only entries recorded on or after the calculated "
         "start date based on the provided period are considered. This tool is most relevant for cohort "
         "identification, combined condition/medication/history audits, appointment day-sheet filtering, quality "
-        "improvement initiatives, and clinical reporting. For each named condition, medication, or history term, include "
-        "every plausible alternate form the EMR might store (abbreviations, synonyms, generic and brand names) in the "
-        "corresponding list so entries recorded under an alternate name are not missed; the final answer must state which "
-        "alternate terms were assumed."
+        "improvement initiatives, and clinical reporting. Supply each named condition, medication, or history term as "
+        "its own list containing the term followed by every plausible alternate form the EMR might store (abbreviations, "
+        "synonyms, generic and brand names) so entries recorded under an alternate name are not missed; alternate names "
+        "within one term are ORed, while distinct terms are ANDed. The final answer must state which alternate terms "
+        "were assumed."
     ),
     context=(
         "Population-level lookup of patients matching one or more cardiac conditions, medications, and/or medical "
@@ -617,9 +618,9 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
         "Output all fields in a table format."
     ),
     parameters={
-        "conditions": "Optional. Cardiac conditions ONLY. Never put non-cardiac conditions here. Expand each into every plausible abbreviation and synonym; include the original term.",
-        "medications": "Optional. List of medication names or partial names to search for in medication entries. Expand each drug into every plausible generic/brand name, abbreviation, and synonym; include the original term.",
-        "medical_history": "Optional. Use for ALL non-cardiac conditions and general past medical history terms. Never put these in conditions. Expand each into every plausible abbreviation and synonym; include the original term.",
+        "conditions": "Optional. Cardiac conditions ONLY. Never put non-cardiac conditions here. Each condition is itself a list: the term plus every plausible abbreviation/synonym (e.g. [['afib', 'AF', 'atrial fibrillation'], ['heart failure']]). Distinct conditions are combined with AND; alternates within a condition with OR.",
+        "medications": "Optional. List of medication names or partial names to search for in medication entries. Each medication is itself a list: the drug plus every plausible generic/brand name, abbreviation, and synonym. Distinct medications are combined with AND; alternates within a medication with OR.",
+        "medical_history": "Optional. Use for ALL non-cardiac conditions and general past medical history terms. Never put these in conditions. Each term is itself a list: the term plus every plausible abbreviation/synonym. Distinct terms are combined with AND; alternates within a term with OR.",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
         "appointment_date": "Optional. When set, only patients with an appointment on this date or within this range are returned, along with their appointment details. Accepts 'YYYY-MM-DD', 'today', 'tomorrow', 'yesterday', 'this week', 'next week', 'this month', 'next month', or an explicit range such as '2025-06-01 to 2025-06-07'.",
         "provider_name": "Optional. Filters appointments to a provider, given with or without 'Dr.'. If provided without appointment_date, defaults to today's appointments.",
@@ -628,9 +629,9 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
 def cross_patient_lookup(
     db_conn,
     period: str,
-    conditions: list[str] | None = None,
-    medications: list[str] | None = None,
-    medical_history: list[str] | None = None,
+    conditions: list[str | list[str]] | None = None,
+    medications: list[str | list[str]] | None = None,
+    medical_history: list[str | list[str]] | None = None,
     appointment_date: str | None = None,
     provider_name: str | None = None
 ):
@@ -646,14 +647,19 @@ def cross_patient_lookup(
         An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. \\
         I.e. '6m' would indicate 6 months.
 
-    conditions : list[str] | None
-        Optional list of cardiac conditions to find patients that have them.
+    conditions : list[str | list[str]] | None
+        Optional list of cardiac conditions to find patients that have them. Each
+        condition is itself a list holding the term followed by its alternate names
+        (e.g. [['afib', 'AF', 'atrial fibrillation'], ['heart failure']]); distinct
+        conditions are combined with AND while alternates within a condition are ORed.
 
-    medications : list[str] | None
-        Optional list of medications to find patients that are on them.
+    medications : list[str | list[str]] | None
+        Optional list of medications to find patients that are on them. Each medication
+        is itself a list of the term and its alternate names, combined as above.
 
-    medical_history : list[str] | None
-        Optional list of medical history terms to find patients that have them.
+    medical_history : list[str | list[str]] | None
+        Optional list of medical history terms to find patients that have them. Each term
+        is itself a list of the term and its alternate names, combined as above.
 
     appointment_date : str | None
         Optional appointment date or range as 'YYYY-MM-DD', 'today', 'tomorrow',
@@ -673,12 +679,22 @@ def cross_patient_lookup(
         patient, including any matching appointment details.
     """
 
-    def _normalize(values: list[str] | str | None) -> list[str]:
+    def _normalize(values: list[str | list[str]] | str | None) -> list[list[str]]:
         if not values:
             return []
         if isinstance(values, str):
             values = [values]
-        return [str(value).replace("'", "''") for value in values if str(value).strip()]
+        groups = []
+        for value in values:
+            alternates = value if isinstance(value, (list, tuple)) else [value]
+            alternates = [
+                str(alternate).replace("'", "''")
+                for alternate in alternates
+                if str(alternate).strip()
+            ]
+            if alternates:
+                groups.append(alternates)
+        return groups
 
     sources = {
         key: normalized
@@ -786,10 +802,13 @@ def cross_patient_lookup(
     for key, values in sources.items():
         spec = _CROSS_LOOKUP_SOURCES[key]
         types_sql = ", ".join(f"'{mtype}'" for mtype in spec["types"])
-        like_filter = " OR ".join(
-            f"LOWER(m.dataField) LIKE LOWER('%{value}%')" for value in values
-        )
-        match = f"(m.type IN ({types_sql}) AND ({like_filter}))"
+        group_filters = [
+            "(" + " OR ".join(
+                f"LOWER(m.dataField) LIKE LOWER('%{alternate}%')" for alternate in group
+            ) + ")"
+            for group in values
+        ]
+        match = f"(m.type IN ({types_sql}) AND ({' OR '.join(group_filters)}))"
         match_filters.append(match)
         select_aggs.append(
             f"GROUP_CONCAT(CASE WHEN {match} "
@@ -802,6 +821,10 @@ def cross_patient_lookup(
             f"ORDER BY m.dateObserved SEPARATOR '\n') AS {key}_dates"
         )
         having_filters.append(f"{key}_entries IS NOT NULL")
+        having_filters.extend(
+            f"MAX(CASE WHEN m.type IN ({types_sql}) AND {group_filter} THEN 1 ELSE 0 END) = 1"
+            for group_filter in group_filters
+        )
 
     if appointment_having:
         having_filters.append(appointment_having)
