@@ -2116,7 +2116,8 @@ def _open_relevant_eforms(consult_text: str = ""):
     else:
         print("No medication change detected in the plan; skipping medication eForm")
     if decisions["labs"]:
-        _open_labs_eform(scope, decisions["lab_period"])
+        if decisions["lab_period"]: _open_labs_eform(scope, decisions["lab_period"])
+        else: _open_labs_eform(scope)
     else:
         print("No labwork requirement detected in the plan; skipping labs eForm")
 
@@ -2164,7 +2165,7 @@ def _open_medication_eform(changes: list[dict] | None = None):
             pass
 
 
-def _open_labs_eform(plan_text: str, labwork_period: str | None = "2w"):
+def _open_labs_eform(plan_text: str, labwork_period: str = "2w"):
     LABS_FORM_FID = 659
 
     print(f"oscar object: {oscar}")
@@ -2217,13 +2218,13 @@ def _open_labs_eform(plan_text: str, labwork_period: str | None = "2w"):
 def _calculate_lab_date(labwork_period: str | None) -> date:
     """Calculate the requested lab date relative to today.
 
-    Supported periods: d (days), w (weeks), m (months).
+    Supported periods: d (days), w (weeks), m (months), y (years).
     Defaults to today if the period is missing or invalid.
     """
     if not labwork_period:
         return date.today()
 
-    match = re.fullmatch(r"\s*(\d+)\s*([dwm])\s*", labwork_period.lower())
+    match = re.fullmatch(r"\s*(\d+)\s*([dwmy])\s*", labwork_period.lower())
     if not match:
         print(f"Unrecognized labwork period {labwork_period!r}; using today.")
         return date.today()
@@ -2235,6 +2236,7 @@ def _calculate_lab_date(labwork_period: str | None) -> date:
     if unit == "d": return today + timedelta(days=amount)
     elif unit == "w": return today + timedelta(weeks=amount)
     elif unit == "m": return today + relativedelta(months=amount)
+    elif unit == "y": return today + relativedelta(years=amount)
     else: raise ValueError(f'"{labwork_period}" is not a valid period')
 
 
