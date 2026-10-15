@@ -1358,10 +1358,11 @@ def generate_note(formatted_message):
                         FROM measurements
                         WHERE demographicNo = {demo_no}
                         AND (
-                            (type IN ('ECG', 'ECHO1', 'ECHO2')
+                            (type IN ('ECG', 'ECHO1', 'ECHO2', 'VA', 'VA2', 'CS', 'CS2', 'CS3')
                             AND providerNo = '{provider_no}')
                             OR type IN (
-                                'EST', 'SECHO', 'SECHO1',
+                                'EST',
+                                'SECHO', 'SECHO1',
                                 'HOLT', 'HOLT1', 'HOLT2'
                             )
                         )
@@ -1372,10 +1373,11 @@ def generate_note(formatted_message):
                     AND m.dateObserved = latest.latest_date
                     WHERE m.demographicNo = {demo_no}
                     AND (
-                        (m.type IN ('ECG', 'ECHO1', 'ECHO2')
+                        (m.type IN ('ECG', 'ECHO1', 'ECHO2', 'VA', 'VA2', 'CS', 'CS2', 'CS3')
                         AND m.providerNo = '{provider_no}')
                         OR m.type IN (
-                            'EST', 'SECHO', 'SECHO1',
+                            'EST',
+                            'SECHO', 'SECHO1',
                             'HOLT', 'HOLT1', 'HOLT2'
                         )
                     )
@@ -1398,7 +1400,12 @@ def generate_note(formatted_message):
                     ecg_text = str(measurements.get("ECG", ""))
                     echo_text = "".join([
                         str(measurements.get("ECHO1", "")),
-                        str(measurements.get("ECHO2", ""))
+                        str(measurements.get("ECHO2", "")),
+                        str(measurements.get("VA", "")),
+                        str(measurements.get("VA2", "")),
+                        str(measurements.get("CS", "")),
+                        str(measurements.get("CS2", "")),
+                        str(measurements.get("CS3", ""))
                     ])
                     est_text = str(measurements.get("EST", ""))
                     secho_text = "".join([
