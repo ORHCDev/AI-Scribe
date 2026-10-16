@@ -499,7 +499,7 @@ def condition_lookup(db_conn, conditions : list[str], period : str):
 
 
 _CROSS_LOOKUP_SOURCES = {
-    "conditions": {
+    "cardiac_conditions": {
         "types": ("CARD", "CARD1"),
         "prefix": "new history: ",
         "label": "condition",
@@ -618,7 +618,7 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
         "Output all fields in a table format."
     ),
     parameters={
-        "conditions": "Optional. Cardiac conditions ONLY. Never put non-cardiac conditions here. Each condition is itself a list: the term plus every plausible abbreviation/synonym (e.g. [['afib', 'AF', 'atrial fibrillation'], ['heart failure']]). Distinct conditions are combined with AND; alternates within a condition with OR.",
+        "cardiac_conditions": "Optional. Cardiac conditions ONLY. Never put non-cardiac conditions here. Each condition is itself a list: the term plus every plausible abbreviation/synonym (e.g. [['afib', 'AF', 'atrial fibrillation'], ['heart failure']]). Distinct conditions are combined with AND; alternates within a condition with OR.",
         "medications": "Optional. List of medication names or partial names to search for in medication entries. Each medication is itself a list: the drug plus every plausible generic/brand name, abbreviation, and synonym. Distinct medications are combined with AND; alternates within a medication with OR.",
         "medical_history": "Optional. Use for ALL non-cardiac conditions and general past medical history terms. Never put these in conditions. Each term is itself a list: the term plus every plausible abbreviation/synonym. Distinct terms are combined with AND; alternates within a term with OR.",
         "period": "Required. Time window to search within, expressed as a duration such as '6m', '30d', or '1y'.",
@@ -629,7 +629,7 @@ def _resolve_appointment_range(value: str) -> tuple[str, str] | None:
 def cross_patient_lookup(
     db_conn,
     period: str,
-    conditions: list[str | list[str]] | None = None,
+    cardiac_conditions: list[str | list[str]] | None = None,
     medications: list[str | list[str]] | None = None,
     medical_history: list[str | list[str]] | None = None,
     appointment_date: str | None = None,
@@ -647,7 +647,7 @@ def cross_patient_lookup(
         An integer followed by one of 'd', 'm', or 'y' for days, months, or years respectively. \\
         I.e. '6m' would indicate 6 months.
 
-    conditions : list[str | list[str]] | None
+    cardiac_conditions : list[str | list[str]] | None
         Optional list of cardiac conditions to find patients that have them. Each
         condition is itself a list holding the term followed by its alternate names
         (e.g. [['afib', 'AF', 'atrial fibrillation'], ['heart failure']]); distinct
@@ -699,7 +699,7 @@ def cross_patient_lookup(
     sources = {
         key: normalized
         for key, normalized in (
-            ("conditions", _normalize(conditions)),
+            ("cardiac_conditions", _normalize(cardiac_conditions)),
             ("medications", _normalize(medications)),
             ("medical_history", _normalize(medical_history)),
         )
