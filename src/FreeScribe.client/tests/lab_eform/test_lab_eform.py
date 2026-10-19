@@ -190,3 +190,46 @@ def test_returns_to_main_window_when_form_never_loads(driver, tmp_path):
         oscar.open_new_eform(659, boxes("CHFFollowUp"))
     assert oscar.wait.calls == 2
     assert driver.current_window_handle == oscar.home_window
+
+
+# --- one checkbox per form (clinician rule 12) --------------------------------------------------
+
+from utils.lab_analysis import count_lab_tests, pick_most_extensive  # noqa: E402
+
+
+def picked(monkeypatch, codes):
+    return [cb["name"].strip() for cb in
+            pick_most_extensive(select_like_open_labs_eform(form_checkboxes(monkeypatch), codes))]
+
+
+def test_counts_tests_from_the_forms_onclick(monkeypatch):
+    counts = {cb["name"].strip(): count_lab_tests(cb["onclick"]) for cb in form_checkboxes(monkeypatch)}
+    # X-boxes plus "Other Tests" items, e.g. CHF Follow-up: Na, K, Cl, Cr, Albumin + Mg, Ca, NT-proBNP
+    assert counts["CHFFollowUp"] == 8
+    assert counts["RenalFunction"] == 4
+    assert counts["comprehensive"] > counts["minicomprehensive"] > counts["CHFFollowUp"] > counts["RenalFunction"]
+    assert counts["FastingInfo"] == 0
+
+
+@pytest.mark.parametrize("codes,expected", [
+    (["CHFFollowUp", "comprehensive"], ["comprehensive"]),            # the clinician's example
+    (["RenalFunction", "CHFFollowUp"], ["CHFFollowUp"]),
+    (["Digoxin", "Amiodarone"], ["Amiodarone"]),
+    (["CompleteBloodCount"], ["CompleteBloodCount"]),
+    (["CHFBaseline", "comprehensive"], ["comprehensive"]),            # tie -> first on the form
+    ([], []),
+])
+def test_only_the_most_extensive_checkbox_is_kept(monkeypatch, codes, expected):
+    assert picked(monkeypatch, codes) == expected
+
+
+def test_prompt_asks_for_every_match():
+    assert "Include EVERY checkbox that applies" in LAB_CHECKBOX_ANALYSIS_PROMPT
+
+
+def test_opened_form_has_exactly_one_box_ticked(driver, tmp_path, monkeypatch):
+    fields = pick_most_extensive(select_like_open_labs_eform(
+        form_checkboxes(monkeypatch), ["RenalFunction", "CHFFollowUp", "comprehensive", "DyslipidemiaOnStatin"]))
+    oscar = make_oscar(driver, write_form(tmp_path))
+    oscar.open_new_eform(659, fields)
+    assert eform_window_state(driver, oscar)["checked"] == ["comprehensive"]

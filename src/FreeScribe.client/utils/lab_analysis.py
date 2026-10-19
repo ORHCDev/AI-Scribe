@@ -27,7 +27,7 @@ COMPREHENSIVE CARDIAC:
 - comprehensive (most complete cardiac panel - should be checked when comprehensive or full blood work is requested)
 - minicomprehensive (alternative when full panel not needed - should be checked when testing LP(a)/lipoprotein A)
 - COMRR (renal risk for statin patients - should be checked when the lab mentions CK)
-- NewCardiomyopathy (new cardiomyopathy/IHD workup)
+- NewCardiomyopathy (new cardiomyopathy/IHD workup - should be checked when the plan requests a work-up for cardiomyopathy)
 
 CHF:
 - CHFBaseline (initial CHF workup)
@@ -47,7 +47,7 @@ DM:
 
 DYSLIPIDEMIA:
 - CholesterolFBS (Screening)
-- DyslipidemiaOnStatin (check if "lipids" or "lipid profile" is mentioned, or if a statin drug is started, stopped, increased or decreased - lipitor/atorvastatin, Crestor/rosuvastatin, Zocor/simvastatin, Pravachol/pravastatin, lovastatin)
+- DyslipidemiaOnStatin (On Statin - should be checked when a statin drug is started, stopped, increased or decreased - lipitor/atorvastatin, Crestor/rosuvastatin, Zocor/simvastatin, Pravachol/pravastatin, lovastatin; also when "lipids" or a "lipid profile" is requested)
 
 HYPERTENSION:
 - HypertensionAnnual (if the plan explicitly mentions Hypertension Annual)
@@ -76,6 +76,8 @@ CRITICAL RULES:
 2. Your response must start with [ and end with ]. No other text.
 3. ONLY use code names from the list above. Do NOT invent new code names or use descriptions.
 4. If a term in the PLAN doesn't match any checkbox code name in the list above, do NOT include it in your response.
+5. Include EVERY checkbox that applies to the PLAN. Only one box is ticked on the form in the end (the one
+   with the most tests), and that choice is made after your answer, so do not drop matches yourself.
 
 Example PLAN snippet: "Check lipid profile and CBC."
 Correct response: ["DyslipidemiaOnStatin", "CompleteBloodCount"]
@@ -174,3 +176,33 @@ def analyze_plan_for_labs(plan_text: str, send_text_to_chatgpt_func, map_respons
         traceback.print_exc()
         return []
 
+
+# --- one checkbox per form ----------------------------------------------------------------------
+
+import re as _re
+
+_X_BOX = _re.compile(r"document\.lab\.(\w+)\.value\s*=\s*'X'")
+_OTHER_TESTS = _re.compile(r"add\(\s*'OtherTests'\s*,\s*'([^']*)'\s*\)")
+
+
+def count_lab_tests(onclick: str | None) -> int:
+    """Number of tests a lab eForm checkbox orders: distinct X-boxes it marks plus the items it adds to
+    "Other Tests" (split on commas, newlines and '&')."""
+    onclick = onclick or ""
+    x_boxes = set(_X_BOX.findall(onclick))
+    other = []
+    for chunk in _OTHER_TESTS.findall(onclick):
+        other += [p.strip() for p in _re.split(r",|\\n|&|\n", chunk) if p.strip()]
+    return len(x_boxes) + len(other)
+
+
+def pick_most_extensive(checkboxes: list[dict]) -> list[dict]:
+    """Keep only the checkbox (from Oscar.get_eform_checkboxes) that orders the most tests. Ties go to
+    the one that comes first on the form. Returns [] or a one-element list."""
+    if not checkboxes:
+        return []
+    best = max(enumerate(checkboxes), key=lambda pair: (count_lab_tests(pair[1].get("onclick")), -pair[0]))[1]
+    if len(checkboxes) > 1:
+        ranked = ", ".join(f"{cb['name'].strip()}={count_lab_tests(cb.get('onclick'))}" for cb in checkboxes)
+        print(f"Lab eForm: only one checkbox per form; keeping {best['name'].strip()!r} (tests: {ranked})")
+    return [best]

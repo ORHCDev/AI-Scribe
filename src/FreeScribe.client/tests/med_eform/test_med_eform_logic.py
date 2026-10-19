@@ -38,14 +38,14 @@ def test_changes_open_form_with_prefill(fake_llm):
 
 def test_no_changes_does_not_open(fake_llm):
     result = med_eform.analyze_plan_for_eforms("Continue current medications.", fake_llm(reply([])))
-    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None}
+    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
 
 
 @pytest.mark.parametrize("scope", ["", "   ", None])
 def test_empty_plan_opens_nothing_and_skips_llm(fake_llm, scope):
     llm = fake_llm(reply([{"action": "start", "name": "X", "text": "X 1 mg daily"}]))
     result = med_eform.analyze_plan_for_eforms(scope, llm)
-    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None}
+    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
     assert llm.prompts == []
 
 
@@ -67,7 +67,7 @@ def test_unmappable_change_still_opens_form_unfilled(fake_llm):
 def test_bad_llm_output_falls_back_to_keywords(fake_llm, bad_reply):
     result = med_eform.analyze_plan_for_eforms(PLAN, fake_llm(bad_reply))
     # Keywords see "start"/"stop" and "repeat CBC": both forms open, nothing pre-filled.
-    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None}
+    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
 
 
 def test_python_style_booleans_are_accepted(fake_llm):
@@ -82,7 +82,7 @@ def test_python_style_booleans_are_accepted(fake_llm):
 def test_json_wrapped_in_prose_or_code_fence(fake_llm):
     llm = fake_llm("Here you go:\n```json\n" + reply([], labs=True) + "\n```")
     assert med_eform.analyze_plan_for_eforms(PLAN, llm) == {
-        "medication": {"open": False, "changes": []}, "labs": True, "lab_period": None}
+        "medication": {"open": False, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -96,7 +96,7 @@ def test_as_flag(value, expected):
 def test_keyword_mode_never_calls_llm(fake_llm):
     llm = fake_llm(RuntimeError("should not be called"))
     result = med_eform.analyze_plan_for_eforms(PLAN, llm, mode="keyword")
-    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None}
+    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
     assert llm.prompts == []
 
 

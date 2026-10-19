@@ -69,7 +69,7 @@ from utils.lab_processor import generate_lab_hl7
 from utils.auto_processing import AutoProcessor
 from utils.patient_details import PatientDetailsDB, find_details_from_db
 from utils.referral_form_processor import get_referral_labels
-from utils.lab_analysis import analyze_plan_for_labs
+from utils.lab_analysis import analyze_plan_for_labs, pick_most_extensive
 from utils import med_eform
 from utils.note_prompts import with_speaker_rules, TRANSCRIPT_SPEAKER_RULES
 import ctypes
@@ -2199,6 +2199,8 @@ def _open_labs_eform(checkbox_strings: dict, labwork_period: str = "2w"):
             print(f"Lab codes from the LLM not found on eForm {LABS_FORM_FID}: {unknown}")
         if not checkboxes:
             print("No lab checkboxes to tick; opening the labs eForm without pre-selection")
+        # Clinician rule: only one checkbox per lab eForm, the most extensive one.
+        checkboxes = pick_most_extensive(checkboxes)
 
         driver = oscar.driver
         before = set(driver.window_handles)
