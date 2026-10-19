@@ -2126,8 +2126,8 @@ def _open_relevant_eforms(consult_text: str = ""):
     else:
         print("No medication change detected in the plan; skipping medication eForm")
     if decisions["labs"]:
-        if decisions["lab_period"]: _open_labs_eform(scope, decisions["lab_period"])
-        else: _open_labs_eform(scope)
+        if decisions["lab_period"]: _open_labs_eform(decisions["lab_checkboxes"], decisions["lab_period"])
+        else: _open_labs_eform(decisions["lab_checkboxes"])
     else:
         print("No labwork requirement detected in the plan; skipping labs eForm")
 
@@ -2175,21 +2175,16 @@ def _open_medication_eform(changes: list[dict] | None = None):
             pass
 
 
-def _open_labs_eform(plan_text: str, labwork_period: str = "2w"):
+def _open_labs_eform(checkbox_strings: dict, labwork_period: str = "2w"):
     LABS_FORM_FID = 659
 
     print(f"oscar object: {oscar}")
     print(f"oscar.driver: {getattr(oscar, 'driver', 'None')}")
+    print(f"checkbox_strings: {checkbox_strings}")
 
     try:
         if oscar.driver is None:
             raise RuntimeError("Oscar WebDriver is None; it may have been cleaned up.")
-    
-        checkbox_strings = {
-            s.strip() for s in analyze_plan_for_labs(plan_text, send_text_to_chatgpt, False)
-            if isinstance(s, str)
-        }
-        print(f"checkbox_strings: {checkbox_strings}")
 
         checkbox_data = oscar.get_eform_checkboxes(LABS_FORM_FID)
         checkbox_vars = {}

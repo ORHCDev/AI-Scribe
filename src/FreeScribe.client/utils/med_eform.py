@@ -7,6 +7,7 @@ import re
 
 from utils.rx_med_options import RX_MED_OPTIONS
 from utils.rx_med_update import MED_UPDATE_JS
+from utils.lab_analysis import analyze_plan_for_labs
 
 RESET_BUTTON_TEXT = "new or dose change"
 
@@ -135,9 +136,17 @@ def build_med_prompt(plan: str) -> str:
         "an entry in the STANDARD LINES below, copy that entry exactly, including any LU code. "
         "Otherwise write it as 'Drug dose frequency'. Never invent a dose that is not in the plan. "
         'For "stop", "text" may be empty.\n\n'
-        '"labs"["required"] is true only if the plan orders or requests laboratory blood or urine tests (e.g. '
-        "bloodwork, CBC, electrolytes, creatinine/eGFR, lipids, A1C, TSH, BNP, troponin, INR, "
-        "urinalysis). Imaging, ECG, echo, Holter, and stress tests do NOT count.\n\n"
+        '"labs"["required"] is true if the plan orders or requests laboratory blood or urine tests (including, '
+        ' but not limited to: bloodwork, CBC, electrolytes, creatinine/eGFR, lipids, A1C, TSH, BNP, troponin, INR, '
+        'urinalysis, LP(a)/lipoprotein A), or indicates a requirement for "work up". Imaging, ECG, echo, '
+        'Holter, and stress tests do NOT count.\n\n'
+        '"labs"["required"] should also be true if any of the following drugs are started/stopped/increased/decreased, '
+        'so that a lab can be performed to follow up: amiodarone, digoxin, thiazide medication (HCTZ/hydrochlorothiazide, '
+        'Indapamide, chlorthalidone), SGLT 2 medication (dapagliflozin/Forxiga, Canagliflozin, empagliflozin/Jardiance), '
+        'statin (lipitor/atorvastatin, Crestor/rosuvastatin, Zocor/simvastatin, Pravachol/pravastatin, lovastatin), '
+        'ACe inhibitors or ARBs (Ramipril/Altace, Coversyl/perindopril, Mavik/Trandolapril, Enalapril, Quinapril, '
+        'Atacand/Candesartan, Diovan/valsartan, Olmetec/Olmesartan, Micardis/Telmisartan, Losartan). If ANY of those drugs '
+        ' are indicated to be started/stopped/increased/decreased in the plan, "labs"["required"] MUST be true.\n\n'
         'If "labs"["required"] is true, then "labs"["period"] should represent when the lab work is requested '
         'to be completed. For example, if the note says "complete in 2 months", the value should be "2m". '
         'If "labs"["required"] is false, "labs"["period"] should simply be null.\n\n'
@@ -191,7 +200,8 @@ def parse_med_response(resp: str) -> dict:
         "open": len(ordered) > 0,
         "changes": clean_med_changes(raw),
         "labs": labs_required,
-        "lab_period": lab_period
+        "lab_period": lab_period,
+        "lab_checkboxes": None
     }
 
 
@@ -202,7 +212,15 @@ def extract_med_changes(plan: str, send_fn) -> dict:
     print(f"[med eForm] calling LLM ({len(plan)} chars of PLAN)")
     resp = send_fn(prompt)
     print(f"[med eForm] LLM replied: {str(resp)[:300]!r}")
-    return parse_med_response(resp)
+    parsed_resp = parse_med_response(resp)
+    checkboxes = {
+        s.strip() for s in analyze_plan_for_labs(plan, send_fn, False)
+        if isinstance(s, str) and s.strip()
+    }
+    if checkboxes:
+        parsed_resp["labs"] = True
+        parsed_resp["lab_checkboxes"] = checkboxes
+    return parsed_resp
 
 
 def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
@@ -213,18 +231,18 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
     Returns
     -------
     {"medication": {"open": bool, "changes": [{"action", "name", "text"}, ...]},
-     "labs": bool, "lab_period": str | None}
+     "labs": bool, "lab_period": str | None, "lab_checkboxes": dict | None}
     "changes" may be empty while "open" is True (e.g. keyword fallback), in which case the
     medication form is opened without pre-filling."""
     scope = str(scope or "").strip()
     if not scope:
-        return {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None}
+        return {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
 
     if mode != "llm":
         print(f"[med eForm] mode={mode!r}: keyword check only, no LLM call, form will not be pre-filled")
         flags = keyword_flags(scope)
         return {"medication": {"open": flags["medication"], "changes": []}, "labs": flags["labs"],
-                "lab_period": None}
+                "lab_period": None, "lab_checkboxes": None}
 
     try:
         med = extract_med_changes(scope, send_fn)
@@ -232,11 +250,12 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         print(f"eForm LLM gate failed, falling back to keyword: {e}")
         flags = keyword_flags(scope)
         # No period from keywords; the labs form then uses its default due date.
-        med = {"open": flags["medication"], "changes": [], "labs": flags["labs"], "lab_period": None}
+        med = {"open": flags["medication"], "changes": [], "labs": flags["labs"], "lab_period": None, "lab_checkboxes": None}
     return {
         "medication": {"open": med["open"], "changes": med["changes"]},
         "labs": med["labs"],
         "lab_period": med.get("lab_period"),
+        "lab_checkboxes": med.get("lab_checkboxes")
     }
 
 

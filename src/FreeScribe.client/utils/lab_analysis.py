@@ -20,21 +20,21 @@ PRE-PROCEDURE:
 - EP (pre-EP procedure)
 
 THERAPEUTIC MONITORING:
-- Amiodarone (Amiodarone follow up)
-- Digoxin (Digoxin level)
+- Amiodarone (Amiodarone follow up - should be checked when Amiodarone is started or the dose is changed)
+- Digoxin (Digoxin level - should be checked when Digoxin is started or the dose is changed)
 
 COMPREHENSIVE CARDIAC:
-- comprehensive (most complete cardiac panel)
-- minicomprehensive (alternative when full panel not needed)
-- COMRR (renal risk for statin patients)
+- comprehensive (most complete cardiac panel - should be checked when comprehensive or full blood work is requested)
+- minicomprehensive (alternative when full panel not needed - should be checked when testing LP(a)/lipoprotein A)
+- COMRR (renal risk for statin patients - should be checked when the lab mentions CK)
 - NewCardiomyopathy (new cardiomyopathy/IHD workup)
 
 CHF:
 - CHFBaseline (initial CHF workup)
-- CHFFollowUp (CHF Follow-up)
+- CHFFollowUp (CHF Follow-up - should be the default checkbox when the plan simply mentions CHF)
 - CHFFollowUpStandingQ3months (CHF Standing Order Q3M)
-- thiazideFollowUp (CHF Follow-up post thiazide)
-- SGLT2FollowUp (CHF Follow-up post SGLT2)
+- thiazideFollowUp (CHF Follow-up post thiazide - should be checked when a thiazide drug is started, stopped, increased or decreased - HCTZ/hydrochlorothiazide, Indapamide, chlorthalidone)
+- SGLT2FollowUp (CHF Follow-up post SGLT2 - should be checked when a SGLT2 drug is started, stopped, increased or decreased - dapagliflozin/Forxiga, Canagliflozin, empagliflozin/Jardiance)
 - KFollowUp (CHF Follow-up post high K+)
 
 CKD STAGE 3:
@@ -47,7 +47,7 @@ DM:
 
 DYSLIPIDEMIA:
 - CholesterolFBS (Screening)
-- DyslipidemiaOnStatin (check if "lipids" or "lipid profile" is mentioned)
+- DyslipidemiaOnStatin (check if "lipids" or "lipid profile" is mentioned, or if a statin drug is started, stopped, increased or decreased - lipitor/atorvastatin, Crestor/rosuvastatin, Zocor/simvastatin, Pravachol/pravastatin, lovastatin)
 
 HYPERTENSION:
 - HypertensionAnnual (Hypertension Annual)
@@ -66,7 +66,7 @@ OTHERS:
 - LFT (LFTs - check if "lft" or "lfts" is mentioned)
 - AcuteElevatedLFT (LFT Elevation Acute)
 - ChronicElevatedLFT (LFT Elevation Chronic)
-- RenalFunction (check if "renal function", "kidney function and electrolytes", or "kidney function" is mentioned)
+- RenalFunction (check if any of the following is mentioned: "renal function", "kidney function and electrolytes", "kidney function", start/stop/increase/decrease any ACe inhibitors or ARBs: Ramipril/Altace, Coversyl/perindopril, Mavik/Trandolapril, Enalapril, Quinapril, Atacand/Candesartan, Diovan/valsartan, Olmetec/Olmesartan, Micardis/Telmisartan, Losartan)
 - Thrombosisscreen (Thrombosis screen)
 - TSHStandingorder (TSH Standing Order)
 - UrineC&S (Urine C&S - UTI)
