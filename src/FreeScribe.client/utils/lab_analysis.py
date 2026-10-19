@@ -50,9 +50,9 @@ DYSLIPIDEMIA:
 - DyslipidemiaOnStatin (check if "lipids" or "lipid profile" is mentioned, or if a statin drug is started, stopped, increased or decreased - lipitor/atorvastatin, Crestor/rosuvastatin, Zocor/simvastatin, Pravachol/pravastatin, lovastatin)
 
 HYPERTENSION:
-- HypertensionAnnual (Hypertension Annual)
-- NewHypertension (New Hypertension)
-- NewHypotension (New Hypotension)
+- HypertensionAnnual (if the plan explicitly mentions Hypertension Annual)
+- NewHypertension (if the plan explicitly mentions New Hypertension)
+- NewHypotension (if the plan explicitly mentions New Hypotension)
 
 OTHERS:
 - Autoimmune (Autoimmune ANA, RF)

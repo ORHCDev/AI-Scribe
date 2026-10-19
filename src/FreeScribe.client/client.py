@@ -20,6 +20,7 @@ import wave
 import threading
 import numpy as np
 import atexit
+import win32con, win32gui
 
 import json
 import pyaudio
@@ -2162,17 +2163,13 @@ def _open_medication_eform(changes: list[dict] | None = None):
         new_windows = [h for h in after if h not in before]
         med_window = new_windows[-1] if new_windows else after[-1]
         oscar.driver.switch_to.window(med_window)
+        _focus_firefox_window(oscar.driver)
         result = med_eform.prepare_med_form(oscar.driver, oscar.wait, changes)
         print(f"Medication form reset button -> {result['reset']}")
         if result["fill"] is not None:
             print(f"Medication form prescription body -> {result['fill']}: {result['rx_text']!r}")
     except Exception as e:
         print(f"Could not prepare medication form ({type(e).__name__}): {e}")
-    finally:
-        try:
-            oscar.driver.switch_to.window(oscar.home_window)
-        except Exception:
-            pass
 
 
 def _open_labs_eform(checkbox_strings: dict, labwork_period: str = "2w"):
@@ -2214,14 +2211,16 @@ def _open_labs_eform(checkbox_strings: dict, labwork_period: str = "2w"):
             WebDriverWait(driver, 10).until(lambda d: len(set(d.window_handles) - before) > 0)
             labs_window = next(h for h in driver.window_handles if h not in before)
             driver.switch_to.window(labs_window)
+            _focus_firefox_window(driver)
             posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
             test_date = _calculate_lab_date(labwork_period).strftime("%Y-%m-%d")
 
             posttestd.clear()
             posttestd.send_keys(test_date)
             print(f"Updated labwork completion date to {test_date}")
-        finally:
-            driver.switch_to.window(oscar.home_window)
+        except Exception as e:
+            print(f"Could not update labwork completion date ({type(e).__name__}): {e}")
+            return
     except Exception as e:
         print(f"Could not auto-open labs eForm ({type(e).__name__}): {e}")
         return
@@ -2250,6 +2249,49 @@ def _calculate_lab_date(labwork_period: str | None) -> date:
     elif unit == "m": return today + relativedelta(months=amount)
     elif unit == "y": return today + relativedelta(years=amount)
     else: raise ValueError(f'"{labwork_period}" is not a valid period')
+
+
+def _focus_firefox_window(driver):
+    """Best-effort attempt to bring the Firefox window containing the eForm
+    to the Windows foreground."""
+    try:
+        page_title = driver.title.strip()
+        candidates = []
+
+        def collect_window(hwnd, _):
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+
+            title = win32gui.GetWindowText(hwnd)
+            if not title:
+                return
+
+            # Prioritize the window whose title matches the current Selenium page
+            if page_title and page_title.lower() in title.lower():
+                candidates.insert(0, hwnd)
+            elif "firefox" in title.lower():
+                candidates.append(hwnd)
+
+        win32gui.EnumWindows(collect_window, None)
+
+        if not candidates:
+            print("Could not find a Firefox window to focus.")
+            return False
+
+        hwnd = candidates[0]
+
+        # Restore the window if minimized, then request foreground activation.
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.BringWindowToTop(hwnd)
+        win32gui.SetForegroundWindow(hwnd)
+
+        print(f"Requested Firefox foreground activation: "
+              f"{win32gui.GetWindowText(hwnd)!r}")
+        return True
+
+    except Exception as e:
+        print(f"Could not focus Firefox ({type(e).__name__}): {e}")
+        return False
 
 
 def upload_consult():
