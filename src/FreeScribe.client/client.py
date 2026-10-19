@@ -2181,8 +2181,11 @@ def _open_medication_eform(changes: list[dict] | None = None):
         print(f"Could not prepare medication form ({type(e).__name__}): {e}")
 
 
-def _open_labs_eform(checkbox_strings: dict, labwork_period: str = "2w"):
+def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
     LABS_FORM_FID = 659
+    # None when no checkbox analysis ran (LLM failed / keyword mode) or it found nothing to tick;
+    # the form still opens, just without pre-selected checkboxes.
+    checkbox_strings = {str(s).strip() for s in (checkbox_strings or []) if str(s).strip()}
 
     print(f"oscar object: {oscar}")
     print(f"oscar.driver: {getattr(oscar, 'driver', 'None')}")
