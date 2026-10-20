@@ -2299,16 +2299,29 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
                         holter_element.click()
                     print(f'"{holter_checkbox}" checkbox ticked')
 
-                # annotate indication with the reason why the requisition date was changed from the default (1 year)
-                if requisition_period_reason and checkbox in ["ecg", "echo", "stecho", "est", "holter"]:
+            # Click the form's own "Dater" button so it fills the Cor Health indications from the
+            # patient's meds and previous echo. It also applies the form's rules (e.g. unticks ECG
+            # when EST / stress echo is ticked) and sets its own date; the reason and the date
+            # below are written afterwards so they still come from the PLAN.
+            _click_requisition_dater(driver)
+
+            # annotate indication with the reason why the requisition date was changed from the default (1 year)
+            if requisition_period_reason:
+                for checkbox in data:
+                    if checkbox not in ["ecg", "echo", "stecho", "est", "holter"]:
+                        continue
+                    if not driver.find_element(By.ID, checkbox).is_selected():
+                        continue  # unticked by the form's own rules (Dater)
                     indication = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, f"{checkbox}-input")))
                     existing_indication = indication.get_attribute("value").strip()
                     if existing_indication:
                         updated_indication = existing_indication + " — " + requisition_period_reason
                     else:
                         updated_indication = "divergence from typical 1-year timeline: " + requisition_period_reason
+                    # replace rather than append, so the existing indication is not typed in twice
+                    indication.clear()
                     indication.send_keys(updated_indication)
-                    requisition_period_reason = None
+                    break
 
             # update "Urgency" date
             URGENCY_ELEMENT_ID = "urgency3"
@@ -2326,6 +2339,20 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
     except Exception as e:
         print(f"Failed to open requisition eForm ({type(e).__name__}): {e}")
         return
+
+
+def _click_requisition_dater(driver):
+    """Click the requisition eForm's "Dater" button (daterl()), which fills the indications the form
+    can work out itself."""
+    try:
+        result = driver.execute_script(
+            "var b = document.querySelector('input[name=\"dater\"]');"
+            "if (!b) { return 'Dater button not found'; }"
+            "b.click(); return 'clicked';"
+        )
+        print(f'"Dater" button -> {result}')
+    except Exception as e:
+        print(f'Could not click "Dater" ({type(e).__name__}): {e}')
 
 
 def _focus_firefox_window(driver):
