@@ -26,12 +26,12 @@ THERAPEUTIC MONITORING:
 COMPREHENSIVE CARDIAC:
 - comprehensive (most complete cardiac panel - should be checked when comprehensive or full blood work is requested)
 - minicomprehensive (alternative when full panel not needed - should be checked when testing LP(a)/lipoprotein A)
-- COMRR (renal risk for statin patients - should be checked when the lab mentions CK)
+- COMRR (renal risk for statin patients - should be checked when CK is requested)
 - NewCardiomyopathy (new cardiomyopathy/IHD workup - should be checked when the plan requests a work-up for cardiomyopathy)
 
 CHF:
 - CHFBaseline (initial CHF workup)
-- CHFFollowUp (CHF Follow-up - should be the default checkbox when the plan simply mentions CHF)
+- CHFFollowUp (CHF Follow-up - the default checkbox when follow-up lab work is requested for a CHF patient; mentioning CHF alone does not count)
 - CHFFollowUpStandingQ3months (CHF Standing Order Q3M)
 - thiazideFollowUp (CHF Follow-up post thiazide - should be checked when a thiazide drug is started, stopped, increased or decreased - HCTZ/hydrochlorothiazide, Indapamide, chlorthalidone)
 - SGLT2FollowUp (CHF Follow-up post SGLT2 - should be checked when a SGLT2 drug is started, stopped, increased or decreased - dapagliflozin/Forxiga, Canagliflozin, empagliflozin/Jardiance)
@@ -50,28 +50,33 @@ DYSLIPIDEMIA:
 - DyslipidemiaOnStatin (On Statin - should be checked when a statin drug is started, stopped, increased or decreased - lipitor/atorvastatin, Crestor/rosuvastatin, Zocor/simvastatin, Pravachol/pravastatin, lovastatin; also when "lipids" or a "lipid profile" is requested)
 
 HYPERTENSION:
-- HypertensionAnnual (if the plan explicitly mentions Hypertension Annual)
-- NewHypertension (if the plan explicitly mentions New Hypertension)
-- NewHypotension (if the plan explicitly mentions New Hypotension)
+- HypertensionAnnual (if the plan explicitly requests Hypertension Annual lab work)
+- NewHypertension (if the plan explicitly requests New Hypertension lab work)
+- NewHypotension (if the plan explicitly requests New Hypotension lab work)
 
 OTHERS:
 - Autoimmune (Autoimmune ANA, RF)
-- CompleteBloodCount (CBC - check if "cbc" is mentioned)
+- CompleteBloodCount (CBC - check if a CBC is requested)
 - Pericarditis (Pericarditis follow up)
 - CTDSerology (CTD Workup - connective tissue disease)
 - Dementia (Dementia)
 - Eatingdisorderworkup (Eating disorder workup)
 - Fatigue (Fatigue)
 - INRStanding (INR - Standing Order - warfarin)
-- LFT (LFTs - check if "lft" or "lfts" is mentioned)
+- LFT (LFTs - check if LFTs are requested)
 - AcuteElevatedLFT (LFT Elevation Acute)
 - ChronicElevatedLFT (LFT Elevation Chronic)
-- RenalFunction (check if any of the following is mentioned: "renal function", "kidney function and electrolytes", "kidney function", start/stop/increase/decrease any ACe inhibitors or ARBs: Ramipril/Altace, Coversyl/perindopril, Mavik/Trandolapril, Enalapril, Quinapril, Atacand/Candesartan, Diovan/valsartan, Olmetec/Olmesartan, Micardis/Telmisartan, Losartan)
+- RenalFunction (check if renal function, kidney function and electrolytes, or kidney function tests are requested, or if any ACe inhibitor or ARB is started/stopped/increased/decreased: Ramipril/Altace, Coversyl/perindopril, Mavik/Trandolapril, Enalapril, Quinapril, Atacand/Candesartan, Diovan/valsartan, Olmetec/Olmesartan, Micardis/Telmisartan, Losartan)
 - Thrombosisscreen (Thrombosis screen)
 - TSHStandingorder (TSH Standing Order)
 - UrineC&S (Urine C&S - UTI)
 
 CRITICAL RULES:
+0. Only include checkboxes for lab work the PLAN actually orders or requests at this visit (to be done now
+   or by a future date), or that the medication-change rules above require. Do NOT include a checkbox
+   because a test or diagnosis is only mentioned, reviewed, discussed, or because previous results are
+   reported (e.g. "recent CBC was normal", "we discussed his cholesterol", "known CHF, stable"). If
+   nothing is requested, return [].
 1. Return ONLY a JSON array. Do NOT include any explanatory text, comments, or additional content before or after the JSON array.
 2. Your response must start with [ and end with ]. No other text.
 3. ONLY use code names from the list above. Do NOT invent new code names or use descriptions.

@@ -18,6 +18,14 @@ PLAN = (
 )
 
 
+_CORE_KEYS = ("medication", "labs", "lab_period", "lab_checkboxes")
+
+
+def core(result):
+    """The medication / lab part of analyze_plan_for_eforms' result (requisition fields excluded)."""
+    return {k: result[k] for k in _CORE_KEYS}
+
+
 def reply(medication, labs=False):
     return json.dumps({"medication": medication, "labs": labs})
 
@@ -38,14 +46,14 @@ def test_changes_open_form_with_prefill(fake_llm):
 
 def test_no_changes_does_not_open(fake_llm):
     result = med_eform.analyze_plan_for_eforms("Continue current medications.", fake_llm(reply([])))
-    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
+    assert core(result) == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
 
 
 @pytest.mark.parametrize("scope", ["", "   ", None])
 def test_empty_plan_opens_nothing_and_skips_llm(fake_llm, scope):
     llm = fake_llm(reply([{"action": "start", "name": "X", "text": "X 1 mg daily"}]))
     result = med_eform.analyze_plan_for_eforms(scope, llm)
-    assert result == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
+    assert core(result) == {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
     assert llm.prompts == []
 
 
@@ -67,7 +75,7 @@ def test_unmappable_change_still_opens_form_unfilled(fake_llm):
 def test_bad_llm_output_falls_back_to_keywords(fake_llm, bad_reply):
     result = med_eform.analyze_plan_for_eforms(PLAN, fake_llm(bad_reply))
     # Keywords see "start"/"stop" and "repeat CBC": both forms open, nothing pre-filled.
-    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
+    assert core(result) == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
 
 
 def test_python_style_booleans_are_accepted(fake_llm):
@@ -81,7 +89,7 @@ def test_python_style_booleans_are_accepted(fake_llm):
 
 def test_json_wrapped_in_prose_or_code_fence(fake_llm):
     llm = fake_llm("Here you go:\n```json\n" + reply([], labs=True) + "\n```")
-    assert med_eform.analyze_plan_for_eforms(PLAN, llm) == {
+    assert core(med_eform.analyze_plan_for_eforms(PLAN, llm)) == {
         "medication": {"open": False, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
 
 
@@ -96,7 +104,7 @@ def test_as_flag(value, expected):
 def test_keyword_mode_never_calls_llm(fake_llm):
     llm = fake_llm(RuntimeError("should not be called"))
     result = med_eform.analyze_plan_for_eforms(PLAN, llm, mode="keyword")
-    assert result == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
+    assert core(result) == {"medication": {"open": True, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
     assert llm.prompts == []
 
 
@@ -107,7 +115,7 @@ def test_keyword_mode_never_calls_llm(fake_llm):
     ("Echo in 3 months.", False, False),
 ])
 def test_keyword_flags(plan, med, labs):
-    assert med_eform.keyword_flags(plan) == {"medication": med, "labs": labs}
+    assert med_eform.keyword_flags(plan) == {"medication": med, "labs": labs, "requisition": False}
 
 
 def test_keyword_flags_known_false_positive():
@@ -328,3 +336,76 @@ def test_every_branch_returns_lab_period(fake_llm, scope, mode, llm_reply):
     # KeyError on the fallback paths, so neither eForm opened.
     result = med_eform.analyze_plan_for_eforms(scope, fake_llm(llm_reply), mode=mode)
     assert "lab_period" in result and result["lab_period"] is None
+
+
+# --- requisition field missing from the reply --------------------------------------------------
+
+@pytest.mark.parametrize("requisition", ["<missing>", None, False, "1y", ["echo"]])
+def test_missing_or_bad_requisition_keeps_med_and_lab_results(fake_llm, requisition):
+    # A reply without a usable "requisition" object used to raise in parse_med_response, so the
+    # whole reply fell back to keywords and the medication / lab results were lost too.
+    body = {"medication": [{"action": "start", "name": "Metoprolol", "text": "Metoprolol 25 mg BID"}],
+            "labs": {"required": True, "period": "1w"}}
+    if requisition != "<missing>":
+        body["requisition"] = requisition
+    parsed = med_eform.parse_med_response(json.dumps(body))
+    assert parsed["open"] is True
+    assert parsed["changes"][0]["text"] == "Metoprolol 25 mg BID"
+    assert parsed["labs"] is True and parsed["lab_period"] == "1w"
+    assert parsed["requisition"] is False
+    assert parsed["requisition_diagnostics"] == []
+    assert parsed["requisition_period"] is None and parsed["holter_period"] is None
+
+
+def test_requisition_object_is_still_parsed():
+    parsed = med_eform.parse_med_response(json.dumps({
+        "medication": [], "labs": {"required": False, "period": None},
+        "requisition": {"period": "1y", "period_reason": None, "ecg": True, "echo": True, "holter": None}}))
+    assert parsed["requisition"] is True and parsed["requisition_period"] == "1y"
+    assert parsed["requisition_diagnostics"] == ["ecg", "echo"]
+
+
+# --- lab checkbox call only picks boxes; it never opens the lab form by itself ------------------
+
+class RoutedLLM:
+    """First call (medication prompt) gets `med_reply`; the lab-checkbox prompt gets `lab_reply`."""
+
+    def __init__(self, med_reply, lab_reply):
+        self.med_reply, self.lab_reply, self.lab_calls = med_reply, lab_reply, 0
+
+    def __call__(self, prompt):
+        if "lab test checkboxes" in prompt:
+            self.lab_calls += 1
+            return self.lab_reply
+        return self.med_reply
+
+
+def test_lab_form_not_opened_when_first_call_says_no_labs():
+    # e.g. "I reviewed his recent CBC, which was normal" - the checkbox call would pick CBC
+    llm = RoutedLLM(json.dumps({"medication": [], "labs": {"required": False, "period": None}}),
+                    '["CompleteBloodCount"]')
+    result = med_eform.analyze_plan_for_eforms("I reviewed his recent CBC, which was normal.", llm)
+    assert result["labs"] is False and result["lab_checkboxes"] is None
+    assert llm.lab_calls == 0      # the checkbox call is skipped entirely
+
+
+def test_checkboxes_used_when_labs_required():
+    llm = RoutedLLM(json.dumps({"medication": [], "labs": {"required": True, "period": "1w"}}),
+                    '["RenalFunction", "CompleteBloodCount"]')
+    result = med_eform.analyze_plan_for_eforms("Repeat CBC and renal function in 1 week.", llm)
+    assert result["labs"] is True and result["lab_period"] == "1w"
+    assert result["lab_checkboxes"] == {"RenalFunction", "CompleteBloodCount"}
+    assert llm.lab_calls == 1
+
+
+def test_labs_required_but_no_box_picked_opens_blank_form():
+    llm = RoutedLLM(json.dumps({"medication": [], "labs": {"required": True, "period": None}}), "[]")
+    result = med_eform.analyze_plan_for_eforms("Bloodwork in 2 weeks.", llm)
+    assert result["labs"] is True and result["lab_checkboxes"] is None
+
+
+def test_prompts_require_requested_labs_not_mentions():
+    from utils.lab_analysis import LAB_CHECKBOX_ANALYSIS_PROMPT as lab_prompt
+    assert "Only include checkboxes for lab work the PLAN actually orders or requests" in lab_prompt
+    assert "is mentioned)" not in lab_prompt and "simply mentions CHF" not in lab_prompt
+    assert "Reviewing, discussing or reporting the results of previous" in med_eform.build_med_prompt("x")

@@ -144,7 +144,8 @@ def build_med_prompt(plan: str) -> str:
         '"labs"["required"] is true if the plan orders or requests laboratory blood or urine tests (including, '
         ' but not limited to: bloodwork, CBC, electrolytes, creatinine/eGFR, lipids, A1C, TSH, BNP, troponin, INR, '
         'urinalysis, LP(a)/lipoprotein A), or indicates a requirement for "work up". Imaging, ECG, echo, '
-        'Holter, and stress tests do NOT count.\n\n'
+        'Holter, and stress tests do NOT count. Reviewing, discussing or reporting the results of previous '
+        'tests is NOT a request, and neither is only mentioning a diagnosis.\n\n'
         '"labs"["required"] should also be true if any of the following drugs are started/stopped/increased/decreased, '
         'so that a lab can be performed to follow up: amiodarone, digoxin, thiazide medication (HCTZ/hydrochlorothiazide, '
         'Indapamide, chlorthalidone), SGLT 2 medication (dapagliflozin/Forxiga, Canagliflozin, empagliflozin/Jardiance), '
@@ -221,6 +222,10 @@ def parse_med_response(resp: str) -> dict:
 
     # Requisition
     req_raw = parsed.get("requisition")
+    if not isinstance(req_raw, dict):
+        # Missing / null / non-object "requisition": treat as no requisition, so the medication and
+        # lab results from the same reply are still used instead of failing the whole parse.
+        req_raw = {}
 
     return {
         # Recommendations alone do not open the form.
@@ -245,13 +250,17 @@ def extract_med_changes(plan: str, send_fn) -> dict:
     resp = send_fn(prompt)
     print(f"[med eForm] LLM replied: {str(resp)[:300]!r}")
     parsed_resp = parse_med_response(resp)
-    checkboxes = {
-        s.strip() for s in analyze_plan_for_labs(plan, send_fn, False)
-        if isinstance(s, str) and s.strip()
-    }
-    if checkboxes:
-        parsed_resp["labs"] = True
-        parsed_resp["lab_checkboxes"] = checkboxes
+    # The lab-checkbox call only chooses which boxes to tick; whether the labs eForm opens is decided
+    # by "labs.required" above. (It used to open the form whenever any box was picked, so a PLAN that
+    # only reviewed previous bloodwork could still pop up the lab requisition.)
+    if parsed_resp["labs"]:
+        checkboxes = {
+            s.strip() for s in analyze_plan_for_labs(plan, send_fn, False)
+            if isinstance(s, str) and s.strip()
+        }
+        parsed_resp["lab_checkboxes"] = checkboxes or None
+    else:
+        print("[med eForm] labs not required; skipping the lab checkbox analysis")
     return parsed_resp
 
 
