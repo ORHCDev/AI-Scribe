@@ -114,16 +114,17 @@ def clean_med_changes(raw) -> list[dict]:
 
 
 def build_med_prompt(plan: str) -> str:
-    """Prompt asking for the plan's medication changes (in the eForm's wording) and a labs flag."""
+    """Prompt asking for the plan's medication changes (in the eForm's wording), whether labs are required, and
+    whether a requisition is required and, if so, what consultations and diagnostics to perform."""
     options = "\n".join(f"- {o}" for o in RX_MED_OPTIONS)
     return (
         "You are reviewing the PLAN section of a cardiology note. Return JSON in exactly this format:\n"
         '{"medication": [{"action": "start|increase|decrease|stop", "name": "drug name", '
         '"text": "prescription line", "ordered": true or false}], "labs": {"required": true or false, '
         '"period": string (such as "7d", "2w", "1m", etc)}, "requisition": {"period": string (such as "7d", '
-        '"2w", "1m", etc) | null, "consult": true or false, "ecg": true or false, "echo": true or false, "contrastecho": '
-        'true or false, "stecho": true or false, "contrast": true or false, "est": true or false, '
-        '"holter": "24h", "48h", "72h", "2w", or null} }\n\n'
+        '"2w", "1m", etc) | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
+        '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
+        '"est": true or false, "holter": "24h", "48h", "72h", "2w", or null} }\n\n'
         '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
         "Continuing an existing medication unchanged does NOT count. Tests, imaging, procedures, "
         "lifestyle advice, and appointments do NOT count. Use an empty list if there are none. "
@@ -158,6 +159,10 @@ def build_med_prompt(plan: str) -> str:
         'visit. For example, if the plan states "I\'m gonna bring the patient back in 1 year for an echocardiogram", then '
         '"requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that a subsequent '
         'clinic visit is recommended, then simply have "period" be null.\n'
+        'The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period '
+        'other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that '
+        'this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" '
+        'is NOT a reason.\n'
         '"consult" refers to a cardiology consultation, and should be true if and only if one is desired.\n'
         '"ecg" refers to an electrocardiogram, and should be true if and only if one is desired.\n'
         '"echo" refers to an echo doppler, and should be true if and only if one is desired It should be false if only a '
@@ -226,7 +231,8 @@ def parse_med_response(resp: str) -> dict:
         "lab_checkboxes": None,
         "requisition": req_raw.get("period") is not None,
         "requisition_period": req_raw.get("period"),
-        "requisition_diagnostics": [k for k, v in req_raw.items() if k != "period" and v],
+        "requisition_period_reason": req_raw.get("period_reason"),
+        "requisition_diagnostics": [k for k, v in req_raw.items() if v and k != "period" and k != "period_reason"],
         "holter_period": req_raw.get("holter")
     }
 
@@ -268,7 +274,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
             "lab_period": None,
             "lab_checkboxes": None,
             "requisition": False,
-            "requisition_period": None, 
+            "requisition_period": None,
+            "requisition_period_reason": None, 
             "requisition_diagnostics": [],
             "holter_period": None
         }
@@ -282,7 +289,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
             "lab_period": None, 
             "lab_checkboxes": None,
             "requisition": flags["requisition"],
-            "requisition_period": None, 
+            "requisition_period": None,
+            "requisition_period_reason": None, 
             "requisition_diagnostics": [],
             "holter_period": None
         }
@@ -300,7 +308,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
             "lab_period": None,
             "lab_checkboxes": None,
             "requisition": flags["requisition"],
-            "requisition_period": None, 
+            "requisition_period": None,
+            "requisition_period_reason": None,
             "requisition_diagnostics": [],
             "holter_period": None
         }
@@ -311,6 +320,7 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         "lab_checkboxes": med.get("lab_checkboxes"),
         "requisition": med.get("requisition"),
         "requisition_period": med.get("requisition_period"),
+        "requisition_period_reason": med.get("requisition_period_reason"),
         "requisition_diagnostics": med.get("requisition_diagnostics"),
         "holter_period": med.get("holter_period")
     }

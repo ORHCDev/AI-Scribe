@@ -2125,6 +2125,7 @@ def _open_relevant_eforms(consult_text: str = ""):
     if decisions["requisition"]:
         _open_requisition_eform(
             decisions["requisition_period"], 
+            decisions["requisition_period_reason"], 
             decisions["requisition_diagnostics"], 
             decisions["holter_period"]
         )
@@ -2261,7 +2262,7 @@ def _offset_from_today(labwork_period: str | None) -> date:
     else: raise ValueError(f'"{labwork_period}" is not a valid period')
 
 
-def _open_requisition_eform(requisition_period: str, data: dict, holter_period: str):
+def _open_requisition_eform(requisition_period: str, requisition_period_reason: str, data: dict, holter_period: str):
     REQUISITION_FORM_FID = 698
 
     try:
@@ -2294,6 +2295,17 @@ def _open_requisition_eform(requisition_period: str, data: dict, holter_period: 
                     if not holter_element.is_selected():
                         holter_element.click()
                     print(f'"{holter_checkbox}" checkbox ticked')
+
+                # annotate indication with the reason why the requisition date was changed from the default (1 year)
+                if requisition_period_reason and checkbox in ["ecg", "echo", "stecho", "est", "holter"]:
+                    indication = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, f"{checkbox}-input")))
+                    existing_indication = indication.get_attribute("value").strip()
+                    if existing_indication:
+                        updated_indication = existing_indication + " — " + requisition_period_reason
+                    else:
+                        updated_indication = "divergence from typical 1-year timeline: " + requisition_period_reason
+                    indication.send_keys(updated_indication)
+                    requisition_period_reason = None
 
             # update "Urgency" date
             URGENCY_ELEMENT_ID = "urgency3"
