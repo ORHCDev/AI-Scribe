@@ -72,6 +72,7 @@ def keyword_flags(text: str) -> dict:
     return {
         "medication": medication,
         "labs": bool(re.search(lab_action_pattern, t) and re.search(lab_test_pattern, t)),
+        "requisition": False
     }
 
 
@@ -119,7 +120,10 @@ def build_med_prompt(plan: str) -> str:
         "You are reviewing the PLAN section of a cardiology note. Return JSON in exactly this format:\n"
         '{"medication": [{"action": "start|increase|decrease|stop", "name": "drug name", '
         '"text": "prescription line", "ordered": true or false}], "labs": {"required": true or false, '
-        '"period": string (such as "7d", "2w", "1m", etc)} }\n\n'
+        '"period": string (such as "7d", "2w", "1m", etc)}, "requisition": {"period": string (such as "7d", '
+        '"2w", "1m", etc) | null, "consult": true or false, "ecg": true or false, "echo": true or false, "contrastecho": '
+        'true or false, "stecho": true or false, "contrast": true or false, "est": true or false, '
+        '"holter": "24h", "48h", "72h", "2w", or null} }\n\n'
         '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
         "Continuing an existing medication unchanged does NOT count. Tests, imaging, procedures, "
         "lifestyle advice, and appointments do NOT count. Use an empty list if there are none. "
@@ -150,6 +154,21 @@ def build_med_prompt(plan: str) -> str:
         'If "labs"["required"] is true, then "labs"["period"] should represent when the lab work is requested '
         'to be completed. For example, if the note says "complete in 2 months", the value should be "2m". '
         'If "labs"["required"] is false, "labs"["period"] should simply be null.\n\n'
+        '"requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic '
+        'visit. For example, if the plan states "I\'m gonna bring the patient back in 1 year for an echocardiogram", then '
+        '"requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that a subsequent '
+        'clinic visit is recommended, then simply have "period" be null.\n'
+        '"consult" refers to a cardiology consultation, and should be true if and only if one is desired.\n'
+        '"ecg" refers to an electrocardiogram, and should be true if and only if one is desired.\n'
+        '"echo" refers to an echo doppler, and should be true if and only if one is desired It should be false if only a '
+        'stress echocardiogram is desired, since these two diagnostics are not the same.\n'
+        '"contrastecho" can only be true if echo is true. It should be true when a contrast echocardiogram in specific '
+        'is desired, and false if only a regular echocardiogram is desired.\n'
+        '"stecho" refers to a stress echocardiogram, and should be true if and only if one is desired.\n'
+        '"contrast" can only be true if stecho is true. It should be true when a contrast stress echocardiogram in specific '
+        'is desired, and false if only a regular stress echocardiogram is desired.\n'
+        '"est" refers to an exercise stress test, and should be true if and only if one is desired.\n'
+        '"holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is desired.\n\n'
         f"STANDARD LINES:\n{options}\n\n"
         f"PLAN:\n{plan}\n\n"
         "Return ONLY the JSON object, with no other text."
@@ -179,8 +198,8 @@ def parse_med_response(resp: str) -> dict:
         raise ValueError(f"no usable JSON in response: {resp[:200]!r}")
     
     # Medication changes
-    raw = parsed.get("medication")
-    ordered = [item for item in raw if is_ordered(item)] if isinstance(raw, list) else []
+    med_raw = parsed.get("medication")
+    med_ordered = [item for item in med_raw if is_ordered(item)] if isinstance(med_raw, list) else []
 
     # Lab requirements
     labs_data = parsed.get("labs")
@@ -195,13 +214,20 @@ def parse_med_response(resp: str) -> dict:
         labs_required = as_flag(labs_data)
         lab_period = None
 
+    # Requisition
+    req_raw = parsed.get("requisition")
+
     return {
         # Recommendations alone do not open the form.
-        "open": len(ordered) > 0,
-        "changes": clean_med_changes(raw),
+        "open": len(med_ordered) > 0,
+        "changes": clean_med_changes(med_raw),
         "labs": labs_required,
         "lab_period": lab_period,
-        "lab_checkboxes": None
+        "lab_checkboxes": None,
+        "requisition": req_raw.get("period") is not None,
+        "requisition_period": req_raw.get("period"),
+        "requisition_diagnostics": [k for k, v in req_raw.items() if k != "period" and v],
+        "holter_period": req_raw.get("holter")
     }
 
 
@@ -236,13 +262,30 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
     medication form is opened without pre-filling."""
     scope = str(scope or "").strip()
     if not scope:
-        return {"medication": {"open": False, "changes": []}, "labs": False, "lab_period": None, "lab_checkboxes": None}
+        return {
+            "medication": {"open": False, "changes": []}, 
+            "labs": False,
+            "lab_period": None,
+            "lab_checkboxes": None,
+            "requisition": False,
+            "requisition_period": None, 
+            "requisition_diagnostics": [],
+            "holter_period": None
+        }
 
     if mode != "llm":
         print(f"[med eForm] mode={mode!r}: keyword check only, no LLM call, form will not be pre-filled")
         flags = keyword_flags(scope)
-        return {"medication": {"open": flags["medication"], "changes": []}, "labs": flags["labs"],
-                "lab_period": None, "lab_checkboxes": None}
+        return {
+            "medication": {"open": flags["medication"], "changes": []}, 
+            "labs": flags["labs"],
+            "lab_period": None, 
+            "lab_checkboxes": None,
+            "requisition": flags["requisition"],
+            "requisition_period": None, 
+            "requisition_diagnostics": [],
+            "holter_period": None
+        }
 
     try:
         med = extract_med_changes(scope, send_fn)
@@ -250,12 +293,26 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         print(f"eForm LLM gate failed, falling back to keyword: {e}")
         flags = keyword_flags(scope)
         # No period from keywords; the labs form then uses its default due date.
-        med = {"open": flags["medication"], "changes": [], "labs": flags["labs"], "lab_period": None, "lab_checkboxes": None}
+        med = {
+            "open": flags["medication"], 
+            "changes": [], 
+            "labs": flags["labs"],
+            "lab_period": None,
+            "lab_checkboxes": None,
+            "requisition": flags["requisition"],
+            "requisition_period": None, 
+            "requisition_diagnostics": [],
+            "holter_period": None
+        }
     return {
         "medication": {"open": med["open"], "changes": med["changes"]},
         "labs": med["labs"],
         "lab_period": med.get("lab_period"),
-        "lab_checkboxes": med.get("lab_checkboxes")
+        "lab_checkboxes": med.get("lab_checkboxes"),
+        "requisition": med.get("requisition"),
+        "requisition_period": med.get("requisition_period"),
+        "requisition_diagnostics": med.get("requisition_diagnostics"),
+        "holter_period": med.get("holter_period")
     }
 
 

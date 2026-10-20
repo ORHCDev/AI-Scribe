@@ -2122,15 +2122,23 @@ def _open_relevant_eforms(consult_text: str = ""):
     print(f"scope: {scope}")
     decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE)
     print(f"eForm decisions: {decisions}")
-    if decisions["medication"]["open"]:
-        _open_medication_eform(decisions["medication"]["changes"])
+    if decisions["requisition"]:
+        _open_requisition_eform(
+            decisions["requisition_period"], 
+            decisions["requisition_diagnostics"], 
+            decisions["holter_period"]
+        )
     else:
-        print("No medication change detected in the plan; skipping medication eForm")
+        print("No requisition requirement detected in the plan; skipping requisition eForm")
     if decisions["labs"]:
         if decisions["lab_period"]: _open_labs_eform(decisions["lab_checkboxes"], decisions["lab_period"])
         else: _open_labs_eform(decisions["lab_checkboxes"])
     else:
         print("No labwork requirement detected in the plan; skipping labs eForm")
+    if decisions["medication"]["open"]:
+        _open_medication_eform(decisions["medication"]["changes"])
+    else:
+        print("No medication change detected in the plan; skipping medication eForm")
 
 
 def _open_medication_eform(changes: list[dict] | None = None):
@@ -2215,7 +2223,7 @@ def _open_labs_eform(checkbox_strings: dict, labwork_period: str = "2w"):
             driver.switch_to.window(labs_window)
             _focus_firefox_window(driver)
             posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
-            test_date = _calculate_lab_date(labwork_period).strftime("%Y-%m-%d")
+            test_date = _offset_from_today(labwork_period).strftime("%Y-%m-%d")
 
             posttestd.clear()
             posttestd.send_keys(test_date)
@@ -2228,7 +2236,7 @@ def _open_labs_eform(checkbox_strings: dict, labwork_period: str = "2w"):
         return
 
 
-def _calculate_lab_date(labwork_period: str | None) -> date:
+def _offset_from_today(labwork_period: str | None) -> date:
     """Calculate the requested lab date relative to today.
 
     Supported periods: d (days), w (weeks), m (months), y (years).
@@ -2251,6 +2259,58 @@ def _calculate_lab_date(labwork_period: str | None) -> date:
     elif unit == "m": return today + relativedelta(months=amount)
     elif unit == "y": return today + relativedelta(years=amount)
     else: raise ValueError(f'"{labwork_period}" is not a valid period')
+
+
+def _open_requisition_eform(requisition_period: str, data: dict, holter_period: str):
+    REQUISITION_FORM_FID = 698
+
+    try:
+        driver = oscar.driver
+        if driver is None:
+            raise RuntimeError("Oscar WebDriver is None; it may have been cleaned up.")
+        before = set(driver.window_handles)
+        oscar.open_new_eform(REQUISITION_FORM_FID)
+
+        try:
+            WebDriverWait(driver, 10).until(lambda d: len(set(d.window_handles) - before) > 0)
+            requisition_window = next(h for h in driver.window_handles if h not in before)
+            driver.switch_to.window(requisition_window)
+            _focus_firefox_window(driver)
+
+            # tick desired checkboxes
+            for checkbox in data:
+                if checkbox == "contrastecho" and not "echo" in data:
+                    print(f"contrastecho checkbox cannot be ticked due to echo checkbox not being ticked")
+                    continue
+                
+                checkbox_element = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, checkbox)))
+                if not checkbox_element.is_selected():
+                    checkbox_element.click()
+                print(f'"{checkbox}" checkbox ticked')
+
+                if checkbox == "holter":
+                    holter_checkbox = holter_period + 'r' if holter_period.endswith('h') else holter_period + 'k'
+                    holter_element = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, holter_checkbox)))
+                    if not holter_element.is_selected():
+                        holter_element.click()
+                    print(f'"{holter_checkbox}" checkbox ticked')
+
+            # update "Urgency" date
+            URGENCY_ELEMENT_ID = "urgency3"
+            urgency_element = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, URGENCY_ELEMENT_ID)))
+            if not urgency_element.is_selected():
+                urgency_element.click()
+            print(f'"Book for" checkbox ticked')
+
+            date_input = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "date")))
+            date_input.clear()
+            date_input.send_keys(_offset_from_today(requisition_period).strftime("%Y-%m-%d"))
+        except Exception as e:
+            print(f"Failed to edit requisition eForm ({type(e).__name__}): {e}")
+            return
+    except Exception as e:
+        print(f"Failed to open requisition eForm ({type(e).__name__}): {e}")
+        return
 
 
 def _focus_firefox_window(driver):
