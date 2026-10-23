@@ -104,7 +104,8 @@ def load_extract_plan_section():
 
 
 def scope_for(case, send, note_prompt, extract_plan_section):
-    """Return (scope, note) the way the app builds it: PLAN section, else the whole note."""
+    """Return (scope, note) the way the app builds it: the PLAN section only ("" when there is none,
+    in which case the app opens no eForms; the whole note is never used instead)."""
     if "plan" in case:
         return case["plan"], None
     if "note" in case:
@@ -115,7 +116,10 @@ def scope_for(case, send, note_prompt, extract_plan_section):
         note = send(f"{note_prompt} {case['transcript']}")
     else:
         raise ValueError("case needs plan, note, or transcript")
-    return (extract_plan_section(note) or note), note
+    scope = extract_plan_section(note)
+    if not scope:
+        print("[eval] No PLAN section found in the note; scope is empty (no eForms, as in the app)")
+    return scope, note
 
 
 def lines_of(changes):
@@ -153,16 +157,21 @@ def main():
             scope, note = scope_for(case, send, note_prompt, extract_plan_section)
             if note is not None and args.show_notes:
                 print(f"\n--- generated note ({label}) ---\n{note}\n")
-            try:
-                got = med_eform.extract_med_changes(scope.strip(), send)
+            if not scope.strip():
+                # No PLAN: the app opens nothing and makes no LLM call.
+                got = {"open": False, "changes": [], "labs": False}
                 fallback = False
-            except Exception as e:
-                # Same fallback the app uses: keyword decision, nothing pre-filled.
-                flags = med_eform.keyword_flags(scope)
-                got = {"open": flags["medication"], "changes": [], "labs": flags["labs"]}
-                fallback = True
-                totals["fallback"] += 1
-                print(f"  [{label}] model output unusable -> keyword fallback ({e})")
+            else:
+                try:
+                    got = med_eform.extract_med_changes(scope.strip(), send)
+                    fallback = False
+                except Exception as e:
+                    # Same fallback the app uses: keyword decision, nothing pre-filled.
+                    flags = med_eform.keyword_flags(scope)
+                    got = {"open": flags["medication"], "changes": [], "labs": flags["labs"]}
+                    fallback = True
+                    totals["fallback"] += 1
+                    print(f"  [{label}] model output unusable -> keyword fallback ({e})")
 
             problems = []
             ok_open = got["open"] == case["expect_open"]

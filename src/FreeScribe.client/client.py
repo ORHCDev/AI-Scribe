@@ -880,7 +880,8 @@ def update_gui_with_response(response_text):
             
             threading.Thread(target=analyze_and_update, daemon=True).start()
         else:
-            # No PLAN found, hide panel and expand response_display
+            # No PLAN found, hide panel and expand response_display (the whole note is not used instead)
+            print("[eForm] No PLAN section found in the note (looked for \"PLAN\" and \"Plan:\"); not suggesting lab checkboxes.")
             eform_selection_panel.hide()
             response_display.grid(row=3, column=1, columnspan=9, padx=5, pady=15, sticky='nsew')
     elif prompt_type == "Requisition":
@@ -2145,10 +2146,11 @@ def _open_relevant_eforms(consult_text: str = ""):
             decisions["requisition_period"], 
             decisions["requisition_period_reason"], 
             decisions["requisition_diagnostics"], 
-            decisions["holter_period"]
+            decisions["holter_period"],
+            decisions.get("requisition_indications"),
         )
     else:
-        print("No requisition requirement detected in the plan; skipping requisition eForm")
+        print("No requisition test (ECG, echo, Holter, ...) requested in the plan; skipping requisition eForm")
 
     # Pop windows to the foreground in the correct order
     driver = oscar.driver
@@ -2299,7 +2301,8 @@ def _translate_period(labwork_period: str) -> str:
     else: raise ValueError(f'"{labwork_period}" is not a valid period')
 
 
-def _open_requisition_eform(requisition_period: str, requisition_period_reason: str, data: dict, holter_period: str):
+def _open_requisition_eform(requisition_period: str, requisition_period_reason: str, data: list, holter_period: str,
+                            indications: dict | None = None):
     REQUISITION_FORM_FID = 698
 
     try:
@@ -2314,29 +2317,45 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
             requisition_window = next(h for h in driver.window_handles if h not in before)
             driver.switch_to.window(requisition_window)
 
-            # tick desired checkboxes
+            # tick desired checkboxes; one box that cannot be found must not stop the others being ticked
             for checkbox in data:
                 if checkbox == "contrastecho" and not "echo" in data:
                     print(f"contrastecho checkbox cannot be ticked due to echo checkbox not being ticked")
                     continue
-                
-                checkbox_element = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, checkbox)))
-                if not checkbox_element.is_selected():
-                    checkbox_element.click()
-                print(f'"{checkbox}" checkbox ticked')
-
-                if checkbox == "holter":
-                    holter_checkbox = holter_period + 'r' if holter_period.endswith('h') else holter_period + 'k'
-                    holter_element = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, holter_checkbox)))
-                    if not holter_element.is_selected():
-                        holter_element.click()
-                    print(f'"{holter_checkbox}" checkbox ticked')
+                try:
+                    _tick_requisition_box(driver, checkbox)
+                    if checkbox == "holter" and holter_period:
+                        _tick_requisition_box(driver, holter_period + 'r' if holter_period.endswith('h') else holter_period + 'k')
+                except Exception as e:
+                    print(f'Could not tick "{checkbox}" ({type(e).__name__}): {e}')
 
             # Click the form's own "Dater" button so it fills the Cor Health indications from the
             # patient's meds and previous echo. It also applies the form's rules (e.g. unticks ECG
             # when EST / stress echo is ticked) and sets its own date; the reason and the date
             # below are written afterwards so they still come from the PLAN.
             _click_requisition_dater(driver)
+
+            # Dater unticks ECG when EST / stress echo is ticked, but a Holter always comes with an ECG.
+            if "holter" in data and not driver.find_element(By.ID, "ecg").is_selected():
+                try:
+                    _tick_requisition_box(driver, "ecg")
+                except Exception as e:
+                    print(f'Could not re-tick "ecg" for the Holter ({type(e).__name__}): {e}')
+
+            # indications the PLAN gives for each test, added to what the form / Dater already wrote
+            for checkbox, text in (indications or {}).items():
+                try:
+                    if not driver.find_element(By.ID, checkbox).is_selected():
+                        continue
+                    indication = driver.find_element(By.ID, f"{checkbox}-input")
+                    existing_indication = (indication.get_attribute("value") or "").strip()
+                    if text.lower() in existing_indication.lower():
+                        continue
+                    indication.clear()
+                    indication.send_keys(f"{existing_indication} — {text}" if existing_indication else text)
+                    print(f'"{checkbox}" indication: {text}')
+                except Exception as e:
+                    print(f'Could not fill the "{checkbox}" indication ({type(e).__name__}): {e}')
 
             # annotate indication with the reason why the requisition date was changed from the default (1 year)
             if requisition_period_reason:
@@ -2363,9 +2382,11 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
                 urgency_element.click()
             print(f'"Book for" checkbox ticked')
 
-            date_input = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "date")))
-            date_input.clear()
-            date_input.send_keys(_offset_from_today(requisition_period).strftime("%Y-%m-%d"))
+            # no follow-up period in the PLAN: keep the date Dater worked out
+            if requisition_period:
+                date_input = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "date")))
+                date_input.clear()
+                date_input.send_keys(_offset_from_today(requisition_period).strftime("%Y-%m-%d"))
         except Exception as e:
             print(f"Failed to edit requisition eForm ({type(e).__name__}): {e}")
         finally:
@@ -2373,6 +2394,14 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
     except Exception as e:
         print(f"Failed to open requisition eForm ({type(e).__name__}): {e}")
         return
+
+
+def _tick_requisition_box(driver, box_id):
+    """Tick one checkbox / radio on the requisition eForm (clicking it, so its onclick runs)."""
+    element = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, box_id)))
+    if not element.is_selected():
+        element.click()
+    print(f'"{box_id}" checkbox ticked')
 
 
 def _click_requisition_dater(driver):
