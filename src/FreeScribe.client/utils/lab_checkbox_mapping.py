@@ -31,7 +31,7 @@ LAB_CHECKBOX_MAPPING = {
     "CHF Standing Order Q3M": "CHFFollowUpStandingQ3months",
     "CHF Follow-up post thiazide": "thiazideFollowUp",
     "CHF Follow-up post SGLT2": "SGLT2FollowUp",
-    "CHF Follow-up post high K+": "KFollowUp",
+    "CHF Follow-up post extended lytes": "extended lytes",
     
     # CKD STAGE 3
     "CKD Annual": "CKDAnnual",
@@ -56,7 +56,6 @@ LAB_CHECKBOX_MAPPING = {
     "Pericarditis follow up": "Pericarditis",
     "CTD Workup": "CTDSerology",
     "Dementia": "Dementia",
-    "Eating disorder workup": "Eatingdisorderworkup",
     "Fatigue": "Fatigue",
     "INR - Standing Order": "INRStanding",
     "LFTs": "LFT",

@@ -2226,11 +2226,17 @@ def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
             labs_window = next(h for h in driver.window_handles if h not in before)
             driver.switch_to.window(labs_window)
             _focus_firefox_window(driver)
-            posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
-            test_date = _offset_from_today(labwork_period).strftime("%Y-%m-%d")
 
+            test_date = _offset_from_today(labwork_period).strftime("%Y-%m-%d")
+            posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
             posttestd.clear()
             posttestd.send_keys(test_date)
+
+            relative_test_date = _translate_period(labwork_period)
+            subject_textbox = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "subject")))
+            subject_textbox.clear()
+            subject_textbox.send_keys(f"Do in {relative_test_date}.")
+
             print(f"Updated labwork completion date to {test_date}")
         except Exception as e:
             print(f"Could not update labwork completion date ({type(e).__name__}): {e}")
@@ -2240,19 +2246,13 @@ def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
         return
 
 
-def _offset_from_today(labwork_period: str | None) -> date:
-    """Calculate the requested lab date relative to today.
-
-    Supported periods: d (days), w (weeks), m (months), y (years).
-    Defaults to today if the period is missing or invalid.
+def _offset_from_today(labwork_period: str) -> date:
     """
-    if not labwork_period:
-        return date.today()
-
+    Calculate the requested lab date relative to today.
+    Supported periods: d (days), w (weeks), m (months), y (years).
+    """
     match = re.fullmatch(r"\s*(\d+)\s*([dwmy])\s*", labwork_period.lower())
-    if not match:
-        print(f"Unrecognized labwork period {labwork_period!r}; using today.")
-        return date.today()
+    if not match: raise ValueError(f'"{labwork_period}" is not a valid period')
 
     amount = int(match.group(1))
     unit = match.group(2)
@@ -2262,6 +2262,25 @@ def _offset_from_today(labwork_period: str | None) -> date:
     elif unit == "w": return today + timedelta(weeks=amount)
     elif unit == "m": return today + relativedelta(months=amount)
     elif unit == "y": return today + relativedelta(years=amount)
+    else: raise ValueError(f'"{labwork_period}" is not a valid period')
+
+
+def _translate_period(labwork_period: str) -> str:
+    """
+    Returns the labwork period as a full string.
+    Supported periods: d -> days, w -> weeks, m -> months, y -> years.
+    """
+    match = re.fullmatch(r"\s*(\d+)\s*([dwmy])\s*", labwork_period.lower())
+    if not match: raise ValueError(f'"{labwork_period}" is not a valid period')
+
+    amount = match.group(1)
+    unit = match.group(2)
+    suffix = "s" if amount != 1 else ""
+
+    if unit == "d": return amount + " day" + suffix
+    elif unit == "w": return amount + " week" + suffix
+    elif unit == "m": return amount + " month" + suffix
+    elif unit == "y": return amount + " year" + suffix
     else: raise ValueError(f'"{labwork_period}" is not a valid period')
 
 

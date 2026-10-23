@@ -35,7 +35,7 @@ CHF:
 - CHFFollowUpStandingQ3months (CHF Standing Order Q3M)
 - thiazideFollowUp (CHF Follow-up post thiazide - should be checked when a thiazide drug is started, stopped, increased or decreased - HCTZ/hydrochlorothiazide, Indapamide, chlorthalidone)
 - SGLT2FollowUp (CHF Follow-up post SGLT2 - should be checked when a SGLT2 drug is started, stopped, increased or decreased - dapagliflozin/Forxiga, Canagliflozin, empagliflozin/Jardiance)
-- KFollowUp (CHF Follow-up post high K+)
+- extended lytes (CHF Follow-up post extended lytes - should be checked when extended electrolytes are mentioned, or when potassium/magnesium is mentioned by itself)
 
 CKD STAGE 3:
 - CKDAnnual (CKD Annual)
@@ -60,7 +60,6 @@ OTHERS:
 - Pericarditis (Pericarditis follow up)
 - CTDSerology (CTD Workup - connective tissue disease)
 - Dementia (Dementia)
-- Eatingdisorderworkup (Eating disorder workup)
 - Fatigue (Fatigue)
 - INRStanding (INR - Standing Order - warfarin)
 - LFT (LFTs - check if LFTs are requested)
