@@ -196,6 +196,10 @@ def build_med_prompt(plan: str) -> str:
         'other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that '
         'this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" '
         'is NOT a reason.\n'
+        'Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, '
+        'or to be done at/before the next visit). Tests that were done today or before this visit, results that are '
+        'reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already '
+        'arranged by someone else or done elsewhere, and tests the plan says are not needed are all false.\n'
         '"consult" refers to a cardiology consultation, and should be true if and only if one is desired.\n'
         '"ecg" refers to an electrocardiogram, and should be true if and only if one is desired.\n'
         '"echo" refers to an echo doppler, and should be true if and only if one is desired It should be false if only a '
@@ -254,6 +258,60 @@ _HOLTER_PERIODS = {"24h": "24h", "24hr": "24h", "1d": "24h", "48h": "48h", "48hr
                    "72h": "72h", "72hr": "72h", "3d": "72h", "2w": "2w", "2wk": "2w", "14d": "2w"}
 _STRESS_ECHO_PATTERN = r"\bstress[\s-]*echo"
 
+# How each requisition test is written in a PLAN (contrast options go with their base test).
+_REQUISITION_TEST_PATTERNS = {
+    "consult": r"\b(consult\w*|follow[- ]?up|f/u|see\b.{0,20}\bback|return\w*|appointment|clinic visit)",
+    "ecg": r"\b(ecg|ekg|electrocardiog\w*)\b",
+    "echo": r"\b(echo\w*|tte)\b",
+    "stecho": _STRESS_ECHO_PATTERN,
+    "est": r"\b(stress test\w*|treadmill|exercise (stress |tolerance )?test\w*|est|gxt)\b",
+    "holter": r"\b(holter|monitor\w*)\b",
+}
+# A sentence asking for a test to be done ...
+_TEST_REQUEST_PATTERN = (r"\b(arrang\w*|book\w*|order\w*|schedul\w*|request\w*|repeat\w*|obtain\w*|refer\w*|"
+                         r"requisition\w*|recommend\w*|need\w*|require\w*|will|plan\w*|get|undergo|"
+                         r"due|next (visit|year|time|appointment)|in \d+\s*(day|week|month|year)s?|"
+                         r"in (one|two|three|six|twelve) (day|week|month|year)s?|annual\w*|yearly)\b")
+# ... versus one reporting a test already done / reviewed (results, history, done today).
+_TEST_RESULT_PATTERN = (r"\b(show\w*|reveal\w*|demonstrat\w*|confirm\w*|was|were|is|are|normal|unremarkable|"
+                        r"done|completed|performed|reviewed|previous\w*|prior|last|recent\w*|ago|today|earlier|"
+                        r"already)\b")
+# A sentence saying the test is not needed, or is already arranged (no new requisition needed).
+_TEST_DECLINED_PATTERN = (r"\b(no need|not need\w*|not required|no further|unnecessary|declin\w*|not indicated|"
+                          r"already (been )?(arranged|booked|scheduled|ordered|done|completed))\b")
+
+
+# A clause that continues the previous one's test ("...; repeat in 1 year"), not some other plan item.
+_TEST_CONTINUATION_PATTERN = (r"\s*(and |we |i )?(will |to )?(repeat|recheck|redo|reassess|re-assess|arrange|book|order|"
+                              r"schedule|be repeated|in \d+\s*(day|week|month|year)s?)\b")
+
+
+def _sentences(plan: str) -> list[str]:
+    return [x.lower() for x in re.split(r"(?<=[.;!?])\s+|\n+", plan or "") if x.strip()]
+
+
+def is_test_requested(test: str, plan: str | None) -> bool:
+    """True when a PLAN sentence mentioning `test` asks for it to be done, e.g. "Repeat echo in 1 year",
+    "Arrange 48 h Holter", or a bare order line such as "Holter 48h." A test only mentioned in sentences
+    reporting results / history ("ECG today shows sinus rhythm", "Echo last year EF 55%") or saying it is
+    not needed is not requested. True when there is no PLAN to judge by."""
+    pattern = _REQUISITION_TEST_PATTERNS.get(test)
+    if not plan or not pattern:
+        return True
+    sentences = _sentences(plan)
+    for i, sentence in enumerate(sentences):
+        if not re.search(pattern, sentence) or re.search(_TEST_DECLINED_PATTERN, sentence):
+            continue
+        if re.search(_TEST_REQUEST_PATTERN, sentence) or not re.search(_TEST_RESULT_PATTERN, sentence):
+            return True
+        # "Echo from 2024 showed EF 40%; repeat in 1 year." - the next clause names no test of its own
+        following = sentences[i + 1] if i + 1 < len(sentences) else ""
+        if (following and re.match(_TEST_CONTINUATION_PATTERN, following)
+                and not re.search(_TEST_DECLINED_PATTERN, following)
+                and not any(re.search(p, following) for p in _REQUISITION_TEST_PATTERNS.values())):
+            return True
+    return False
+
 
 def normalize_holter_period(value) -> str | None:
     """The model's holter value as one of "24h" / "48h" / "72h" / "2w", or None when it is not one of them."""
@@ -288,8 +346,14 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
         print('[requisition eForm] PLAN has no "stress echo"; ticking exercise stress test instead of stress echo')
         ticked -= {"stecho", "contrast"}
         ticked.add("est")
-        if re.search(r"\becho", plan, re.IGNORECASE):
+        if is_test_requested("echo", plan):
             ticked.add("echo")
+    if plan:
+        for test in sorted(ticked & set(_REQUISITION_TEST_PATTERNS), key=REQUISITION_TESTS.index):
+            if not is_test_requested(test, plan):
+                print(f'[requisition eForm] "{test}" not ticked: the PLAN only mentions it as a result / history, '
+                      f'not as a test to be done')
+                ticked.discard(test)
     if "echo" not in ticked:
         ticked.discard("contrastecho")
     if "stecho" not in ticked:

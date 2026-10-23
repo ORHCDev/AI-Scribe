@@ -570,3 +570,59 @@ def test_real_change_kept_next_to_renewals(fake_llm):
     result = med_eform.analyze_plan_for_eforms(plan, llm)["medication"]
     assert result["open"] is True
     assert [c["name"] for c in result["changes"]] == ["Furosemide"]
+
+
+# --- requisition: only tests the PLAN asks to be done ----------------------------------------------
+
+@pytest.mark.parametrize("test,plan", [
+    ("ecg", "ECG today shows sinus rhythm. Continue current medications."),
+    ("echo", "Echo last year showed EF 55%. Follow up in 1 year."),
+    ("echo", "Previous echocardiogram was normal; no need to repeat."),
+    ("holter", "Holter monitor from March was unremarkable."),
+    ("est", "Stress test done in 2024 was negative."),
+    ("holter", "Holter already arranged by her family doctor."),
+    ("ecg", "I reviewed his ECG today."),
+])
+def test_result_or_history_mention_is_not_a_request(test, plan):
+    assert med_eform.is_test_requested(test, plan) is False
+
+
+@pytest.mark.parametrize("test,plan", [
+    ("echo", "Repeat echo in 1 year."),
+    ("echo", "Echo from 2024 showed EF 40%; repeat in 1 year."),
+    ("ecg", "ECG today shows SR. Will repeat ECG at next visit."),
+    ("holter", "Arrange 48 h Holter."),
+    ("holter", "48 hour Holter."),
+    ("est", "Book an exercise stress test before next appointment."),
+    ("echo", "We will see him back in 6 months with an echocardiogram."),
+    ("ecg", "1. ECG\n2. Echo in one year"),
+])
+def test_explicit_request_is_a_request(test, plan):
+    assert med_eform.is_test_requested(test, plan) is True
+
+
+def test_reported_results_do_not_open_the_requisition():
+    # The model ticked tests that the PLAN only reports on: nothing is left, so the form stays closed.
+    plan = "ECG today shows sinus rhythm. Echo last month EF 60%. Continue bisoprolol. Follow up in 1 year."
+    r = req({"period": "1y", "ecg": True, "echo": True}, plan)
+    assert r["requisition"] is False and r["requisition_diagnostics"] == []
+
+
+def test_requested_tests_kept_reported_ones_dropped():
+    plan = "ECG today shows atrial fibrillation. Arrange 48 h Holter and repeat echo in 6 months."
+    r = req({"period": "6m", "ecg": True, "echo": True, "holter": "48h"}, plan)
+    # ECG itself was only reported, but comes back with the Holter
+    assert r["requisition_diagnostics"] == ["ecg", "echo", "holter"]
+
+
+def test_stress_echo_conversion_adds_echo_only_when_echo_is_requested():
+    r = req({"period": "1y", "stecho": True}, "Echo last year EF 55%. Arrange a stress test.")
+    assert r["requisition_diagnostics"] == ["est"]
+
+
+@pytest.mark.parametrize("plan", [
+    "ECG today shows SR. Will increase bisoprolol to 5 mg daily.",
+    "Echo last year EF 55%. Follow up in 1 year.",
+])
+def test_unrelated_next_sentence_does_not_make_a_reported_test_requested(plan):
+    assert med_eform.is_test_requested("ecg" if "ECG" in plan else "echo", plan) is False
