@@ -407,6 +407,88 @@ def test_requisition_object_is_still_parsed():
     assert parsed["requisition_diagnostics"] == ["ecg", "echo"]
 
 
+# --- requisition: what gets ticked ----------------------------------------------------------------
+
+def req(requisition, plan=None):
+    return med_eform.requisition_from_response(requisition, plan)
+
+
+def test_follow_up_period_without_any_test_does_not_open_the_form():
+    # "See back in 1 year" alone used to open the requisition with nothing ticked.
+    r = req({"period": "1y", "period_reason": None, "consult": False, "ecg": False, "holter": None})
+    assert r["requisition"] is False and r["requisition_diagnostics"] == []
+
+
+def test_tests_without_a_period_still_open_the_form():
+    r = req({"period": None, "echo": True})
+    assert r["requisition"] is True and r["requisition_diagnostics"] == ["echo"]
+    assert r["requisition_period"] is None
+
+
+def test_only_form_ids_are_kept_case_insensitively_in_form_order():
+    r = req({"period": "1y", "Echo": True, "ECG": "true", "notes": "see plan", "reason": "x", "est": "false"})
+    assert r["requisition_diagnostics"] == ["ecg", "echo"]
+
+
+@pytest.mark.parametrize("holter,expected", [
+    ("24h", "24h"), ("48 hours", "48h"), ("72hr", "72h"), ("3 days", "72h"), ("2 weeks", "2w"),
+    ("14d", "2w"), ("2wk", "2w"), ("1 month", None), (None, None)])
+def test_holter_period_is_normalized(holter, expected):
+    assert med_eform.normalize_holter_period(holter) == expected
+
+
+@pytest.mark.parametrize("holter", ["48h", "2 weeks", True, "unknown"])
+def test_holter_always_comes_with_an_ecg(holter):
+    r = req({"period": "1y", "holter": holter})
+    assert r["requisition_diagnostics"] == ["ecg", "holter"]
+
+
+def test_holter_period_none_when_not_a_form_option():
+    r = req({"period": "1y", "holter": "1 month"})
+    assert "holter" in r["requisition_diagnostics"] and r["holter_period"] is None
+
+
+@pytest.mark.parametrize("plan", [
+    "Arrange a stress test and echo. Follow up in 1 year.",
+    "Treadmill test and echocardiogram before next visit.",
+])
+def test_stress_test_and_echo_are_est_plus_echo_not_stress_echo(plan):
+    r = req({"period": "1y", "stecho": True, "contrast": True}, plan)
+    assert r["requisition_diagnostics"] == ["echo", "est"]
+
+
+def test_stress_test_alone_is_est():
+    r = req({"period": "1y", "stecho": True}, "Book an exercise stress test.")
+    assert r["requisition_diagnostics"] == ["est"]
+
+
+@pytest.mark.parametrize("plan", ["Arrange a stress echo in 3 months.", "Stress-echocardiogram to assess ischemia."])
+def test_stress_echo_kept_when_the_plan_says_so(plan):
+    r = req({"period": "3m", "stecho": True, "contrast": True}, plan)
+    assert r["requisition_diagnostics"] == ["stecho", "contrast"]
+
+
+def test_contrast_options_need_their_base_test():
+    r = req({"period": "1y", "contrastecho": True, "contrast": True, "ecg": True})
+    assert r["requisition_diagnostics"] == ["ecg"]
+
+
+def test_indications_kept_only_for_ticked_tests_with_an_indication_box():
+    r = req({"period": "1y", "echo": True, "holter": "24h",
+             "indications": {"Echo": " reassess LV function ", "holter": "palpitations", "est": "chest pain",
+                             "consult": "x", "ecg": ""}})
+    assert r["requisition_indications"] == {"echo": "reassess LV function", "holter": "palpitations"}
+
+
+def test_parse_passes_the_plan_to_the_requisition_check():
+    plan = "PLAN: stress test and echo in 1 year."
+    parsed = med_eform.parse_med_response(json.dumps({
+        "medication": [], "labs": {"required": False, "period": None},
+        "requisition": {"period": "1y", "stecho": True}}), plan)
+    assert parsed["requisition_diagnostics"] == ["echo", "est"]
+    assert parsed["requisition_indications"] == {}
+
+
 # --- lab checkbox call only picks boxes; it never opens the lab form by itself ------------------
 
 class RoutedLLM:

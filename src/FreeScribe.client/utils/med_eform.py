@@ -148,7 +148,8 @@ def build_med_prompt(plan: str) -> str:
         '"period": string (such as "7d", "2w", "1m", etc)}, "requisition": {"period": string (such as "7d", '
         '"2w", "1m", etc) | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
         '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
-        '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null} }\n\n'
+        '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null, '
+        '"indications": {"ecg": str, "echo": str, "stecho": str, "est": str, "holter": str}} }\n\n'
         '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
         "Continuing an existing medication unchanged does NOT count. Renewing or refilling a current "
         "medication at the same dose does NOT count, nor does asking the patient whether they need renewals. "
@@ -201,14 +202,19 @@ def build_med_prompt(plan: str) -> str:
         'stress echocardiogram is desired, since these two diagnostics are not the same.\n'
         '"contrastecho" can only be true if echo is true. It should be true when a contrast echocardiogram in specific '
         'is desired, and false if only a regular echocardiogram is desired.\n'
-        '"stecho" refers to a stress echocardiogram, and should be true if and only if one is desired.\n'
+        '"stecho" refers to a stress echocardiogram, and should be true if and only if the plan explicitly asks for a '
+        '"stress echo" / "stress echocardiogram" as one test. "Stress test and echo", "treadmill test and echo" or '
+        '"exercise stress test and echocardiogram" mean two separate tests: "est" true AND "echo" true, "stecho" false.\n'
         '"contrast" can only be true if stecho is true. It should be true when a contrast stress echocardiogram in specific '
         'is desired, and false if only a regular stress echocardiogram is desired.\n'
         '"est" refers to an exercise stress test, and should be true if and only if one is desired.\n'
         '"holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is '
         'desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. '
         'Note that the plan may mention something like "3 days", for example, which must be appropriately translated '
-        'into "72h".\n\n'
+        'into "72h".\n'
+        '"indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical '
+        'reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only '
+        'what the plan says; leave a test out of "indications" if the plan gives no reason for it. Do not invent one.\n\n'
         f"STANDARD LINES:\n{options}\n\n"
         f"PLAN:\n{plan}\n\n"
         "Return ONLY the JSON object, with no other text."
@@ -239,6 +245,77 @@ def is_renewal_only(item, plan: str | None) -> bool:
     if not mentioning:
         return False
     return all(re.search(_RENEWAL_PATTERN, x) and not re.search(_CHANGE_VERB_PATTERN, x) for x in mentioning)
+
+
+# Requisition eForm (fid 698) checkbox ids, in form order, and the ones with an indication box ("<id>-input").
+REQUISITION_TESTS = ("consult", "ecg", "echo", "contrastecho", "stecho", "contrast", "est", "holter")
+REQUISITION_INDICATION_TESTS = ("ecg", "echo", "stecho", "est", "holter")
+_HOLTER_PERIODS = {"24h": "24h", "24hr": "24h", "1d": "24h", "48h": "48h", "48hr": "48h", "2d": "48h",
+                   "72h": "72h", "72hr": "72h", "3d": "72h", "2w": "2w", "2wk": "2w", "14d": "2w"}
+_STRESS_ECHO_PATTERN = r"\bstress[\s-]*echo"
+
+
+def normalize_holter_period(value) -> str | None:
+    """The model's holter value as one of "24h" / "48h" / "72h" / "2w", or None when it is not one of them."""
+    key = re.sub(r"[\s-]+", "", str(value or "").lower())
+    key = re.sub(r"(hours?|hrs?)$", "h", key)
+    key = re.sub(r"(days?)$", "d", key)
+    key = re.sub(r"(weeks?|wks?)$", "w", key)
+    return _HOLTER_PERIODS.get(key)
+
+
+def requisition_from_response(req_raw, plan: str | None = None) -> dict:
+    """The requisition part of the model's reply, checked against the form and the clinic's rules:
+    - only the form's own checkbox ids are kept (case-insensitive), in form order;
+    - a stress echo is only kept when the PLAN says "stress echo"; otherwise it is an exercise stress
+      test, plus a regular echo if the PLAN mentions one ("stress test and echo" is EST + echo);
+    - contrast echo needs echo, contrast stress echo needs stress echo;
+    - a Holter always comes with an ECG;
+    - the form is only opened when at least one box is ticked."""
+    if not isinstance(req_raw, dict):
+        req_raw = {}
+    raw = {str(k).strip().lower(): v for k, v in req_raw.items()}
+
+    holter_raw = raw.get("holter")
+    holter_period = normalize_holter_period(holter_raw)
+    ticked = {t for t in REQUISITION_TESTS if t != "holter" and as_flag(raw.get(t))}
+    # Any holter value but false / null asks for one, even a period the form has no option for.
+    if holter_period or as_flag(holter_raw) or (
+            isinstance(holter_raw, str) and holter_raw.strip().lower() not in ("", "false", "no", "null", "none")):
+        ticked.add("holter")
+
+    if "stecho" in ticked and plan and not re.search(_STRESS_ECHO_PATTERN, plan, re.IGNORECASE):
+        print('[requisition eForm] PLAN has no "stress echo"; ticking exercise stress test instead of stress echo')
+        ticked -= {"stecho", "contrast"}
+        ticked.add("est")
+        if re.search(r"\becho", plan, re.IGNORECASE):
+            ticked.add("echo")
+    if "echo" not in ticked:
+        ticked.discard("contrastecho")
+    if "stecho" not in ticked:
+        ticked.discard("contrast")
+    if "holter" in ticked:
+        ticked.add("ecg")
+
+    indications_raw = raw.get("indications")
+    indications = {}
+    if isinstance(indications_raw, dict):
+        for k, v in indications_raw.items():
+            k = str(k).strip().lower()
+            if k in REQUISITION_INDICATION_TESTS and k in ticked and isinstance(v, str) and v.strip():
+                indications[k] = v.strip()
+
+    period = raw.get("period")
+    period = str(period).strip() if period is not None and str(period).strip() else None
+    diagnostics = [t for t in REQUISITION_TESTS if t in ticked]
+    return {
+        "requisition": bool(diagnostics),
+        "requisition_period": period,
+        "requisition_period_reason": raw.get("period_reason"),
+        "requisition_diagnostics": diagnostics,
+        "requisition_indications": indications,
+        "holter_period": holter_period if "holter" in ticked else None,
+    }
 
 
 def parse_med_response(resp: str, plan: str | None = None) -> dict:
@@ -286,12 +363,9 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
         labs_required = as_flag(labs_data)
         lab_period = None
 
-    # Requisition
-    req_raw = parsed.get("requisition")
-    if not isinstance(req_raw, dict):
-        # Missing / null / non-object "requisition": treat as no requisition, so the medication and
-        # lab results from the same reply are still used instead of failing the whole parse.
-        req_raw = {}
+    # Requisition. A missing / null / non-object "requisition" means no requisition, so the medication
+    # and lab results from the same reply are still used instead of failing the whole parse.
+    requisition = requisition_from_response(parsed.get("requisition"), plan)
 
     return {
         # Recommendations alone do not open the form.
@@ -300,11 +374,7 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
         "labs": labs_required,
         "lab_period": lab_period,
         "lab_checkboxes": None,
-        "requisition": req_raw.get("period") is not None,
-        "requisition_period": req_raw.get("period"),
-        "requisition_period_reason": req_raw.get("period_reason"),
-        "requisition_diagnostics": [k for k, v in req_raw.items() if v and k != "period" and k != "period_reason"],
-        "holter_period": req_raw.get("holter")
+        **requisition,
     }
 
 
@@ -396,7 +466,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         "requisition": med.get("requisition"),
         "requisition_period": med.get("requisition_period"),
         "requisition_period_reason": med.get("requisition_period_reason"),
-        "requisition_diagnostics": med.get("requisition_diagnostics"),
+        "requisition_diagnostics": med.get("requisition_diagnostics") or [],
+        "requisition_indications": med.get("requisition_indications") or {},
         "holter_period": med.get("holter_period")
     }
 
