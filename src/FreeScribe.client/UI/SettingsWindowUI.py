@@ -30,6 +30,7 @@ from utils.file_utils import get_file_path
 from UI.MarkdownWindow import MarkdownWindow
 from UI.Widgets.MicrophoneSelector import MicrophoneSelector
 from UI.SettingsWindow import SettingsKeys, FeatureToggle
+from utils.generate_build_info import generate_build_info
 
 
 class SettingsWindowUI:
@@ -625,6 +626,13 @@ class SettingsWindowUI:
         )
         note_label = tk.Label(self.general_settings_frame, text=note_text, fg="red", wraplength=400, justify="left")
         note_label.grid(padx=10, pady=5, sticky="w")
+
+        # Build information
+        generate_build_info()
+        from utils.build_info import GIT_COMMIT
+
+        row += 1
+        ttk.Label(frame, text=f"App Version: {GIT_COMMIT}").grid(row=row, column=0, columnspan=3, padx=0, pady=2, sticky="w")
 
 
     def _create_checkbox(self, frame, label, setting_name, row_idx, setting_key=None):
