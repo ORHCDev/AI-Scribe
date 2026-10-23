@@ -118,9 +118,33 @@ def test_keyword_flags(plan, med, labs):
     assert med_eform.keyword_flags(plan) == {"medication": med, "labs": labs, "requisition": False}
 
 
-def test_keyword_flags_known_false_positive():
-    # Documents the keyword limitation the LLM mode exists to fix.
-    assert med_eform.keyword_flags("Start a stress test.")["medication"] is True
+@pytest.mark.parametrize("plan", [
+    "Start a stress test.",
+    "Stop smoking counselling provided.",
+    "Increase physical activity to 150 minutes per week.",
+    "I renewed his prescriptions.",
+    "I asked whether he needed any renewals.",
+])
+def test_keyword_fallback_needs_a_medication_in_the_sentence(plan):
+    # A change verb alone (stress test, smoking, activity) is not a medication change.
+    assert med_eform.keyword_flags(plan)["medication"] is False
+
+
+@pytest.mark.parametrize("plan", [
+    "Start bisoprolol 2.5 mg daily.",
+    "Increase the Lasix.",
+    "Stop amlodipine.",
+    "Increase the dose of his beta blocker.",
+    "Started apixaban 5 mg BID today.",
+])
+def test_keyword_fallback_still_sees_real_medication_changes(plan):
+    assert med_eform.keyword_flags(plan)["medication"] is True
+
+
+def test_prompt_says_renewals_and_history_are_not_changes():
+    prompt = med_eform.build_med_prompt("x")
+    assert "Renewing or refilling a current medication at the same dose does NOT count" in prompt
+    assert "Changes the patient made on their own, or changes from before this visit" in prompt
 
 
 # --- cleaning the model output ---------------------------------------------------------------
@@ -236,15 +260,33 @@ def test_standard_lines_are_unique_and_clean():
 
 # --- PLAN extraction (utils/read_files.extract_plan_section) ---------------------------------
 
-def test_extract_plan_section_takes_text_after_plan(read_files):
-    note = "HPI: on amlodipine.\nASSESSMENT: HTN.\nPLAN: Start metoprolol 25 mg BID."
-    assert read_files.extract_plan_section(note).strip() == ": Start metoprolol 25 mg BID."
+@pytest.mark.parametrize("note,expected", [
+    # PLAN in capitals, on its own line or not
+    ("HPI: on amlodipine.\nASSESSMENT: HTN.\nPLAN:\nStart metoprolol 25 mg BID.", "Start metoprolol 25 mg BID."),
+    ("HPI: x\nPLAN: Start metoprolol 25 mg BID.", "Start metoprolol 25 mg BID."),
+    ("HPI: x. ASSESSMENT: AF. PLAN: Start apixaban 5 mg BID.", "Start apixaban 5 mg BID."),
+    ("HPI: x\nPLAN\nI increased the furosemide to 80 mg daily.", "I increased the furosemide to 80 mg daily."),
+    # last PLAN wins (an earlier one is part of the history)
+    ("HPI: previous PLAN: start ramipril. Doing well.\nPLAN:\nContinue meds.", "Continue meds."),
+    # words that only contain PLAN are not the heading
+    ("EXPLANATION given. PLANNED follow-up.\nPLAN: repeat echo in 1 year.", "repeat echo in 1 year."),
+    # fallback when the note is not written in capitals
+    ("HPI: x\nPlan: start metoprolol", "start metoprolol"),
+    ("The patient is stable. Plan: repeat echo in 1 year.", "repeat echo in 1 year."),
+])
+def test_extract_plan_section_finds_plan(read_files, note, expected):
+    assert read_files.extract_plan_section(note) == expected
 
 
-def test_extract_plan_section_is_case_sensitive(read_files):
-    # Documents current behaviour: a "Plan:" heading is not found, so the caller falls back to
-    # the whole consult (HPI meds included) when deciding about the medication form.
-    assert read_files.extract_plan_section("HPI: x\nPlan: start metoprolol") == ""
+@pytest.mark.parametrize("note", [
+    "HPI: on ramipril 5 mg daily. ASSESSMENT: stable. The plan is to see him again next year.",
+    "HPI: started metoprolol last year; recent CBC normal.",
+    "",
+    None,
+])
+def test_extract_plan_section_returns_empty_without_a_plan(read_files, note):
+    # "the plan is ..." without a colon is not a heading; no PLAN -> "" (eForms are then not opened)
+    assert read_files.extract_plan_section(note) == ""
 
 
 def test_past_tense_plan_from_consult_prompt_is_filled(fake_llm):
@@ -409,3 +451,40 @@ def test_prompts_require_requested_labs_not_mentions():
     assert "Only include checkboxes for lab work the PLAN actually orders or requests" in lab_prompt
     assert "is mentioned)" not in lab_prompt and "simply mentions CHF" not in lab_prompt
     assert "Reviewing, discussing or reporting the results of previous" in med_eform.build_med_prompt("x")
+
+
+# --- renewals mislabelled as starts by the model -----------------------------------------------
+
+def _start(name, text, action="start"):
+    return {"action": action, "name": name, "text": text, "ordered": True}
+
+
+@pytest.mark.parametrize("plan,item,renewal", [
+    ("I renewed his metoprolol 25 mg BID.", _start("Metoprolol", "Metoprolol 25 mg BID"), True),
+    ("Prescriptions for ramipril and atorvastatin were renewed at the same dose.",
+     _start("Ramipril", "Ramipril 5 mg daily"), True),
+    ("Continue apixaban 5 mg BID; refill provided.", _start("Apixaban", "Apixaban 5 mg BID, LU code 448"), True),
+    ("I renewed his medications and increased the furosemide to 80 mg daily.",
+     _start("Furosemide", "Furosemide 80 mg daily", "increase"), False),
+    ("Start metoprolol 25 mg BID. Renewed other meds.", _start("Metoprolol", "Metoprolol 25 mg BID"), False),
+    ("Continue metoprolol but increase to 50 mg BID.", _start("Metoprolol", "Metoprolol 50 mg BID", "increase"), False),
+    ("Stop amlodipine. Continue other medications.", _start("Amlodipine", "", "stop"), False),
+    ("Renewed all medications.", _start("Bisoprolol", "Bisoprolol 5 mg daily"), False),   # drug not in PLAN: keep
+])
+def test_is_renewal_only(plan, item, renewal):
+    assert med_eform.is_renewal_only(item, plan) is renewal
+
+
+def test_renewal_mislabelled_as_start_does_not_open_med_form(fake_llm):
+    plan = "I asked if he needed renewals and renewed his ramipril 5 mg daily. Continue all medications."
+    llm = fake_llm(reply([_start("Ramipril", "Ramipril 5 mg daily")]))
+    assert med_eform.analyze_plan_for_eforms(plan, llm)["medication"] == {"open": False, "changes": []}
+
+
+def test_real_change_kept_next_to_renewals(fake_llm):
+    plan = "Renewed his ramipril. Increase furosemide to 80 mg daily."
+    llm = fake_llm(reply([_start("Ramipril", "Ramipril 5 mg daily"),
+                          _start("Furosemide", "Furosemide 80 mg daily", "increase")]))
+    result = med_eform.analyze_plan_for_eforms(plan, llm)["medication"]
+    assert result["open"] is True
+    assert [c["name"] for c in result["changes"]] == ["Furosemide"]

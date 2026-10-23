@@ -2116,7 +2116,12 @@ def _find_eform_fid(prefix: str):
 
 def _open_relevant_eforms(consult_text: str = ""):
     plan_text = extract_plan_section(consult_text) or ""
-    scope = plan_text or consult_text
+    if not plan_text:
+        # Reading the whole note instead used to pick up medications and old results from the HPI /
+        # history and open eForms the PLAN never asked for, so without a PLAN nothing is opened.
+        print("[eForm] No PLAN section found in the consult (looked for \"PLAN\" and \"Plan:\"); not auto-opening any eForms. Open them manually if needed.")
+        return
+    scope = plan_text
     decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE)
     print(f"eForm decisions: {decisions}")
 
@@ -2745,8 +2750,12 @@ def open_oscar():
     """
     Closes and reopens Selenium Oscar session.
     """
-    chatbot.oscar.cleanup()
+    global oscar
+    if chatbot.oscar is not None:
+        chatbot.oscar.cleanup()
     chatbot._initialize_oscar()
+    # The eForm code uses the module-level `oscar`; rebind it so it doesn't keep the closed session.
+    oscar = chatbot.oscar
     eform_selection_panel.oscar = chatbot.oscar
 
 # 14-column spine: cols 0 & 13 = gutters

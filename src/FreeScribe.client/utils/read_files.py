@@ -204,12 +204,24 @@ def extract_patient_notes(text: str) -> str:
         return text
 
 
+# How the PLAN section is introduced, tried in order. PLAN is the last section, so for each pattern the
+# LAST match wins (an earlier one is usually part of the history or another heading).
+_PLAN_HEADINGS = [
+    # "PLAN" in capitals, anywhere (not necessarily on its own line): "PLAN:", "... PLAN I increased ..."
+    (r"\bPLAN\b[ \t]*:?", 0),
+    # fallback for notes not written in capitals: "Plan:" / "plan:" (colon required, so "the plan is" doesn't count)
+    (r"\bplan[ \t]*:", re.IGNORECASE),
+]
+
+
 def extract_plan_section(text: str) -> str:
     """
-    Extracts the PLAN section from SOAP note text.
+    Extracts the PLAN section from SOAP / consult note text.
 
     Strategy:
-    - Look for the exact heading "PLAN", and returns all text following it (since PLAN is always the last section)
+    - Look for "PLAN" in capitals anywhere in the text and take everything after its LAST occurrence
+      (PLAN is always the last section).
+    - If there is none, fall back to the last "Plan:" (any case, colon required).
 
     Args:
     -----
@@ -217,11 +229,17 @@ def extract_plan_section(text: str) -> str:
 
     Returns:
     --------
-        str: The PLAN section text, or empty string if not found
+        str: The PLAN section text (stripped), or empty string if not found
     """
     try:
-        text_after_plan = text.split("PLAN", 1)[1] if "PLAN" in text else ""
-        return text_after_plan
+        text = str(text or "")
+        for pattern, flags in _PLAN_HEADINGS:
+            matches = list(re.finditer(pattern, text, flags))
+            if matches:
+                plan = text[matches[-1].end():].strip()
+                if plan:
+                    return plan
+        return ""
     except Exception:
         return ""
 

@@ -45,10 +45,31 @@ _NOT_ORDERED_PATTERN = (r"\b(recommend\w*|suggest\w*|consider\w*|could|may|might
                         r"in the future|at follow[- ]?up)\b")
 
 
+# Drug names for the keyword fallback: generic names from the Rx form's standard lines plus common
+# brand names and drug-class words.
+_BRANDS_AND_CLASSES = (
+    "lasix eliquis xarelto pradaxa lixiana lipitor crestor zocor pravachol altace coversyl mavik atacand "
+    "diovan micardis avapro cozaar losartan enalapril quinapril olmetec olmesartan entresto aldactone "
+    "inspra monocor coreg lopressor toprol norvasc adalat cardizem isoptin jardiance forxiga dapagliflozin "
+    "empagliflozin canagliflozin invokana plavix brilinta brillinta effient aspirin asa coumadin lanoxin "
+    "cordarone multaq lancora ivabradine nitroglycerin nitroglycerine nitro isosorbide statin statins "
+    "anticoagulant anticoagulation diuretic diuretics hydrochlorothiazide hctz lovastatin"
+).split()
+_DRUG_WORDS = sorted({
+    w for line in RX_MED_OPTIONS
+    for w in [re.split(r"[\s/,]", line.strip())[0].lower()]
+    if len(w) > 3 and w.isalpha()
+} | set(_BRANDS_AND_CLASSES))
+_DRUG_PATTERN = (r"\b(" + "|".join(map(re.escape, _DRUG_WORDS)) +
+                 r"|medications?|meds|dose|dosage|dosing|\d+(\.\d+)?\s*mg|beta[- ]blockers?|"
+                 r"ace[- ]?inhibitors?|arbs?)\b")
+
+
 def keyword_flags(text: str) -> dict:
     """Keyword check: looks for medication-change verbs, and for a lab action plus a lab test
     name. Fast but cannot tell whether the verb refers to a medication (e.g. 'start a stress
-    test' would match). A medication verb only counts in a sentence that is not a recommendation,
+    test' would match), so a change verb only counts in a sentence that also names a drug or says
+    "medication"/"dose"/"mg". A medication verb only counts in a sentence that is not a recommendation,
     suggestion or condition ("I recommend starting ...", "consider ...", "if BP stays high ...").
     Returns {"medication": bool, "labs": bool}."""
     t = str(text or "").lower()
@@ -68,7 +89,10 @@ def keyword_flags(text: str) -> dict:
         r"urinalysis|urine\s+test\w*)\b"
     )
     sentences = re.split(r"(?<=[.;!?])\s+|\n+", t)
-    medication = any(re.search(med_pattern, s) and not re.search(_NOT_ORDERED_PATTERN, s) for s in sentences)
+    # A change verb only counts when the same sentence is about a medication (a drug name, or words like
+    # "medication"/"dose"/"mg"), so "start a stress test" / "stop smoking" / "increase activity" do not.
+    medication = any(re.search(med_pattern, s) and re.search(_DRUG_PATTERN, s)
+                     and not re.search(_NOT_ORDERED_PATTERN, s) for s in sentences)
     return {
         "medication": medication,
         "labs": bool(re.search(lab_action_pattern, t) and re.search(lab_test_pattern, t)),
@@ -126,7 +150,10 @@ def build_med_prompt(plan: str) -> str:
         '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
         '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null} }\n\n'
         '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
-        "Continuing an existing medication unchanged does NOT count. Tests, imaging, procedures, "
+        "Continuing an existing medication unchanged does NOT count. Renewing or refilling a current "
+        "medication at the same dose does NOT count, nor does asking the patient whether they need renewals. "
+        "Changes the patient made on their own, or changes from before this visit (history), do NOT count. "
+        "Tests, imaging, procedures, "
         "lifestyle advice, and appointments do NOT count. Use an empty list if there are none. "
         "A switch from one drug to another is a stop of the old drug plus a start of the new one.\n"
         '- "ordered" is true only if the plan actually makes or prescribes the change at this visit '
@@ -188,7 +215,33 @@ def build_med_prompt(plan: str) -> str:
     )
 
 
-def parse_med_response(resp: str) -> dict:
+_RENEWAL_PATTERN = r"\b(renew\w*|refill\w*|re-?prescrib\w*|continu\w*|same dose|unchanged|as before)\b"
+_CHANGE_VERB_PATTERN = (r"\b(start\w*|initiat\w*|begin|began|add(ed|ing|s)?|increas\w*|decreas\w*|reduc\w*|"
+                        r"uptitrat\w*|titrat\w*|switch\w*|chang\w*|stop\w*|discontinu\w*|hold|held)\b")
+
+
+def is_renewal_only(item, plan: str | None) -> bool:
+    """True when every PLAN sentence that mentions this entry's drug only renews / refills / continues it
+    and none of them changes it, e.g. "I renewed his metoprolol 25 mg BID". Such an entry is a renewal the
+    model mislabelled as a start or dose change, and must not open the medication form. Stops are left
+    alone, and an entry whose drug is not found in the PLAN is kept (nothing to judge it by)."""
+    if not plan or not isinstance(item, dict):
+        return False
+    if str(item.get("action", "")).strip().lower().startswith(("stop", "discontinu", "hold", "held")):
+        return False
+    names = {str(item.get("name") or "").strip().lower()}
+    names.add(str(item.get("text") or "").strip().split(" ")[0].lower())
+    names = {n for n in names if len(n) > 2}
+    if not names:
+        return False
+    sentences = [x.lower() for x in re.split(r"(?<=[.;!?])\s+|\n+", plan) if x.strip()]
+    mentioning = [x for x in sentences if any(n in x for n in names)]
+    if not mentioning:
+        return False
+    return all(re.search(_RENEWAL_PATTERN, x) and not re.search(_CHANGE_VERB_PATTERN, x) for x in mentioning)
+
+
+def parse_med_response(resp: str, plan: str | None = None) -> dict:
     """Parse the model's reply into {"open": bool, "changes": list, "labs": bool, "lab_period": str | None}.
     "open" is True whenever the model reported a medication change prescribed at this visit, even
     one that could not be turned into a prescription line, so the form still opens (unfilled) for
@@ -212,6 +265,12 @@ def parse_med_response(resp: str) -> dict:
     
     # Medication changes
     med_raw = parsed.get("medication")
+    if isinstance(med_raw, list) and plan:
+        # Code-side guard: the prompt says renewals are not changes, but do not rely on the model alone.
+        renewals = [item for item in med_raw if is_renewal_only(item, plan)]
+        for item in renewals:
+            print(f"[med eForm] skipped renewal (no change to the medication in the PLAN): {item!r}")
+        med_raw = [item for item in med_raw if item not in renewals]
     med_ordered = [item for item in med_raw if is_ordered(item)] if isinstance(med_raw, list) else []
 
     # Lab requirements
@@ -256,7 +315,7 @@ def extract_med_changes(plan: str, send_fn) -> dict:
     print(f"[med eForm] calling LLM ({len(plan)} chars of PLAN)")
     resp = send_fn(prompt)
     print(f"[med eForm] LLM replied: {str(resp)[:300]!r}")
-    parsed_resp = parse_med_response(resp)
+    parsed_resp = parse_med_response(resp, plan)
     # The lab-checkbox call only chooses which boxes to tick; whether the labs eForm opens is decided
     # by "labs.required" above. (It used to open the form whenever any box was picked, so a PLAN that
     # only reviewed previous bloodwork could still pop up the lab requisition.)
