@@ -2115,15 +2115,28 @@ def _find_eform_fid(prefix: str):
 
 
 def _open_relevant_eforms(consult_text: str = ""):
-    print(f"consult text: {consult_text}")
     plan_text = extract_plan_section(consult_text) or ""
-    print(f"plan text: {plan_text}")
     scope = plan_text or consult_text
-    print(f"scope: {scope}")
     decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE)
     print(f"eForm decisions: {decisions}")
+
+    med_window = None
+    labs_window = None
+    requisition_window = None
+
+    # Open the meds eform, if necessary
+    if decisions["medication"]["open"]: med_window = _open_medication_eform(decisions["medication"]["changes"])
+    else: print("No medication change detected in the plan; skipping medication eForm")
+
+    # Open the labs eform, if necessary
+    if decisions["labs"] and decisions["lab_period"]: 
+        labs_window = _open_labs_eform(decisions["lab_checkboxes"], decisions["lab_period"])
+    elif decisions["labs"]: labs_window = _open_labs_eform(decisions["lab_checkboxes"])
+    else: print("No labwork requirement detected in the plan; skipping labs eForm")
+        
+    # Open the requisition eform, if necessary
     if decisions["requisition"]:
-        _open_requisition_eform(
+        requisition_window = _open_requisition_eform(
             decisions["requisition_period"], 
             decisions["requisition_period_reason"], 
             decisions["requisition_diagnostics"], 
@@ -2131,15 +2144,11 @@ def _open_relevant_eforms(consult_text: str = ""):
         )
     else:
         print("No requisition requirement detected in the plan; skipping requisition eForm")
-    if decisions["labs"]:
-        if decisions["lab_period"]: _open_labs_eform(decisions["lab_checkboxes"], decisions["lab_period"])
-        else: _open_labs_eform(decisions["lab_checkboxes"])
-    else:
-        print("No labwork requirement detected in the plan; skipping labs eForm")
-    if decisions["medication"]["open"]:
-        _open_medication_eform(decisions["medication"]["changes"])
-    else:
-        print("No medication change detected in the plan; skipping medication eForm")
+
+    # Pop windows to the foreground in the correct order
+    driver = oscar.driver
+    for handle in (requisition_window, labs_window, med_window):
+        if handle: _focus_eform_window(driver, handle)
 
 
 def _open_medication_eform(changes: list[dict] | None = None):
@@ -2172,13 +2181,14 @@ def _open_medication_eform(changes: list[dict] | None = None):
         new_windows = [h for h in after if h not in before]
         med_window = new_windows[-1] if new_windows else after[-1]
         oscar.driver.switch_to.window(med_window)
-        _focus_firefox_window(oscar.driver)
         result = med_eform.prepare_med_form(oscar.driver, oscar.wait, changes)
         print(f"Medication form reset button -> {result['reset']}")
         if result["fill"] is not None:
             print(f"Medication form prescription body -> {result['fill']}: {result['rx_text']!r}")
     except Exception as e:
         print(f"Could not prepare medication form ({type(e).__name__}): {e}")
+    finally:
+        return med_window
 
 
 def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
@@ -2225,7 +2235,6 @@ def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
             WebDriverWait(driver, 10).until(lambda d: len(set(d.window_handles) - before) > 0)
             labs_window = next(h for h in driver.window_handles if h not in before)
             driver.switch_to.window(labs_window)
-            _focus_firefox_window(driver)
 
             test_date = _offset_from_today(labwork_period).strftime("%Y-%m-%d")
             posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
@@ -2240,7 +2249,8 @@ def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
             print(f"Updated labwork completion date to {test_date}")
         except Exception as e:
             print(f"Could not update labwork completion date ({type(e).__name__}): {e}")
-            return
+        finally:
+            return labs_window
     except Exception as e:
         print(f"Could not auto-open labs eForm ({type(e).__name__}): {e}")
         return
@@ -2298,7 +2308,6 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
             WebDriverWait(driver, 10).until(lambda d: len(set(d.window_handles) - before) > 0)
             requisition_window = next(h for h in driver.window_handles if h not in before)
             driver.switch_to.window(requisition_window)
-            _focus_firefox_window(driver)
 
             # tick desired checkboxes
             for checkbox in data:
@@ -2354,7 +2363,8 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
             date_input.send_keys(_offset_from_today(requisition_period).strftime("%Y-%m-%d"))
         except Exception as e:
             print(f"Failed to edit requisition eForm ({type(e).__name__}): {e}")
-            return
+        finally:
+            return requisition_window
     except Exception as e:
         print(f"Failed to open requisition eForm ({type(e).__name__}): {e}")
         return
@@ -2372,6 +2382,15 @@ def _click_requisition_dater(driver):
         print(f'"Dater" button -> {result}')
     except Exception as e:
         print(f'Could not click "Dater" ({type(e).__name__}): {e}')
+
+
+def _focus_eform_window(driver, window_handle):
+    """Switch to a specific eForm window and request foreground activation."""
+    try:
+        driver.switch_to.window(window_handle)
+        _focus_firefox_window(driver)
+    except Exception as e:
+        print(f"Could not focus eForm window ({type(e).__name__}): {e}")
 
 
 def _focus_firefox_window(driver):

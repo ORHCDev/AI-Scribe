@@ -124,7 +124,7 @@ def build_med_prompt(plan: str) -> str:
         '"period": string (such as "7d", "2w", "1m", etc)}, "requisition": {"period": string (such as "7d", '
         '"2w", "1m", etc) | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
         '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
-        '"est": true or false, "holter": "24h", "48h", "72h", "2w", or null} }\n\n'
+        '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null} }\n\n'
         '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
         "Continuing an existing medication unchanged does NOT count. Tests, imaging, procedures, "
         "lifestyle advice, and appointments do NOT count. Use an empty list if there are none. "
@@ -178,7 +178,10 @@ def build_med_prompt(plan: str) -> str:
         '"contrast" can only be true if stecho is true. It should be true when a contrast stress echocardiogram in specific '
         'is desired, and false if only a regular stress echocardiogram is desired.\n'
         '"est" refers to an exercise stress test, and should be true if and only if one is desired.\n'
-        '"holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is desired.\n\n'
+        '"holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is '
+        'desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. '
+        'Note that the plan may mention something like "3 days", for example, which must be appropriately translated '
+        'into "72h".\n\n'
         f"STANDARD LINES:\n{options}\n\n"
         f"PLAN:\n{plan}\n\n"
         "Return ONLY the JSON object, with no other text."
