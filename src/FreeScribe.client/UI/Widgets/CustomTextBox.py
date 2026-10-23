@@ -40,17 +40,11 @@ class CustomTextBox(tk.Frame):
         
         # Create scrolled text widget
         self.scrolled_text = tk.scrolledtext.ScrolledText(self, wrap="word", height=height, state=state)
-        self.scrolled_text.pack(side="left", fill="both", expand=True)
+        self.scrolled_text.pack(side="top", fill="both", expand=True)
 
         # Frame for button alignment
-        self.button_frame = tk.Frame(self.scrolled_text)
-        self.button_frame.place(
-            relx=1.0,
-            rely=1.0,
-            x=-2,
-            y=-2,
-            anchor="se"
-        )
+        self.button_frame = tk.Frame(self)
+        self.button_frame.pack(side="bottom", anchor="e", pady=(4, 0))
 
         # Initialize callback functions
         if new_ui:
