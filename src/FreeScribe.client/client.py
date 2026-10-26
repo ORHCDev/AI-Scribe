@@ -2357,18 +2357,21 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
                 except Exception as e:
                     print(f'Could not re-tick "ecg" for the Holter ({type(e).__name__}): {e}')
 
-            # indications the PLAN gives for each test, added to what the form / Dater already wrote
-            for checkbox, text in (indications or {}).items():
+            # Indications the PLAN gives for each ticked test, as a "— Plan: ..." part after what the box
+            # already holds (carried over from the last form, or written by Dater). The previous visit's
+            # "— Plan: ..." part is replaced, so the box does not grow at every visit.
+            for checkbox in med_eform.REQUISITION_INDICATION_TESTS:
                 try:
                     if not driver.find_element(By.ID, checkbox).is_selected():
                         continue
                     indication = driver.find_element(By.ID, f"{checkbox}-input")
-                    existing_indication = (indication.get_attribute("value") or "").strip()
-                    if text.lower() in existing_indication.lower():
+                    existing_indication = indication.get_attribute("value") or ""
+                    updated_indication = med_eform.merge_indication(existing_indication, (indications or {}).get(checkbox))
+                    if updated_indication == existing_indication.strip():
                         continue
                     indication.clear()
-                    indication.send_keys(f"{existing_indication} — {text}" if existing_indication else text)
-                    print(f'"{checkbox}" indication: {text}')
+                    indication.send_keys(updated_indication)
+                    print(f'"{checkbox}" indication: {updated_indication}')
                 except Exception as e:
                     print(f'Could not fill the "{checkbox}" indication ({type(e).__name__}): {e}')
 

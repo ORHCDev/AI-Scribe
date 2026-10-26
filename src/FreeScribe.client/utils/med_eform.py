@@ -202,7 +202,10 @@ def build_med_prompt(plan: str) -> str:
         'Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, '
         'or to be done at/before the next visit). Tests that were done today or before this visit, results that are '
         'reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already '
-        'arranged by someone else or done elsewhere, and tests the plan says are not needed are all false.\n'
+        'arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test '
+        'that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. '
+        '"I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to '
+        'arrange a stress test").\n'
         '"consult" refers to a cardiology consultation, and should be true if and only if one is desired.\n'
         '"ecg" refers to an electrocardiogram, and should be true if and only if one is desired.\n'
         '"echo" refers to an echo doppler, and should be true if and only if one is desired It should be false if only a '
@@ -272,16 +275,19 @@ _REQUISITION_TEST_PATTERNS = {
 }
 # A sentence asking for a test to be done ...
 _TEST_REQUEST_PATTERN = (r"\b(arrang\w*|book\w*|order\w*|schedul\w*|request\w*|repeat\w*|obtain\w*|refer\w*|"
-                         r"requisition\w*|recommend\w*|need\w*|require\w*|will|plan\w*|get|undergo|"
+                         r"requisition\w*|need\w*|require\w*|will|plan\w*|get|undergo|"
                          r"due|next (visit|year|time|appointment)|in \d+\s*(day|week|month|year)s?|"
                          r"in (one|two|three|six|twelve) (day|week|month|year)s?|annual\w*|yearly)\b")
 # ... versus one reporting a test already done / reviewed (results, history, done today).
 _TEST_RESULT_PATTERN = (r"\b(show\w*|reveal\w*|demonstrat\w*|confirm\w*|was|were|is|are|normal|unremarkable|"
                         r"done|completed|performed|reviewed|previous\w*|prior|last|recent\w*|ago|today|earlier|"
                         r"already)\b")
-# A sentence saying the test is not needed, or is already arranged (no new requisition needed).
+# A sentence saying the test is not needed, is already arranged (no new requisition needed), or is only
+# recommended / suggested / conditional / left to someone else, which the clinic does not count as ordered.
 _TEST_DECLINED_PATTERN = (r"\b(no need|not need\w*|not required|no further|unnecessary|declin\w*|not indicated|"
-                          r"already (been )?(arranged|booked|scheduled|ordered|done|completed))\b")
+                          r"already (been )?(arranged|booked|scheduled|ordered|done|completed)|"
+                          r"recommend\w*|suggest\w*|consider\w*|may benefit|could|might|defer\w*|"
+                          r"family (doctor|physician)|gp|at (his|her|their) discretion)\b|^\s*if\b")
 
 
 # A clause that continues the previous one's test ("...; repeat in 1 year"), not some other plan item.
@@ -323,6 +329,22 @@ def normalize_holter_period(value) -> str | None:
     key = re.sub(r"(days?)$", "d", key)
     key = re.sub(r"(weeks?|wks?)$", "w", key)
     return _HOLTER_PERIODS.get(key)
+
+
+# The part of a requisition indication box written from the PLAN. Indication boxes are m$ fields that
+# Oscar pre-fills with what was saved last time, so this part is replaced at every visit while the rest
+# (the clinician's own text, which the form's Dater reads, and Dater's Cor Health lines) is kept.
+INDICATION_PLAN_MARKER = " — Plan: "
+_INDICATION_PLAN_PART = re.compile(r"(\s*—\s*|^\s*)Plan:.*$", re.DOTALL)
+
+
+def merge_indication(existing: str | None, plan_indication: str | None) -> str:
+    """Indication box text: what was there without the previous visit's PLAN part, plus this visit's."""
+    base = _INDICATION_PLAN_PART.sub("", str(existing or "")).strip()
+    plan_indication = str(plan_indication or "").strip()
+    if not plan_indication:
+        return base
+    return f"{base}{INDICATION_PLAN_MARKER}{plan_indication}" if base else f"Plan: {plan_indication}"
 
 
 def requisition_from_response(req_raw, plan: str | None = None) -> dict:
