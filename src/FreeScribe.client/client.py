@@ -2115,16 +2115,26 @@ def _find_eform_fid(prefix: str):
     return fid
 
 
+def _log_eform_decision(name: str, opened: bool, explanation: str | None) -> None:
+    """Print whether an eForm opened and the LLM's one-sentence reason for its decision."""
+    status = "OPENED" if opened else "NOT OPENED"
+    reason = (explanation or "No LLM explanation (keyword mode or LLM fallback).").strip()
+    print(f"[eForm] {name}: {status} — {reason}")
+
+
 def _open_relevant_eforms(consult_text: str = ""):
     plan_text = extract_plan_section(consult_text) or ""
     if not plan_text:
         # Reading the whole note instead used to pick up medications and old results from the HPI /
         # history and open eForms the PLAN never asked for, so without a PLAN nothing is opened.
         print("[eForm] No PLAN section found in the consult (looked for \"PLAN\" and \"Plan:\"); not auto-opening any eForms. Open them manually if needed.")
+        for name in ("Medication", "Labs", "Requisition"):
+            _log_eform_decision(name, False, "no PLAN section found in the consult")
         return
     scope = plan_text
     decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE)
     print(f"eForm decisions: {decisions}")
+    explanations = decisions.get("explanations") or {}
 
     med_window = None
     labs_window = None
@@ -2151,6 +2161,11 @@ def _open_relevant_eforms(consult_text: str = ""):
         )
     else:
         print("No requisition test (ECG, echo, Holter, ...) requested in the plan; skipping requisition eForm")
+
+    # Log each decision and whether the form actually opened, with the model's reason.
+    _log_eform_decision("Medication", bool(med_window), explanations.get("medication"))
+    _log_eform_decision("Labs", bool(labs_window), explanations.get("labs"))
+    _log_eform_decision("Requisition", bool(requisition_window), explanations.get("requisition"))
 
     # Pop windows to the foreground in the correct order
     driver = oscar.driver

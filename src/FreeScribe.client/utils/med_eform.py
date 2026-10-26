@@ -149,7 +149,10 @@ def build_med_prompt(plan: str) -> str:
         '"2w", "1m", etc) | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
         '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
         '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null, '
-        '"indications": {"ecg": str, "echo": str, "stecho": str, "est": str, "holter": str}} }\n\n'
+        '"indications": {"ecg": str, "echo": str, "stecho": str, "est": str, "holter": str}}, '
+        '"explanations": {"medication": str, "labs": str, "requisition": str} }\n\n'
+        '"explanations" must give exactly one short sentence for each of "medication", "labs" and '
+        '"requisition" explaining whether that eForm should open and why, using only what the PLAN says.\n\n'
         '"medication" lists every medication the plan STARTS, STOPS, or CHANGES THE DOSE of. '
         "Continuing an existing medication unchanged does NOT count. Renewing or refilling a current "
         "medication at the same dose does NOT count, nor does asking the patient whether they need renewals. "
@@ -431,6 +434,15 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
     # and lab results from the same reply are still used instead of failing the whole parse.
     requisition = requisition_from_response(parsed.get("requisition"), plan)
 
+    # One-sentence reasons the model gave for each eForm decision, logged by the client.
+    explanations_raw = parsed.get("explanations")
+    explanations = {}
+    if isinstance(explanations_raw, dict):
+        for key in ("medication", "labs", "requisition"):
+            value = explanations_raw.get(key)
+            if isinstance(value, str) and value.strip():
+                explanations[key] = re.sub(r"\s+", " ", value).strip()
+
     return {
         # Recommendations alone do not open the form.
         "open": len(med_ordered) > 0,
@@ -438,6 +450,7 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
         "labs": labs_required,
         "lab_period": lab_period,
         "lab_checkboxes": None,
+        "explanations": explanations,
         **requisition,
     }
 
@@ -472,9 +485,11 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
     Returns
     -------
     {"medication": {"open": bool, "changes": [{"action", "name", "text"}, ...]},
-     "labs": bool, "lab_period": str | None, "lab_checkboxes": dict | None}
+     "labs": bool, "lab_period": str | None, "lab_checkboxes": dict | None,
+     "explanations": {"medication": str, "labs": str, "requisition": str}}
     "changes" may be empty while "open" is True (e.g. keyword fallback), in which case the
-    medication form is opened without pre-filling."""
+    medication form is opened without pre-filling. "explanations" holds the model's one-sentence
+    reason for each eForm decision (empty in keyword mode / when the LLM reply omits them)."""
     scope = str(scope or "").strip()
     if not scope:
         return {
@@ -486,7 +501,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
             "requisition_period": None,
             "requisition_period_reason": None, 
             "requisition_diagnostics": [],
-            "holter_period": None
+            "holter_period": None,
+            "explanations": {},
         }
 
     if mode != "llm":
@@ -501,7 +517,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
             "requisition_period": None,
             "requisition_period_reason": None, 
             "requisition_diagnostics": [],
-            "holter_period": None
+            "holter_period": None,
+            "explanations": {},
         }
 
     try:
@@ -520,7 +537,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
             "requisition_period": None,
             "requisition_period_reason": None,
             "requisition_diagnostics": [],
-            "holter_period": None
+            "holter_period": None,
+            "explanations": {},
         }
     return {
         "medication": {"open": med["open"], "changes": med["changes"]},
@@ -532,7 +550,8 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         "requisition_period_reason": med.get("requisition_period_reason"),
         "requisition_diagnostics": med.get("requisition_diagnostics") or [],
         "requisition_indications": med.get("requisition_indications") or {},
-        "holter_period": med.get("holter_period")
+        "holter_period": med.get("holter_period"),
+        "explanations": med.get("explanations") or {},
     }
 
 
