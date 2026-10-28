@@ -1486,6 +1486,13 @@ def generate_note(formatted_message):
                             f"section\n\n{holt_text}"
                         )
                     sections += "\n- ASSESSMENT\n- PLAN"
+                    completion_advice += (
+                        '\n\nFor the "PLAN" section, ensure that any information related to medications (e.g. starting, '
+                        'stopping, increasing, decreasing, etc.) is output on a single line. Do NOT write confusing output '
+                        'that makes it unclear whether a medication has been prescribed or simply recommended. For example, '
+                        'do NOT output anything like "I recommended to try increasing the dose of Aspirin. The patient agreed '
+                        'to do so."'
+                    )
 
                     master_prompt = f"""
                     You are a board-certified cardiologist writing a concise, professional consultation or follow-up note to a primary care 
@@ -1537,7 +1544,7 @@ def generate_note(formatted_message):
                     To complete the remaining sections, use the following information. Ensure to write everything in 
                     paragraphs, rather than bullet points. Do NOT invent new sections that were not listed above.
 
-{TRANSCRIPT_SPEAKER_RULES}
+                    {TRANSCRIPT_SPEAKER_RULES}
 
                     {formatted_message}
 
