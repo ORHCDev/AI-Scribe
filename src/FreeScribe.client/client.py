@@ -2180,6 +2180,93 @@ def _open_relevant_eforms(consult_text: str = ""):
         if handle: _focus_eform_window(driver, handle)
 
 
+REQUISITION_GENERATION_PROMPT = "Requisition Generation"
+
+
+def _most_recent_letter(demo_no):
+    """fdid, form name and date of the patient's most recent letter eForm (0letter), or None."""
+    if not eform_selection_panel._ensure_db_conn():
+        return None
+    rows = eform_selection_panel.db_conn.query_database(f"""
+        SELECT fdid, form_name, form_date
+        FROM eform_data
+        WHERE demographic_no = {int(demo_no)}
+          AND form_name LIKE '%letter%'
+        ORDER BY form_date DESC, fdid DESC
+        LIMIT 1;
+    """)
+    return rows[0] if rows else None
+
+
+def generate_requisition_from_latest_note():
+    """"Requisition Generation" prompt: open the requisition eForm (fid 698) for the patient open in
+    Oscar, filled from the PLAN of their most recent letter, with the same rules as after a consult
+    upload. Only the requisition form is opened (no medication / lab form); nothing is submitted."""
+    def finish(message):
+        print(f"[Requisition Generation] {message}")
+        display_text(message)
+
+    if oscar is None or oscar.driver is None:
+        messagebox.showwarning(REQUISITION_GENERATION_PROMPT, "Oscar is not connected. Click \"Open Oscar\" first.")
+        return finish("Oscar is not connected.")
+    demo_no = oscar.get_demographic_no()
+    if demo_no is None:
+        messagebox.showwarning(REQUISITION_GENERATION_PROMPT, "Please open the encounter page of the patient first.")
+        return finish("No patient encounter page is open in Oscar.")
+    try:
+        letter = _most_recent_letter(demo_no)
+    except Exception as e:
+        return finish(f"Could not look up the patient's letters ({type(e).__name__}): {e}")
+    if not letter:
+        messagebox.showwarning(REQUISITION_GENERATION_PROMPT, "This patient has no letter in Oscar.")
+        return finish("No letter found for this patient.")
+
+    # The most recent letter may be from an earlier visit if today's note is not in Oscar yet.
+    patient = _fetch_patient_name(demo_no) or "this patient"
+    if not messagebox.askyesno(
+            REQUISITION_GENERATION_PROMPT,
+            f"Use the most recent letter for {patient}?\n\n{letter['form_name']} - {letter['form_date']}\n\n"
+            "Tests requested in its PLAN will be ticked on the requisition eForm."):
+        return finish("Cancelled.")
+
+    def worker():
+        try:
+            text = oscar.get_0letter_text(letter["fdid"])
+            plan_text = extract_plan_section(text or "")
+            if not plan_text:
+                # Same rule as the consult upload: without a PLAN the whole letter is not used instead.
+                _log_eform_decision("Requisition", False, "no PLAN section found in the letter")
+                return root.after(0, finish, f"No PLAN section found in the letter of {letter['form_date']} "
+                                             "(looked for \"PLAN\" and \"Plan:\"); no requisition generated.")
+            decisions = med_eform.analyze_plan_for_eforms(plan_text, send_text_to_chatgpt, _MED_GATE_MODE)
+            print(f"eForm decisions: {decisions}")
+            explanation = (decisions.get("explanations") or {}).get("requisition")
+            if not decisions["requisition"]:
+                _log_eform_decision("Requisition", False, explanation)
+                return root.after(0, finish, f"No requisition test (ECG, echo, Holter, ...) requested in the PLAN of "
+                                             f"the letter of {letter['form_date']}; requisition eForm not opened.")
+            requisition_window = _open_requisition_eform(
+                decisions["requisition_period"],
+                decisions["requisition_period_reason"],
+                decisions["requisition_diagnostics"],
+                decisions["holter_period"],
+                decisions.get("requisition_indications"),
+            )
+            _log_eform_decision("Requisition", bool(requisition_window), explanation)
+            if requisition_window:
+                _focus_eform_window(oscar.driver, requisition_window)
+            tests = ", ".join(decisions["requisition_diagnostics"])
+            period = decisions["requisition_period"] or "date from the form's Dater"
+            root.after(0, finish, (f"Requisition eForm opened from the letter of {letter['form_date']}.\n\n"
+                                   f"Tests: {tests}\nBook for: {period}" if requisition_window
+                                   else "The requisition eForm could not be opened; see the console."))
+        except Exception as e:
+            root.after(0, finish, f"Requisition generation failed ({type(e).__name__}): {e}")
+
+    display_text(f"Reading the PLAN of the letter of {letter['form_date']}...")
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def _open_medication_eform(changes: list[dict] | None = None):
     """Auto-open the medication prescription eForm (0.1Rfx), click its reset button so it starts
     from a clean prescription body, then pre-fill that body with the plan's medication changes.
@@ -2875,12 +2962,29 @@ dropdown_label = tk.Label(scribe_frame, text="Select Prompt", font=("Arial", 8, 
 dropdown_label.grid(row=1, column=4, pady=(8, 0), sticky='sew')
 
 selected_prompt = tk.StringVar(value="Auto")
-values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete", "Consult Complete + MH"]
+values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete", "Consult Complete + MH",
+                                                                   REQUISITION_GENERATION_PROMPT]
 prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
 prompt_dropdown._id = "prompt_selector"
 prompt_dropdown.grid(row=2, column=4, pady=(0, 6), sticky='new')
+
+# "Requisition Generation" is an action, not a note prompt: choosing it runs it straight away and
+# puts the previous prompt back, so Generate Note keeps using that one.
+_last_note_prompt = selected_prompt.get()
+
+
+def _on_prompt_selected(_event=None):
+    global _last_note_prompt
+    if selected_prompt.get() == REQUISITION_GENERATION_PROMPT:
+        selected_prompt.set(_last_note_prompt)
+        generate_requisition_from_latest_note()
+    else:
+        _last_note_prompt = selected_prompt.get()
+
+
+prompt_dropdown.bind("<<ComboboxSelected>>", _on_prompt_selected)
 
 # switch_view_button = tk.Button(
 #     scribe_frame, text="Minimize View", command=toggle_minimize_view, height=2, width=12,
