@@ -1788,18 +1788,23 @@ def show_edit_transcription_popup(formatted_message):
         # Use unscrubbed message for OSCAR_FEEDBACK
         cleaned_message = formatted_message
     else:
+        # scrubadub's email detector also matches "<word> at <x>.<y>", which turns dictated
+        # medications such as "Lipitor at h.s." into {{EMAIL}}; only real "@" emails are scrubbed (below).
         scrubber = scrubadub.Scrubber()
+        scrubber.remove_detector('email')
 
-        scrubbed_message = scrubadub.clean(formatted_message)
+        scrubbed_message = scrubber.clean(formatted_message)
 
-        # Additional regex scrubbing 
+        # Additional regex scrubbing
         cleaned_message = scrubbed_message
+        re_email = re.compile(r'\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b')  # Email addresses
         re_ohip_plain = re.compile(r'\b\d{10}\b')  # 10 digit OHIP
         re_ohip_dashed = re.compile(r'\b(\d{4})-(\d{3})-(\d{3})(?:[- ]?[A-Za-z]{2})?\b')  # OHIP with dashes
         re_postal = re.compile(r'\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b', re.IGNORECASE)  # Canadian postal codes
         re_address = re.compile(r'\b\d+ [A-Z][a-z]+ (Street|St|Avenue|Ave|Road|Rd|Drive|Dr)\b', re.IGNORECASE)  # Street addresses
 
         scrub_patterns = [
+            (re_email, '{{EMAIL}}'),
             (re_ohip_plain, '{{OHIP}}'),
             (re_ohip_dashed, '{{OHIP}}'),
             (re_postal, '{{POSTAL_CODE}}'),
