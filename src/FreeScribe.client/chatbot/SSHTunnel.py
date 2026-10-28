@@ -56,6 +56,8 @@ class OscarDB:
         """Execute a SQL query and return results as a list of dicts"""
         if not self.conn:
             raise RuntimeError("Database not connected. Call connect() first.")
+        # Reconnect if the connection was dropped while idle 
+        self.conn.ping(reconnect=True, attempts=3, delay=2)
         cursor = self.conn.cursor(dictionary=True)
         cursor.execute(sql, params or ())
         results = cursor.fetchall()

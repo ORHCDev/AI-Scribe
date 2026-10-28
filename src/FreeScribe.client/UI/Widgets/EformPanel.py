@@ -587,4 +587,8 @@ class EformPanel(tk.Frame):
         if not self._ensure_db_conn():
             return False
         res = self.db_conn.query_database(query)
+        if not res:
+            # Empty result usually means the Oscar/DB session went stale 
+            print("No demographic rows returned for patient info, try running again")
+            return False
         return res[0]

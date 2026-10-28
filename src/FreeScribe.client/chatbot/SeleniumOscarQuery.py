@@ -155,6 +155,28 @@ class SOQ:
         if 'None' in query:
             raise ValueError("A query parameter was not provided.\n Please provide all necessary parameters.")
 
+        try:
+            return self._submit_qbe_query(query)
+        except Exception as e:
+            # A QBE page that stops responding almost always means the Oscar admin session expired 
+            logging.warning(
+                f"QBE query failed ({e.__class__.__name__}: {e}); "
+                "re-logging into Oscar and retrying once"
+            )
+            try: # Re-login once and retry before giving up
+                self.run()
+                return self._submit_qbe_query(query)
+            except Exception as retry_e:
+                logging.error(
+                    f"QBE query failed after re-login ({retry_e.__class__.__name__}: "
+                    f"{retry_e}); assuming no results"
+                )
+                return []
+
+    def _submit_qbe_query(self, query):
+        """
+        Types into the Oscar Query By Example page and scrapes the results table
+        """
         textbox_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[2]/td/textarea'
         button_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[6]/td/input'
         results_xpath = '//*[@id="scrollNumber1"]/tbody/tr[2]/td[2]/table/tbody/tr[8]/td/table/tbody'
@@ -203,7 +225,7 @@ class SOQ:
                 EC.presence_of_element_located((By.XPATH, results_xpath))
             )
         except Exception as e:
-            # Capture what the page actually shows for debugging before returning empty
+            # Capture what the page actually shows for debugging before raising
             page_text = ""
             try:
                 body = self.driver.find_element(By.TAG_NAME, "body")
@@ -211,12 +233,11 @@ class SOQ:
             except Exception:
                 pass
             logging.warning(
-                f"Results table not found within {self.query_timeout}s; "
-                f"assuming no results. Reason: {e}"
+                f"Results table not found within {self.query_timeout}s. Reason: {e}"
             )
             if page_text:
                 logging.warning(f"Current page text: {page_text}")
-            return []
+            raise
 
         # Get headers
         headers = [th.text.strip() for th in table.find_elements(By.TAG_NAME, "th")]
