@@ -1,25 +1,12 @@
 """
 New-patient referral letters -> requisition eForm (fid 716).
-
-When AI-Scribe starts, "REFERRAL LETTER" documents uploaded to patients the day before (who have
-no requisition eForm yet) are OCR'd, the LLM reads which tests the referring doctor asked
-for and the "Indication for the test" lines, and the requisition eForm is opened filled in for the
-doctor to check and submit. Each indication is set to the form's matching dropdown option when one
-fits, otherwise to the referral's own wording (e.g. "family history of sarcoid").
-
-This module holds the parts that do not need Oscar or the UI: the SQL, the prompt, and turning the
-LLM's answer into the fields to fill.
 """
 
 import difflib
 import json
 import re
-from datetime import date, timedelta
 
 REFERRAL_REQUISITION_FID = 716
-REFERRAL_DOCTYPE = "REFERRAL LETTER"
-# Requisition eForms that count as "already written" for the patient (716 and the older 698).
-REQUISITION_FIDS = (716, 698)
 
 # Test checkbox id -> (name shown to the LLM, indication input id or None)
 REFERRAL_TESTS = {
@@ -48,57 +35,6 @@ _JSON_KEYS = {
 _OPTION_MATCH_RATIO = 0.9
 
 
-# How many days back a missed check is caught up (e.g. AI-Scribe not opened over a long weekend).
-MAX_CATCH_UP_DAYS = 7
-
-
-def days_to_check(last_checked: date | None, today: date) -> tuple[date, date] | None:
-    """Upload days to check when AI-Scribe starts, as (first day, last day), or None.
-
-    Every day after `last_checked` up to yesterday (at most MAX_CATCH_UP_DAYS back; only yesterday
-    the very first time). Today is left for tomorrow, when all of its uploads are in."""
-    yesterday = today - timedelta(days=1)
-    first = yesterday if last_checked is None else last_checked + timedelta(days=1)
-    first = max(first, today - timedelta(days=MAX_CATCH_UP_DAYS))
-    return (first, yesterday) if first <= yesterday else None
-
-
-def patient_provider_query(demo_no) -> str:
-    """The patient's MRP provider number (for opening the encounter page)."""
-    return f"SELECT provider_no FROM demographic WHERE demographic_no = {int(demo_no)} LIMIT 1;"
-
-
-def new_referral_documents_query(since: str, until: str | None = None) -> str:
-    """Referral letters attached to a patient and uploaded at or after `since` and before `until`
-    (both 'YYYY-MM-DD HH:MM:SS')."""
-    for stamp in (since, until):
-        if stamp is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", stamp):
-            raise ValueError(f"Bad timestamp: {stamp!r}")
-    until_clause = f"AND d.updatedatetime < '{until}'" if until else ""
-    return f"""
-        SELECT cd.document_no, cd.module_id AS demographic_no, d.updatedatetime
-        FROM ctl_document AS cd
-        JOIN document AS d ON cd.document_no = d.document_no
-        WHERE cd.module = "demographic"
-          AND cd.module_id > 0
-          AND UPPER(TRIM(d.doctype)) = '{REFERRAL_DOCTYPE}'
-          AND (d.status IS NULL OR d.status <> 'D')
-          AND d.updatedatetime >= '{since}'
-          {until_clause}
-        ORDER BY d.updatedatetime ASC, cd.document_no ASC;
-    """
-
-
-def requisition_exists_query(demo_no) -> str:
-    """Any submitted requisition eForm (716 or 698) for the patient."""
-    fids = ", ".join(str(f) for f in REQUISITION_FIDS)
-    return f"""
-        SELECT fdid FROM eform_data
-        WHERE demographic_no = {int(demo_no)} AND fid IN ({fids}) AND status = 1
-        LIMIT 1;
-    """
-
-
 def indication_options(form_json: dict) -> dict:
     """Test id -> list of {"id": stored value, "label": text shown} from referral_form.json."""
     options = {}
@@ -117,18 +53,21 @@ def build_referral_prompt(referral_text: str, form_json: dict) -> str:
             lines.append("  indication options:")
             lines.extend(f"    * {o['label']}" for o in options[test])
     tests_block = "\n".join(lines)
-    return f"""You are reading an OCR scan of a cardiology referral letter / requisition sent by a referring doctor.
+    return f"""You are reading a cardiology referral sent by a referring doctor (often an OCR scan). It can be
+any format: our requisition form, another clinic's form, or a free-text letter.
 Find which tests the referring doctor is asking our clinic to do, and the indication for each.
 
 Rules:
 - Only include a test if the referral asks for it: its box is marked (OCR may show a filled box as
-  "■", "@", "®", "M", "Hl", "%" and an empty box as "□", "O", "0", "[]", "("), or the referral
-  writes an indication / request for it. Do not include tests that are only mentioned as past results.
+  "■", "@", "®", "M", "Hl", "%" and an empty box as "□", "O", "0", "[]", "("), or the text asks for
+  it (e.g. "please arrange an echo"). Do not include tests that are only mentioned as past results.
+- The reason can be anywhere: an "Indication" line, "Reason for referral", "Clinical information",
+  "History", or the body of a letter. Read the whole referral, not just one section.
 - "stecho" only when the referral asks for a stress ECHO; a plain stress / treadmill test is "est".
 - For each test, "indication" is ONE of the listed options copied exactly when one clearly matches
   the referral's reason; otherwise a short reason in the referral's own words (e.g. "family history
-  of sarcoid"). Use the reason written for that test; if the test has none, use the referral's
-  overall reason. Use null if the referral gives no reason at all.
+  of sarcoid"). Use the reason given for that test; if none is given for it, use the referral's
+  overall reason (symptoms / history the referral describes). Use null if there is no reason at all.
 - "holter_duration": one of "24h", "48h", "72h", "2w" if a Holter duration is marked, else null.
 - "contrast": true only if the referral marks the contrast option for echo / stress echo.
 - For "consult", "indication" is the reason for referral (short), or null.

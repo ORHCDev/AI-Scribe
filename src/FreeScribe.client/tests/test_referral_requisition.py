@@ -3,7 +3,6 @@ Logic of the referral letter -> requisition eForm (716) auto-fill (no LLM, no Os
 """
 
 import json
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -92,42 +91,3 @@ def test_prompt_lists_tests_and_options():
     prompt = rr.build_referral_prompt("OCR TEXT", FORM_JSON)
     assert '"holter"' in prompt and "Chest pain of suspected cardiac origin." in prompt
     assert prompt.rstrip().endswith("OCR TEXT")
-
-
-def test_queries_reject_unsafe_input():
-    with pytest.raises(ValueError):
-        rr.new_referral_documents_query("2026-10-28'; DROP TABLE x; --")
-    with pytest.raises(ValueError):
-        rr.requisition_exists_query("1 OR 1=1")
-    assert "fid IN (716, 698)" in rr.requisition_exists_query(42)
-
-
-D = date(2026, 10, 28)
-
-
-@pytest.mark.parametrize("last_checked, expected", [
-    # Checked yesterday morning: yesterday's uploads now.
-    (date(2026, 10, 26), (date(2026, 10, 27), date(2026, 10, 27))),
-    # Already checked this morning (or AI-Scribe restarted): nothing.
-    (date(2026, 10, 27), None),
-    # Long weekend: every missed day, at most 7 back.
-    (date(2026, 10, 23), (date(2026, 10, 24), date(2026, 10, 27))),
-    (date(2026, 9, 1), (date(2026, 10, 21), date(2026, 10, 27))),
-    # First run ever: only yesterday.
-    (None, (date(2026, 10, 27), date(2026, 10, 27))),
-])
-def test_days_to_check(last_checked, expected):
-    assert rr.days_to_check(last_checked, D) == expected
-
-
-def test_patient_provider_query_rejects_unsafe_input():
-    assert "demographic_no = 42" in rr.patient_provider_query("42")
-    with pytest.raises(ValueError):
-        rr.patient_provider_query("1 OR 1=1")
-
-
-def test_query_has_upper_bound():
-    q = rr.new_referral_documents_query("2026-10-27 00:00:00", "2026-10-28 00:00:00")
-    assert "d.updatedatetime >= '2026-10-27 00:00:00'" in q and "d.updatedatetime < '2026-10-28 00:00:00'" in q
-    with pytest.raises(ValueError):
-        rr.new_referral_documents_query("2026-10-27 00:00:00", "tomorrow")

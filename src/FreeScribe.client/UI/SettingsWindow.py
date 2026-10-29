@@ -96,7 +96,6 @@ class SettingsWindow():
         self.general_settings = [
             "Show Welcome Message",
             "Use Database Patient Lookup",
-            "Auto Requisition From Referral Letters",
             "Show Scrub PHI",
             SettingsKeys.USE_NEW_UI.value
         ]
@@ -212,7 +211,6 @@ class SettingsWindow():
             "HL7 Base Folder" : r'.\hl7',
             "Feedback Base Folder" : r'.\feedback',
             "Use Database Patient Lookup": True,
-            "Auto Requisition From Referral Letters": True,
             "Default Upload Folder" : r'.',
             "Default Download Folder" : r'.',
         }

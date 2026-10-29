@@ -821,6 +821,11 @@ def send_and_receive():
     global use_aiscribe, user_message
     user_message = user_input.scrolled_text.get("1.0", tk.END).strip()
 
+    if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT:
+        display_text(f"\"{REFERRAL_REQUISITION_PROMPT}\" does not generate a note: open the patient's encounter "
+                     "page and click Populate to fill the requisition eForm from the referral in the input box.")
+        return
+
     # If user selected OSCAR_FEEDBACK, try to send only patient notes
     try:
         if selected_prompt.get() == "OSCAR_FEEDBACK" and user_message:
@@ -1981,136 +1986,71 @@ def generate_requisition_from_latest_note():
 
 
 # ── Referral letters -> requisition eForm (fid 716) ──────────────────────────────
-# When AI-Scribe is opened (in the morning), look for REFERRAL LETTER documents uploaded the day before
-# (or on any missed days) to patients who have no requisition eForm yet, read the requested tests and
-# indications, and open each patient's encounter page plus the 716 form filled in for the doctor to
-# check and submit (it is never submitted here).
-REFERRAL_WATCH_SETTING = "Auto Requisition From Referral Letters"
-# Until Oscar is connected the check is retried at this interval; after it ran it waits for the next day.
-_REFERRAL_CHECK_MS = 10 * 60 * 1000
-# Remembers the last upload day that was checked, across restarts.
-_REFERRAL_STATE_FILE = get_resource_path("referral_requisition_state.json")
-_referral_docs_seen = set()
-_referral_watch_busy = threading.Event()
+# "Referral Requisition" prompt: paste or upload a new patient's referral letter into the input box,
+# open the patient's encounter page and click Populate. The requested tests and indications are read
+# from the text and the 716 form is opened filled in for the doctor to check and submit (it is never
+# submitted here).
+REFERRAL_REQUISITION_PROMPT = "Referral Requisition"
 
 
-def _referral_last_checked_day():
-    try:
-        with open(_REFERRAL_STATE_FILE) as f:
-            return date.fromisoformat(json.load(f)["last_checked_day"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+def referral_requisition_from_input():
+    def finish(message):
+        print(f"[{REFERRAL_REQUISITION_PROMPT}] {message}")
+        display_text(message)
 
+    text = user_input.scrolled_text.get("1.0", tk.END).strip()
+    if not text:
+        messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "Paste or upload the referral letter into the input box first.")
+        return finish("No referral text in the input box.")
+    if oscar is None or oscar.driver is None:
+        messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "Oscar is not connected. Click \"Open Oscar\" first.")
+        return finish("Oscar is not connected.")
+    demo_no = oscar.get_demographic_no()
+    if demo_no is None:
+        messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "Please open the encounter page of the patient first.")
+        return finish("No patient encounter page is open in Oscar.")
 
-def _save_referral_last_checked_day(day):
-    try:
-        with open(_REFERRAL_STATE_FILE, "w") as f:
-            json.dump({"last_checked_day": day.isoformat()}, f)
-    except OSError as e:
-        print(f"[Referral] Could not save the last checked day ({type(e).__name__}): {e}")
+    def worker():
+        try:
+            form_json = get_referral_json()
+            raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, form_json))
+            result = referral_requisition.parse_referral_response(raw, form_json)
+            if not result["tests"]:
+                return root.after(0, finish, "No test requested in the referral; requisition eForm not opened.\n\n"
+                                             f"{result['explanation']}")
+            window, fill = _open_referral_requisition_eform(demo_no, result["fields"])
+            if window:
+                _focus_eform_window(oscar.driver, window)
+            lines = []
+            for test in result["tests"]:
+                value, from_dropdown = result["indications"].get(test, (None, False))
+                lines.append(f"- {test}: {value} ({'dropdown' if from_dropdown else 'free text'})" if value
+                             else f"- {test}: no indication")
+            missing = f"\n\nNot found on the form: {', '.join(fill['missing'])}" if fill["missing"] else ""
+            root.after(0, finish, f"Requisition eForm opened; check it and submit.\n\n" + "\n".join(lines)
+                       + missing + (f"\n\n{result['explanation']}" if result["explanation"] else ""))
+        except Exception as e:
+            root.after(0, finish, f"Referral requisition failed ({type(e).__name__}): {e}")
 
-
-def _referral_watch_tick():
-    """Runs on the Tk thread: start a background check when there are past upload days not checked
-    yet. If Oscar is not connected yet it tries again on the next tick."""
-    try:
-        days = referral_requisition.days_to_check(_referral_last_checked_day(), date.today())
-        if (days
-                and app_settings.editable_settings.get(REFERRAL_WATCH_SETTING, True)
-                and not _referral_watch_busy.is_set()
-                and oscar is not None and oscar.driver is not None
-                and eform_selection_panel.db_conn is not None):
-            _referral_watch_busy.set()
-            threading.Thread(target=_process_new_referral_letters, args=days, daemon=True).start()
-    finally:
-        root.after(_REFERRAL_CHECK_MS, _referral_watch_tick)
-
-
-def _process_new_referral_letters(first_day, last_day):
-    since = f"{first_day.isoformat()} 00:00:00"
-    until = f"{(last_day + timedelta(days=1)).isoformat()} 00:00:00"
-    print(f"[Referral] Checking referral letters uploaded {first_day} to {last_day}...")
-    try:
-        rows = eform_selection_panel.db_conn.query_database(
-            referral_requisition.new_referral_documents_query(since, until))
-        for row in rows or []:
-            doc_no, demo_no = row.get("document_no"), row.get("demographic_no")
-            if doc_no in _referral_docs_seen:
-                continue
-            _referral_docs_seen.add(doc_no)
-            try:
-                _requisition_from_referral_letter(doc_no, demo_no)
-            except Exception as e:
-                print(f"[Referral] Document {doc_no}: failed ({type(e).__name__}): {e}")
-        # Only after the query worked, so a failed check is retried on the next tick.
-        _save_referral_last_checked_day(last_day)
-    except Exception as e:
-        print(f"[Referral] Could not check for new referral letters ({type(e).__name__}): {e}")
-    finally:
-        _referral_watch_busy.clear()
-
-
-def _requisition_from_referral_letter(doc_no, demo_no):
-    # Patient ids / document numbers only in the log, no names (PHI).
-    tag = f"[Referral] Document {doc_no} (demographic {demo_no})"
-    if eform_selection_panel.db_conn.query_database(referral_requisition.requisition_exists_query(demo_no)):
-        return print(f"{tag}: patient already has a requisition eForm; skipped.")
-
-    pdf_bytes = oscar.get_document_bytes(doc_no)
-    text = pdf_image_to_text(pdf_bytes=pdf_bytes, last_page=3) if pdf_bytes else ""
-    if not text.strip():
-        return print(f"{tag}: no text could be read from the letter; requisition not opened.")
-
-    form_json = get_referral_json()
-    raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, form_json))
-    result = referral_requisition.parse_referral_response(raw, form_json)
-    if not result["tests"]:
-        return print(f"{tag}: no test requested in the letter; requisition not opened. {result['explanation']}")
-
-    fill = _open_referral_requisition_eform(demo_no, result["fields"])
-    indications = "; ".join(f"{t}: {'dropdown' if from_dropdown else 'free text'}"
-                            for t, (_v, from_dropdown) in result["indications"].items())
-    print(f"{tag}: requisition eForm {referral_requisition.REFERRAL_REQUISITION_FID} OPENED — "
-          f"tests {', '.join(result['tests'])}; indications {indications or 'none'}; "
-          f"not found on the form: {fill['missing'] or 'none'}. {result['explanation']}")
-
-
-# Oscar's encounter page for a patient, as opened from the schedule / search.
-_ENCOUNTER_URL = ("oscarEncounter/IncomingEncounter.do?providerNo={provider_no}&appointmentNo=&demographicNo={demo_no}"
-                  "&curProviderNo={provider_no}&reason=&encType=&curDate={today}&appointmentDate=&startTime=&status=")
-
-
-def _open_patient_encounter(demo_no):
-    """Open the patient's encounter page in its own window so the doctor can see whose requisition
-    it is. Best effort: the form is still opened if this fails."""
-    driver = oscar.driver
-    try:
-        rows = eform_selection_panel.db_conn.query_database(referral_requisition.patient_provider_query(demo_no))
-        provider_no = (rows[0].get("provider_no") if rows else None) or ""
-        link = oscar.oscar_url + _ENCOUNTER_URL.format(provider_no=provider_no, demo_no=int(demo_no),
-                                                       today=date.today().isoformat())
-        driver.execute_script("window.open(arguments[0], '_blank', 'width=1000,height=800');", link)
-    except Exception as e:
-        print(f"[Referral] Could not open the encounter page of demographic {demo_no} ({type(e).__name__}): {e}")
-    finally:
-        driver.switch_to.window(oscar.home_window)
+    display_text("Reading the referral...")
+    threading.Thread(target=worker, daemon=True).start()
 
 
 def _open_referral_requisition_eform(demo_no, fields):
-    """Open the patient's encounter page, then the 716 eForm for `demo_no` with the same link
-    oscar.open_new_eform uses (Oscar fills the patient / doctor details from it), fill `fields`,
-    and return to the main Oscar window. The form window stays open, unsaved."""
-    _open_patient_encounter(demo_no)
+    """Open the 716 eForm for `demo_no` with the same link oscar.open_new_eform uses (Oscar fills the
+    patient / doctor details from it), fill `fields`, and return to the main Oscar window.
+    Returns (window handle, fill result); the form window stays open, unsaved."""
     driver = oscar.driver
     link = oscar.new_eform_template.format(fid=referral_requisition.REFERRAL_REQUISITION_FID, demo_no=int(demo_no))
     before = set(driver.window_handles)
     driver.execute_script("window.open(arguments[0], '_blank', 'width=800,height=600');", link)
     try:
         WebDriverWait(driver, 10).until(lambda d: len(set(d.window_handles) - before) > 0)
-        driver.switch_to.window(next(h for h in driver.window_handles if h not in before))
+        window = next(h for h in driver.window_handles if h not in before)
+        driver.switch_to.window(window)
         WebDriverWait(driver, 20).until(lambda d: d.execute_script(
             "return document.readyState === 'complete' && location.href !== 'about:blank';"))
-        return driver.execute_script(referral_requisition.FILL_FIELDS_JS, fields)
+        return window, driver.execute_script(referral_requisition.FILL_FIELDS_JS, fields)
     finally:
         driver.switch_to.window(oscar.home_window)
 
@@ -2601,7 +2541,9 @@ def upload_consult_complete(overwrite):
     _open_relevant_eforms(text)
 
 def upload_consult_by_type(upload_type, overwrite):
-    if upload_type == "consult": upload_consult()
+    # With the "Referral Requisition" prompt, Populate fills the requisition from the input box instead.
+    if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT: referral_requisition_from_input()
+    elif upload_type == "consult": upload_consult()
     elif upload_type == "mh_and_consult": upload_consult_and_mh()
     elif upload_type == "complete_consult": upload_consult_complete(overwrite)
     else: raise ValueError(
@@ -2811,7 +2753,8 @@ dropdown_label.grid(row=1, column=4, pady=(8, 0), sticky='sew')
 
 selected_prompt = tk.StringVar(value="Auto")
 values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete", "Consult Complete + MH",
-                                                                   REQUISITION_GENERATION_PROMPT]
+                                                                   REQUISITION_GENERATION_PROMPT,
+                                                                   REFERRAL_REQUISITION_PROMPT]
 prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
@@ -3365,7 +3308,6 @@ if app_settings.editable_settings[SettingsKeys.LOCAL_WHISPER.value]:
     root.after(100, load_stt_model)
 
 root.bind("<<LoadSttModel>>", load_stt_model)
-root.after(60 * 1000, _referral_watch_tick)
 
 try:
     root.mainloop()
