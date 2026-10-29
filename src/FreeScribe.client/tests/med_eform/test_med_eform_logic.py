@@ -644,30 +644,3 @@ def test_recommended_tests_do_not_open_the_requisition():
     r = req({"period": "1y", "echo": True, "holter": "48h"},
             "I recommend a repeat echo. Consider a Holter if palpitations persist. Follow up in 1 year.")
     assert r["requisition"] is False
-
-
-# --- requisition indication boxes: keep the carried-over text, replace last visit's PLAN part --------
-
-@pytest.mark.parametrize("existing,plan_indication,expected", [
-    ("", "palpitations", "Plan: palpitations"),
-    (None, None, ""),
-    ("severe AS", "reassess valve", "severe AS — Plan: reassess valve"),
-    ("severe AS — Plan: reassess valve", "post TAVI follow-up", "severe AS — Plan: post TAVI follow-up"),
-    ("severe AS — Plan: reassess valve", None, "severe AS"),             # no reason this visit
-    ("Plan: palpitations", "syncope", "Plan: syncope"),
-    ("Plan: palpitations", "", ""),
-    ("PAF", None, "PAF"),
-    ("Corhealth Ind. 2.3. Yearly evaluation for atrial fibrillation.", "AF on apixaban",
-     "Corhealth Ind. 2.3. Yearly evaluation for atrial fibrillation. — Plan: AF on apixaban"),
-    # Mason's interval reason, appended after the PLAN part last visit, goes with it
-    ("PAF — Plan: palpitations — seen sooner because of new symptoms", "palpitations", "PAF — Plan: palpitations"),
-])
-def test_merge_indication(existing, plan_indication, expected):
-    assert med_eform.merge_indication(existing, plan_indication) == expected
-
-
-def test_merge_indication_does_not_grow_over_visits():
-    box = "moderate AS"
-    for _ in range(5):
-        box = med_eform.merge_indication(box, "annual surveillance")
-    assert box == "moderate AS — Plan: annual surveillance"

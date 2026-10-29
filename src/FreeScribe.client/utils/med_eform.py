@@ -333,22 +333,6 @@ def normalize_holter_period(value) -> str | None:
     return _HOLTER_PERIODS.get(key)
 
 
-# The part of a requisition indication box written from the PLAN. Indication boxes are m$ fields that
-# Oscar pre-fills with what was saved last time, so this part is replaced at every visit while the rest
-# (the clinician's own text, which the form's Dater reads, and Dater's Cor Health lines) is kept.
-INDICATION_PLAN_MARKER = " — Plan: "
-_INDICATION_PLAN_PART = re.compile(r"(\s*—\s*|^\s*)Plan:.*$", re.DOTALL)
-
-
-def merge_indication(existing: str | None, plan_indication: str | None) -> str:
-    """Indication box text: what was there without the previous visit's PLAN part, plus this visit's."""
-    base = _INDICATION_PLAN_PART.sub("", str(existing or "")).strip()
-    plan_indication = str(plan_indication or "").strip()
-    if not plan_indication:
-        return base
-    return f"{base}{INDICATION_PLAN_MARKER}{plan_indication}" if base else f"Plan: {plan_indication}"
-
-
 def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     """The requisition part of the model's reply, checked against the form and the clinic's rules:
     - only the form's own checkbox ids are kept (case-insensitive), in form order;
