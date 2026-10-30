@@ -2189,7 +2189,7 @@ def _translate_period(labwork_period: str) -> str:
 
     amount = match.group(1)
     unit = match.group(2)
-    suffix = "s" if amount != 1 else ""
+    suffix = "s" if int(amount) != 1 else ""
 
     if unit == "d": return amount + " day" + suffix
     elif unit == "w": return amount + " week" + suffix

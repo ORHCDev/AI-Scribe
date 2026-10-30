@@ -845,7 +845,7 @@ class Oscar:
             HEADING_PATTERN = "|".join(re.escape(h) for h in [*HEADINGS, "IMPRESSION/ASSESSMENT"])
 
             sections = re.split(
-                rf'(?=^(?:{HEADING_PATTERN})\s*$)',
+                rf'(?=^(?:{HEADING_PATTERN}):?\s*$)',
                 full_text,
                 flags=re.MULTILINE
             )
@@ -854,12 +854,12 @@ class Oscar:
             parsed_sections = {}
             for section in sections:
                 heading, separator, content = section.partition("\n")
-                stripped_heading = heading.strip()
+                stripped_heading = heading.strip().rstrip(":").strip()
                 if stripped_heading.upper() == "IMPRESSION/ASSESSMENT": stripped_heading = "ASSESSMENT"
                 stripped_contents = content.strip()
                 parsed_sections[stripped_heading] = stripped_contents
-                print(f"Processed section {stripped_heading}")
-                print(f"Contents: {stripped_contents}")
+                print(f"[0letter] Processed section {stripped_heading}")
+                print(f"[0letter] Contents of {stripped_heading}: {stripped_contents}")
 
             # Open and switch to eForm window
             self.open_eform(fdid, switch_home=False)
@@ -880,17 +880,17 @@ class Oscar:
                 if heading in parsed_sections:
                     result = replace_section(heading, parsed_sections[heading])
                     if result == 0:
-                        print(f"Replaced section {heading}")
+                        print(f"[0letter] Replaced section {heading}")
                     elif result == 1:
-                        print(f"Inserted section {heading}")
+                        print(f"[0letter] Inserted section {heading}")
                     elif result == -1:
-                        print(f"Failed to handle section {heading}: nextHeadingPara not found")
+                        print(f"[0letter] Failed to handle section {heading}: nextHeadingPara not found")
                     elif result == -2:
-                        print(f"Failed to handle section {heading}: colonIndex not found")
+                        print(f"[0letter] Failed to handle section {heading}: colonIndex not found")
                     elif result == -3:
-                        print(f"Failed to handle section {heading}: startNode not found")
+                        print(f"[0letter] Failed to handle section {heading}: startNode not found")
                     elif result == -4:
-                        print(f"Failed to handle section {heading}: colonNode not found")
+                        print(f"[0letter] Failed to handle section {heading}: colonNode not found")
 
             # Click submit
             self.driver.switch_to.default_content()
