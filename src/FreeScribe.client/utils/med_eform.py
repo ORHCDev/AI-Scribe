@@ -338,7 +338,7 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     - only the form's own checkbox ids are kept (case-insensitive), in form order;
     - a stress echo is only kept when the PLAN says "stress echo"; otherwise it is an exercise stress
       test, plus a regular echo if the PLAN mentions one ("stress test and echo" is EST + echo);
-    - contrast echo needs echo, contrast stress echo needs stress echo;
+    - contrast echo ticks echo, contrast stress echo ticks stress echo; neither stays without its test;
     - a Holter always comes with an ECG;
     - the form is only opened when at least one box is ticked."""
     if not isinstance(req_raw, dict):
@@ -352,6 +352,18 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     if holter_period or as_flag(holter_raw) or (
             isinstance(holter_raw, str) and holter_raw.strip().lower() not in ("", "false", "no", "null", "none")):
         ticked.add("holter")
+    llm_ticked = sorted(ticked, key=REQUISITION_TESTS.index)
+
+    # Contrast is an add-on to its test, so asking for it asks for the test too. A lone "contrast" on a
+    # PLAN with no stress echo is a contrast echo ("contrast echocardiogram" must not become an EST).
+    if "contrast" in ticked and "stecho" not in ticked:
+        if plan and not re.search(_STRESS_ECHO_PATTERN, plan, re.IGNORECASE):
+            ticked.discard("contrast")
+            ticked.add("contrastecho")
+        else:
+            ticked.add("stecho")
+    if "contrastecho" in ticked:
+        ticked.add("echo")
 
     if "stecho" in ticked and plan and not re.search(_STRESS_ECHO_PATTERN, plan, re.IGNORECASE):
         print('[requisition eForm] PLAN has no "stress echo"; ticking exercise stress test instead of stress echo')
@@ -383,6 +395,8 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     period = raw.get("period")
     period = str(period).strip() if period is not None and str(period).strip() else None
     diagnostics = [t for t in REQUISITION_TESTS if t in ticked]
+    if llm_ticked and not diagnostics:
+        print(f"[requisition eForm] LLM asked for {llm_ticked} but no test passed the PLAN checks; not opening the form")
     return {
         "requisition": bool(diagnostics),
         "requisition_period": period,

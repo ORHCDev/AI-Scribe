@@ -468,9 +468,30 @@ def test_stress_echo_kept_when_the_plan_says_so(plan):
     assert r["requisition_diagnostics"] == ["stecho", "contrast"]
 
 
-def test_contrast_options_need_their_base_test():
-    r = req({"period": "1y", "contrastecho": True, "contrast": True, "ecg": True})
-    assert r["requisition_diagnostics"] == ["ecg"]
+def test_contrast_echo_alone_ticks_echo():
+    r = req({"period": "4m", "contrastecho": True}, "Contrast echocardiogram in 4 months.")
+    assert r["requisition"] is True
+    assert r["requisition_diagnostics"] == ["echo", "contrastecho"]
+
+
+def test_contrast_stress_echo_alone_ticks_stress_echo():
+    r = req({"period": "3m", "contrast": True}, "Arrange a contrast stress echo in 3 months.")
+    assert r["requisition_diagnostics"] == ["stecho", "contrast"]
+
+
+def test_lone_contrast_without_stress_echo_in_plan_is_a_contrast_echo_not_an_est():
+    r = req({"period": "4m", "contrast": True}, "Contrast echocardiogram in 4 months.")
+    assert r["requisition_diagnostics"] == ["echo", "contrastecho"]
+
+
+def test_contrast_does_not_stay_when_its_test_is_only_recommended():
+    r = req({"period": "4m", "contrastecho": True}, "I recommend a contrast echocardiogram in 4 months.")
+    assert r["requisition"] is False
+
+
+def test_log_says_when_the_llm_asked_for_tests_but_none_passed(capsys):
+    req({"period": "4m", "echo": True}, "I recommend a repeat echo.")
+    assert "LLM asked for ['echo']" in capsys.readouterr().out
 
 
 def test_indications_kept_only_for_ticked_tests_with_an_indication_box():
