@@ -42,9 +42,15 @@ class CustomTextBox(tk.Frame):
         self.scrolled_text = tk.scrolledtext.ScrolledText(self, wrap="word", height=height, state=state)
         self.scrolled_text.pack(side="top", fill="both", expand=True)
 
-        # Frame for button alignment
+        # Frames for button alignment
         self.button_frame = tk.Frame(self)
-        self.button_frame.pack(side="bottom", anchor="e", pady=(4, 0))
+        self.button_frame.pack(side="bottom", fill="x", pady=(4, 0))
+
+        self.left_button_frame = tk.Frame(self.button_frame)
+        self.left_button_frame.pack(side="left", anchor="w")
+
+        self.right_button_frame = tk.Frame(self.button_frame)
+        self.right_button_frame.pack(side="right", anchor="e")
 
         # Initialize callback functions
         if new_ui:
@@ -61,10 +67,17 @@ class CustomTextBox(tk.Frame):
 
         # Buttons, in order of appearance
         if new_ui:
-            self.upload_type_var = tk.StringVar(value="Overwrite Complete Consult")
+            self.report_button = tk.Button(
+                self.left_button_frame,
+                text="Report An Issue",
+                command=self._report_issue,
+                relief="raised",
+                borderwidth=1
+            )
 
+            self.upload_type_var = tk.StringVar(value="Overwrite Complete Consult")
             self.upload_type_dropdown = ttk.Combobox(
-                self.button_frame,
+                self.right_button_frame,
                 textvariable=self.upload_type_var,
                 state="readonly",
                 values=[
@@ -77,7 +90,7 @@ class CustomTextBox(tk.Frame):
             )
 
             self.upload_button = tk.Button(
-                self.button_frame,
+                self.right_button_frame,
                 text="Populate",
                 command=self._upload,
                 relief="raised",
@@ -85,7 +98,7 @@ class CustomTextBox(tk.Frame):
             )
         else:
             self.med_hist_button = tk.Button(
-                self.button_frame,
+                self.right_button_frame,
                 text="Insert MH",
                 command=self._med_hist,
                 relief="raised",
@@ -93,7 +106,7 @@ class CustomTextBox(tk.Frame):
             )
 
             self.consult_button = tk.Button(
-                self.button_frame,
+                self.right_button_frame,
                 text="Insert Consult",
                 command=self._consult,
                 relief="raised",
@@ -101,7 +114,7 @@ class CustomTextBox(tk.Frame):
             )
 
             self.consult_and_mh_button = tk.Button(
-                self.button_frame,
+                self.right_button_frame,
                 text="Insert Consult & MH",
                 command=self._consult_and_mh,
                 relief="raised",
@@ -109,7 +122,7 @@ class CustomTextBox(tk.Frame):
             )
 
             self.consult_complete_append_button = tk.Button(
-                self.button_frame,
+                self.right_button_frame,
                 text="Append Complete Consult",
                 command=self._consult_complete_append,
                 relief="raised",
@@ -117,7 +130,7 @@ class CustomTextBox(tk.Frame):
             )
 
             self.consult_complete_overwrite_button = tk.Button(
-                self.button_frame,
+                self.right_button_frame,
                 text="Overwrite Complete Consult",
                 command=self._consult_complete_overwrite,
                 relief="raised",
@@ -125,7 +138,7 @@ class CustomTextBox(tk.Frame):
             )
 
         self.get_eforms_button = tk.Button(
-            self.button_frame,
+            self.right_button_frame,
             text="eForms",
             command=self._get_eforms,
             relief="raised",
@@ -133,7 +146,7 @@ class CustomTextBox(tk.Frame):
         )
 
         self.download_button = tk.Button(
-            self.button_frame,
+            self.right_button_frame,
             text="Download",
             command=self._download,
             relief="raised",
@@ -141,7 +154,7 @@ class CustomTextBox(tk.Frame):
         )
 
         self.cancel_button = tk.Button(
-            self.button_frame,
+            self.right_button_frame,
             text="Cancel",
             command=self._cancel,
             relief="raised",
@@ -150,7 +163,7 @@ class CustomTextBox(tk.Frame):
         )
 
         self.copy_button = tk.Button(
-            self.button_frame,
+            self.right_button_frame,
             text="Copy Text",
             command=self.copy_text,
             relief="raised",
@@ -160,6 +173,7 @@ class CustomTextBox(tk.Frame):
         # Button order
         if new_ui:
             self._button_order = [
+                self.report_button,
                 self.upload_type_dropdown,
                 self.upload_button,
                 self.get_eforms_button,
@@ -184,6 +198,7 @@ class CustomTextBox(tk.Frame):
             button.pack_forget()
 
         if new_ui:
+            self.report_button.pack(side="left", padx=4)
             self.upload_type_dropdown.pack(side="left", padx=4)
             self.upload_button.pack(side="left", padx=4)
         self.copy_button.pack(side="left", padx=4)
@@ -209,6 +224,44 @@ class CustomTextBox(tk.Frame):
             side="left",
             padx=4
         )
+
+    # Report issue button
+    def set_report_callback(self, callback):
+        self._report_callback = callback
+
+    def _report_issue(self):
+        if not self._report_callback:
+            return
+
+        popup = tk.Toplevel(self)
+        popup.title("Report an Issue")
+        popup.geometry("400x250")
+        popup.resizable(False, False)
+        popup.transient(self.winfo_toplevel())
+        popup.grab_set()
+
+        # Instructions
+        tk.Label(popup, text="Provide details about what went wrong.").pack(pady=(15, 8))
+
+        # Text box
+        details_box = tk.Text(popup, height=6, width=45, wrap="word")
+        details_box.pack(padx=15, fill="both", expand=True)
+
+        # Button frame
+        button_frame = tk.Frame(popup)
+        button_frame.pack(pady=12)
+
+        # Submit button
+        def submit_report():
+            details = details_box.get("1.0", "end-1c").strip()
+            if details:
+                self._report_callback(details)
+                popup.destroy()
+
+        tk.Button(button_frame, text="Report Issue", command=submit_report).pack(side="left", padx=5)
+
+        # Cancel button
+        tk.Button(button_frame, text="Cancel", command=popup.destroy).pack(side="left", padx=5)
 
     # Upload consult button
     def set_upload_callback(self, callback):

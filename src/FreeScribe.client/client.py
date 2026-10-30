@@ -1122,7 +1122,7 @@ def generate_note(formatted_message):
                     base_prompt = ai_prompts.get("Requisition")
                     ind_prompt = f"{base_prompt}\n\n Available procedures and options and indications\n {json.dumps(labels, indent=2)}"
                     full_prompt = f"{ind_prompt}\n\n Clinical text:\n {formatted_message}"
-            #print(full_prompt)
+                    #print(full_prompt)
                     """
                     ai_response =
                         {
@@ -2546,6 +2546,40 @@ def upload_consult_by_type(upload_type, overwrite):
         'upload_consult_by_type: upload_type must be one of ["consult", "mh_and_consult", "complete_consult"]'
     )
 
+def flag_current_transcript(reason: str):
+    transcript_of_conversation = user_input.scrolled_text.get("1.0", tk.END).strip()
+    medical_note = response_display.scrolled_text.get("1.0", tk.END).strip()
+
+    now = datetime.now()
+    date_folder = now.strftime("%Y-%m-%d")
+    timestamp = now.strftime("%H-%M-%S")
+
+    # Create folder structure
+    patient_info = eform_selection_panel.get_patient_info(mute_popup=True)
+    if not patient_info:
+        print(f"Unable to submit report: no patient is currently selected.")
+        messagebox.showerror(
+            "Unable to Submit Report",
+            "Please select the patient in order to submit a report."
+        )
+        return
+    demographic_no = str(patient_info["demographic_no"])
+    folder_path = os.path.join("flagged-transcripts", date_folder, demographic_no)
+    os.makedirs(folder_path, exist_ok=True)
+
+    # Create report file
+    file_path = os.path.join(folder_path, f"{timestamp}.txt")
+
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(
+            f"Reason for Report:\n"
+            f"{reason}\n\n"
+            f"Transcript of Conversation:\n"
+            f"{transcript_of_conversation}\n\n"
+            f"Generated Medical Note:\n"
+            f"{medical_note}"
+        )
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ROOT GRID
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2826,6 +2860,7 @@ eform_selection_panel.grid_remove()
 
 # ── Response display callbacks ────────────────────────────────────────────────
 if new_ui:
+    response_display.set_report_callback(flag_current_transcript)
     response_display.set_upload_callback(upload_consult_by_type)
 else:
     #response_display.set_med_hist_callback(upload_medical_history)
