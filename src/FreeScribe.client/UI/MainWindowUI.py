@@ -42,6 +42,8 @@ class MainWindowUI:
         self.prompts = prompts # AI prompts 
         self.logic = mw.MainWindow(self.app_settings)  # Logic to control the container behavior
         self.scribe_template = None
+        self.oscar_menu = None
+        self._oscar_refresh_menu_index = None
         self.setting_window = SettingsWindowUI(self.app_settings, self, self.root)  # Settings window
         self.root.iconbitmap(get_file_path('assets','logo.ico'))
 
@@ -242,6 +244,7 @@ class MainWindowUI:
         if self.session_checker is None:
             return
         oscar_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.oscar_menu = oscar_menu
         self.menu_bar.add_cascade(label="Oscar", menu=oscar_menu)
         oscar_menu.add_command(label="Check Session", command=self._check_oscar_session)
         oscar_menu.add_command(
@@ -249,6 +252,7 @@ class MainWindowUI:
             command=self._refresh_oscar_login,
             state=tk.NORMAL if self.session_refresher is not None else tk.DISABLED,
         )
+        self._oscar_refresh_menu_index = oscar_menu.index("end")
 
     def _destroy_oscar_menu(self):
         """Destroy the Oscar menu if it exists."""
@@ -256,6 +260,8 @@ class MainWindowUI:
             oscar_menu = self.menu_bar.nametowidget('Oscar')
             if oscar_menu is not None:
                 oscar_menu.destroy()
+            self.oscar_menu = None
+            self._oscar_refresh_menu_index = None
 
     def _check_oscar_session(self):
         """Probe the Oscar session in the background and report the result."""
@@ -281,9 +287,18 @@ class MainWindowUI:
 
     def _refresh_oscar_login(self):
         """Re-login to the Oscar session in the background and report the result."""
-        if self.session_refresher is None or self._oscar_refresh_in_progress:
+        if self.session_refresher is None:
             return
+        if self._oscar_refresh_in_progress:
+            print("[Oscar] Refresh already in progress; ignoring request.")
+            return
+        print("[Oscar] Refreshing Oscar login...")
         self._oscar_refresh_in_progress = True
+        self.root.config(cursor="watch")
+        if self.oscar_menu is not None and self._oscar_refresh_menu_index is not None:
+            self.oscar_menu.entryconfig(
+                self._oscar_refresh_menu_index, label="Refreshing...", state=tk.DISABLED
+            )
         threading.Thread(target=self._probe_oscar_refresh, daemon=True).start()
 
     def _probe_oscar_refresh(self):
@@ -301,6 +316,13 @@ class MainWindowUI:
     def _finish_oscar_refresh(self, result: dict):
         """Clear the in-progress flag and display the re-login result."""
         self._oscar_refresh_in_progress = False
+        self.root.config(cursor="")
+        if self.oscar_menu is not None and self._oscar_refresh_menu_index is not None:
+            self.oscar_menu.entryconfig(
+                self._oscar_refresh_menu_index, label="Refresh Login", state=tk.NORMAL
+            )
+        status = "ACTIVE" if result.get("active") else "EXPIRED / UNAVAILABLE"
+        print(f"[Oscar] Refresh finished ({status}): {result.get('detail', '')}")
         self._show_oscar_result("Oscar Login Refresh", result)
 
     def _show_oscar_result(self, title: str, result: dict):

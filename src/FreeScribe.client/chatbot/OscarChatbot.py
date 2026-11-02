@@ -293,6 +293,7 @@ class OscarCB:
         Force a fresh login to Oscar and verify the configured database session.
         """
         if self.db_conn is None:
+            print("[Oscar] No database connection; re-initializing before refresh...")
             logging.info("Oscar database connection missing; re-initializing before refresh.")
             self._initialize_oscar_db()
 
@@ -305,6 +306,7 @@ class OscarCB:
             }
 
         if isinstance(db_conn, SOQ):
+            print("[Oscar] Refreshing the headless QBE session...")
             active, detail = db_conn.refresh_session()
             return {
                 "mode": "Selenium QBE (headless Firefox)",
@@ -313,6 +315,7 @@ class OscarCB:
             }
 
         if isinstance(db_conn, OscarDB):
+            print("[Oscar] Refreshing the Oscar UI login and SSH tunnel...")
             try:
                 if self.oscar is None and not self._initialize_oscar():
                     return {

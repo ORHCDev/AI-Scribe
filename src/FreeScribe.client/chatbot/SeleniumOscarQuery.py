@@ -183,9 +183,14 @@ class SOQ:
         Force a fresh login and verify that QBE queries work again.
         """
         with self._query_lock:
+            print("[Oscar] Re-authenticating headless session...")
             try:
                 self.run()
             except Exception as e:
+                print(
+                    f"[Oscar] Re-login failed ({e.__class__.__name__}: {e}); "
+                    "restarting the headless browser..."
+                )
                 logging.warning(
                     f"Oscar re-login failed ({e.__class__.__name__}: {e}); "
                     "restarting the headless browser"
@@ -195,16 +200,20 @@ class SOQ:
                     self.initialize_driver()
                     self.run()
                 except Exception as retry_e:
+                    print(f"[Oscar] Re-login failed after browser restart: {retry_e}")
                     logging.error(
                         f"Oscar re-login failed after restarting the browser "
                         f"({retry_e.__class__.__name__}: {retry_e})"
                     )
                     return False, f"Re-login failed ({retry_e.__class__.__name__}: {retry_e})."
 
+            print("[Oscar] Verifying the refreshed session with a QBE query...")
             try:
                 self._submit_qbe_query("SELECT demographic_no FROM demographic LIMIT 1")
+                print("[Oscar] Headless session is authenticated.")
                 return True, "Re-login succeeded and a QBE query responded."
             except Exception as e:
+                print(f"[Oscar] QBE verification failed: {e}")
                 logging.error(
                     f"Oscar re-login succeeded but the QBE probe failed "
                     f"({e.__class__.__name__}: {e})"
