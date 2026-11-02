@@ -106,3 +106,23 @@ def test_encounter_reason_joins_a_wrapped_header():
 def test_encounter_reason_is_empty_without_a_header_or_reason():
     assert rr.encounter_reason([]) == ""
     assert rr.encounter_reason(["free text", "[29-Oct-2026 .: ]"]) == ""
+
+
+def test_referral_query_checks_type_and_description_of_this_patient():
+    query = rr.latest_referral_query("123")
+    assert "cd.module_id = 123" in query
+    assert "d.doctype" in query and "d.docdesc" in query and "LIMIT 1" in query
+
+
+def test_referral_query_rejects_a_bad_patient_number():
+    with pytest.raises(ValueError):
+        rr.latest_referral_query("1 OR 1=1")
+
+
+def test_describe_document_shows_type_description_and_date():
+    row = {"document_no": 1, "doctype": "lr", "docdesc": " Referral letter ", "observationdate": "2026-10-15"}
+    assert rr.describe_document(row) == "lr - Referral letter (2026-10-15)"
+
+
+def test_describe_document_without_details():
+    assert rr.describe_document({"doctype": None, "docdesc": "", "observationdate": None}) == "Document (no date)"

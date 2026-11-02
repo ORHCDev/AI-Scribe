@@ -33,6 +33,7 @@ _JSON_KEYS = {
     "holter": "holter monitor",
 }
 _OPTION_MATCH_RATIO = 0.9
+REFERRAL_MAX_PAGES = 3
 _NOTE_HEADER = re.compile(r"\[\s*\d{1,2}-[A-Za-z]{3}-\d{4}\s*\.?:\s*([^\]]*)\]")
 
 
@@ -43,6 +44,27 @@ def indication_options(form_json: dict) -> dict:
         block = (form_json or {}).get(key, {}).get("indications") or {}
         options[test] = [o for o in block.get("options", []) if o.get("id") and o.get("label")]
     return options
+
+
+def latest_referral_query(demo_no) -> str:
+    """The patient's most recent document with "referral" in its type or description."""
+    return f"""
+        SELECT cd.document_no, d.doctype, d.docdesc, d.observationdate
+        FROM ctl_document AS cd
+        JOIN document AS d ON cd.document_no = d.document_no
+        WHERE cd.module = "demographic"
+          AND cd.module_id = {int(demo_no)}
+          AND (LOWER(d.doctype) LIKE '%referral%' OR LOWER(d.docdesc) LIKE '%referral%')
+          AND (d.status IS NULL OR d.status <> 'D')
+        ORDER BY d.observationdate DESC, cd.document_no DESC
+        LIMIT 1;
+    """
+
+
+def describe_document(row: dict) -> str:
+    """A document row as "Referral - Letter from Dr. X (2026-10-15)", to show which one was used."""
+    name = " - ".join(str(row.get(k)).strip() for k in ("doctype", "docdesc") if str(row.get(k) or "").strip())
+    return f"{name or 'Document'} ({row.get('observationdate') or 'no date'})"
 
 
 def encounter_reason(note_texts: list) -> str:

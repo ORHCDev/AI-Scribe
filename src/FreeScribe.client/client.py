@@ -823,7 +823,7 @@ def send_and_receive():
 
     if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT:
         display_text(f"\"{REFERRAL_REQUISITION_PROMPT}\" does not generate a note: open the patient's encounter "
-                     "page and click Populate to fill the requisition eForm from the referral in the input box.")
+                     "page and click Populate to fill the requisition eForm from their referral document.")
         return
 
     # If user selected OSCAR_FEEDBACK, try to send only patient notes
@@ -1986,23 +1986,32 @@ def generate_requisition_from_latest_note():
 
 
 # ── Referral letters -> requisition eForm (fid 716) ──────────────────────────────
-# "Referral Requisition" prompt: paste or upload a new patient's referral letter into the input box,
-# open the patient's encounter page and click Populate. The tests ticked are the ones named in the
-# appointment reason shown on the encounter page, their indications are read from the text, and the 716 form is opened
+# "Referral Requisition" prompt: open a new patient's encounter page and click Populate. Their referral
+# document is found in Oscar and its OCR text is put in the input box. The tests ticked are the ones named in the
+# appointment reason shown on the encounter page, their indications are read from the document, and the 716 form is opened
 # filled in for the doctor to check and submit (it is never submitted here).
 REFERRAL_REQUISITION_PROMPT = "Referral Requisition"
 
 
-def referral_requisition_from_input():
+def _latest_referral_document(demo_no):
+    if not eform_selection_panel._ensure_db_conn():
+        return None
+    rows = eform_selection_panel.db_conn.query_database(referral_requisition.latest_referral_query(demo_no))
+    return rows[0] if rows else None
+
+
+def _show_in_input_box(text):
+    user_input.scrolled_text.configure(fg='black')
+    user_input.scrolled_text.delete("1.0", tk.END)
+    user_input.scrolled_text.insert(tk.END, text)
+
+
+def referral_requisition_from_chart():
     def finish(message):
         # Only the first line goes to the console: the rest has the patient's appointment and indications.
         print(f"[{REFERRAL_REQUISITION_PROMPT}] {message.splitlines()[0]}")
         display_text(message)
 
-    text = user_input.scrolled_text.get("1.0", tk.END).strip()
-    if not text:
-        messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "Paste or upload the referral letter into the input box first.")
-        return finish("No referral text in the input box.")
     if oscar is None or oscar.driver is None:
         messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "Oscar is not connected. Click \"Open Oscar\" first.")
         return finish("Oscar is not connected.")
@@ -2017,15 +2026,32 @@ def referral_requisition_from_input():
     if not appointment:
         messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "No appointment reason found in the note on the encounter page.")
         return finish("No appointment reason on the encounter page; requisition eForm not opened.")
+    try:
+        document = _latest_referral_document(demo_no)
+    except Exception as e:
+        return finish(f"Could not look up the patient's documents ({type(e).__name__}): {e}")
+    if not document:
+        messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "This patient has no document with \"referral\" in its type or description.")
+        return finish("No referral document found; requisition eForm not opened.")
+    document_no = document["document_no"]
+    document_line = f"Referral document: {referral_requisition.describe_document(document)}"
 
     def worker():
         try:
+            print(f"[{REFERRAL_REQUISITION_PROMPT}] demographic {demo_no}, document {document_no}")
+            pdf_bytes = oscar.get_document_bytes(document_no)
+            if not pdf_bytes:
+                return root.after(0, finish, f"Could not download referral document {document_no}; requisition eForm not opened.")
+            text = pdf_image_to_text(pdf_bytes=pdf_bytes, last_page=referral_requisition.REFERRAL_MAX_PAGES).strip()
+            if not text:
+                return root.after(0, finish, f"No text read from referral document {document_no}; requisition eForm not opened.")
+            root.after(0, _show_in_input_box, text)
             form_json = get_referral_json()
             raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, appointment, form_json))
             result = referral_requisition.parse_referral_response(raw, form_json)
             if not result["tests"]:
                 return root.after(0, finish, "No test named in the appointment; requisition eForm not opened.\n\n"
-                                             f"Appointment: {appointment}\n\n{result['explanation']}")
+                                             f"Appointment: {appointment}\n{document_line}\n\n{result['explanation']}")
             window, fill = _open_referral_requisition_eform(demo_no, result["fields"])
             if window:
                 _focus_eform_window(oscar.driver, window)
@@ -2036,12 +2062,12 @@ def referral_requisition_from_input():
                              else f"- {test}: no indication")
             missing = f"\n\nNot found on the form: {', '.join(fill['missing'])}" if fill["missing"] else ""
             root.after(0, finish, f"Requisition eForm opened; check it and submit.\n\n" + "\n".join(lines)
-                       + missing + f"\n\nAppointment: {appointment}"
+                       + missing + f"\n\nAppointment: {appointment}\n{document_line}"
                        + (f"\n\n{result['explanation']}" if result["explanation"] else ""))
         except Exception as e:
             root.after(0, finish, f"Referral requisition failed ({type(e).__name__}): {e}")
 
-    display_text("Reading the referral...")
+    display_text("Reading the referral document...")
     threading.Thread(target=worker, daemon=True).start()
 
 
@@ -2546,8 +2572,8 @@ def upload_consult_complete(overwrite):
     _open_relevant_eforms(text)
 
 def upload_consult_by_type(upload_type, overwrite):
-    # With the "Referral Requisition" prompt, Populate fills the requisition from the input box instead.
-    if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT: referral_requisition_from_input()
+    # With the "Referral Requisition" prompt, Populate fills the requisition from the chart instead.
+    if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT: referral_requisition_from_chart()
     elif upload_type == "consult": upload_consult()
     elif upload_type == "mh_and_consult": upload_consult_and_mh()
     elif upload_type == "complete_consult": upload_consult_complete(overwrite)
