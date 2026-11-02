@@ -198,7 +198,7 @@ def build_med_prompt(plan: str) -> str:
         'The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period '
         'other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that '
         'this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" '
-        'is NOT a reason.\n'
+        'is NOT a reason. Give only the reason, without any time, period or date.\n'
         'Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, '
         'or to be done at/before the next visit). Tests that were done today or before this visit, results that are '
         'reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already '
@@ -226,7 +226,8 @@ def build_med_prompt(plan: str) -> str:
         'into "72h".\n'
         '"indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical '
         'reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only '
-        'what the plan says; leave a test out of "indications" if the plan gives no reason for it. Do not invent one.\n\n'
+        'what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives '
+        'no reason for it. Do not invent one.\n\n'
         f"STANDARD LINES:\n{options}\n\n"
         f"PLAN:\n{plan}\n\n"
         "Return ONLY the JSON object, with no other text."
@@ -297,6 +298,12 @@ _TEST_CONTINUATION_PATTERN = (r"\s*(and |we |i )?(will |to )?(repeat|recheck|red
                               r"schedule|be repeated|in \d+\s*(day|week|month|year)s?)\b")
 
 
+# A time period and the word leading into it. "65 year old" is an age, not a time period.
+_TIME_PHRASE_PATTERN = (r"(?:\b(?:in|for|at|within|every|after|by|over|around|about)\s+)?"
+                        r"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve)[\s-]*"
+                        r"(?:days?|weeks?|wks?|months?|mos?|years?|yrs?)\b(?![\s-]*old)(?:\s+(?:ago|time))?")
+
+
 def _sentences(plan: str) -> list[str]:
     return [x.lower() for x in re.split(r"(?<=[.;!?])\s+|\n+", plan or "") if x.strip()]
 
@@ -322,6 +329,15 @@ def is_test_requested(test: str, plan: str | None) -> bool:
                 and not any(re.search(p, following) for p in _REQUISITION_TEST_PATTERNS.values())):
             return True
     return False
+
+
+def strip_time_text(text) -> str | None:
+    """`text` without its time periods ("in 4 months", "6-month"), None when nothing else is left.
+    The booking date has its own box, so the indication only gives the reason."""
+    if not isinstance(text, str):
+        return None
+    text = re.sub(_TIME_PHRASE_PATTERN, " ", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip(" ,;:.-\u2014") or None
 
 
 def normalize_holter_period(value) -> str | None:
@@ -389,8 +405,9 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     if isinstance(indications_raw, dict):
         for k, v in indications_raw.items():
             k = str(k).strip().lower()
-            if k in REQUISITION_INDICATION_TESTS and k in ticked and isinstance(v, str) and v.strip():
-                indications[k] = v.strip()
+            v = strip_time_text(v)
+            if k in REQUISITION_INDICATION_TESTS and k in ticked and v:
+                indications[k] = v
 
     period = raw.get("period")
     period = str(period).strip() if period is not None and str(period).strip() else None
@@ -400,7 +417,7 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     return {
         "requisition": bool(diagnostics),
         "requisition_period": period,
-        "requisition_period_reason": raw.get("period_reason"),
+        "requisition_period_reason": strip_time_text(raw.get("period_reason")),
         "requisition_diagnostics": diagnostics,
         "requisition_indications": indications,
         "holter_period": holter_period if "holter" in ticked else None,

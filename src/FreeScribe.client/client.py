@@ -1987,15 +1987,16 @@ def generate_requisition_from_latest_note():
 
 # ── Referral letters -> requisition eForm (fid 716) ──────────────────────────────
 # "Referral Requisition" prompt: paste or upload a new patient's referral letter into the input box,
-# open the patient's encounter page and click Populate. The requested tests and indications are read
-# from the text and the 716 form is opened filled in for the doctor to check and submit (it is never
-# submitted here).
+# open the patient's encounter page and click Populate. The tests ticked are the ones named in the
+# appointment reason shown on the encounter page, their indications are read from the text, and the 716 form is opened
+# filled in for the doctor to check and submit (it is never submitted here).
 REFERRAL_REQUISITION_PROMPT = "Referral Requisition"
 
 
 def referral_requisition_from_input():
     def finish(message):
-        print(f"[{REFERRAL_REQUISITION_PROMPT}] {message}")
+        # Only the first line goes to the console: the rest has the patient's appointment and indications.
+        print(f"[{REFERRAL_REQUISITION_PROMPT}] {message.splitlines()[0]}")
         display_text(message)
 
     text = user_input.scrolled_text.get("1.0", tk.END).strip()
@@ -2009,15 +2010,22 @@ def referral_requisition_from_input():
     if demo_no is None:
         messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "Please open the encounter page of the patient first.")
         return finish("No patient encounter page is open in Oscar.")
+    try:
+        appointment = referral_requisition.encounter_reason(oscar.get_encounter_note_texts())
+    except Exception as e:
+        return finish(f"Could not read the encounter page ({type(e).__name__}): {e}")
+    if not appointment:
+        messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "No appointment reason found in the note on the encounter page.")
+        return finish("No appointment reason on the encounter page; requisition eForm not opened.")
 
     def worker():
         try:
             form_json = get_referral_json()
-            raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, form_json))
+            raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, appointment, form_json))
             result = referral_requisition.parse_referral_response(raw, form_json)
             if not result["tests"]:
-                return root.after(0, finish, "No test requested in the referral; requisition eForm not opened.\n\n"
-                                             f"{result['explanation']}")
+                return root.after(0, finish, "No test named in the appointment; requisition eForm not opened.\n\n"
+                                             f"Appointment: {appointment}\n\n{result['explanation']}")
             window, fill = _open_referral_requisition_eform(demo_no, result["fields"])
             if window:
                 _focus_eform_window(oscar.driver, window)
@@ -2028,7 +2036,8 @@ def referral_requisition_from_input():
                              else f"- {test}: no indication")
             missing = f"\n\nNot found on the form: {', '.join(fill['missing'])}" if fill["missing"] else ""
             root.after(0, finish, f"Requisition eForm opened; check it and submit.\n\n" + "\n".join(lines)
-                       + missing + (f"\n\n{result['explanation']}" if result["explanation"] else ""))
+                       + missing + f"\n\nAppointment: {appointment}"
+                       + (f"\n\n{result['explanation']}" if result["explanation"] else ""))
         except Exception as e:
             root.after(0, finish, f"Referral requisition failed ({type(e).__name__}): {e}")
 
@@ -2265,7 +2274,7 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
                     if existing_indication:
                         updated_indication = existing_indication + " — " + requisition_period_reason
                     else:
-                        updated_indication = "divergence from typical 1-year timeline: " + requisition_period_reason
+                        updated_indication = requisition_period_reason
                     # replace rather than append, so the existing indication is not typed in twice
                     indication.clear()
                     indication.send_keys(updated_indication)

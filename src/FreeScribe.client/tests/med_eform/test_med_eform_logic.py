@@ -494,6 +494,28 @@ def test_log_says_when_the_llm_asked_for_tests_but_none_passed(capsys):
     assert "LLM asked for ['echo']" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("text,expected", [
+    ("Reassess LV function in 4 months", "Reassess LV function"),
+    ("AS progression, repeat every 6 months.", "AS progression, repeat"),
+    ("6-month surveillance of AS", "surveillance of AS"),
+    ("MI two years ago", "MI"),
+    ("65 year old with palpitations", "65 year old with palpitations"),
+    ("palpitations", "palpitations"),
+    ("in 3 months", None),
+    (None, None),
+])
+def test_strip_time_text(text, expected):
+    assert med_eform.strip_time_text(text) == expected
+
+
+def test_period_reason_and_indications_have_no_time():
+    r = req({"period": "4m", "period_reason": "AS progression, recheck in 4 months", "echo": True,
+             "indications": {"echo": "reassess AS in 4 months"}})
+    assert r["requisition_period_reason"] == "AS progression, recheck"
+    assert r["requisition_indications"] == {"echo": "reassess AS"}
+    assert r["requisition_period"] == "4m"
+
+
 def test_indications_kept_only_for_ticked_tests_with_an_indication_box():
     r = req({"period": "1y", "echo": True, "holter": "24h",
              "indications": {"Echo": " reassess LV function ", "holter": "palpitations", "est": "chest pain",

@@ -33,6 +33,7 @@ _JSON_KEYS = {
     "holter": "holter monitor",
 }
 _OPTION_MATCH_RATIO = 0.9
+_NOTE_HEADER = re.compile(r"\[\s*\d{1,2}-[A-Za-z]{3}-\d{4}\s*\.?:\s*([^\]]*)\]")
 
 
 def indication_options(form_json: dict) -> dict:
@@ -44,7 +45,16 @@ def indication_options(form_json: dict) -> dict:
     return options
 
 
-def build_referral_prompt(referral_text: str, form_json: dict) -> str:
+def encounter_reason(note_texts: list) -> str:
+    """The appointment reason in the current encounter note's header, "[29-Oct-2026 .: <reason>]"."""
+    for text in reversed(note_texts or []):
+        match = _NOTE_HEADER.search(str(text or ""))
+        if match and match.group(1).strip():
+            return " ".join(match.group(1).split())
+    return ""
+
+
+def build_referral_prompt(referral_text: str, appointment_reason: str, form_json: dict) -> str:
     options = indication_options(form_json)
     lines = []
     for test, (name, input_id) in REFERRAL_TESTS.items():
@@ -53,23 +63,24 @@ def build_referral_prompt(referral_text: str, form_json: dict) -> str:
             lines.append("  indication options:")
             lines.extend(f"    * {o['label']}" for o in options[test])
     tests_block = "\n".join(lines)
-    return f"""You are reading a cardiology referral sent by a referring doctor (often an OCR scan). It can be
-any format: our requisition form, another clinic's form, or a free-text letter.
-Find which tests the referring doctor is asking our clinic to do, and the indication for each.
+    return f"""You are preparing a cardiology requisition for a new patient. You are given the reason of the patient's
+current APPOINTMENT and their referral DOCUMENT (often an OCR scan, in any format: our requisition form, another
+clinic's form, or a free-text letter).
 
 Rules:
-- Only include a test if the referral asks for it: its box is marked (OCR may show a filled box as
-  "■", "@", "®", "M", "Hl", "%" and an empty box as "□", "O", "0", "[]", "("), or the text asks for
-  it (e.g. "please arrange an echo"). Do not include tests that are only mentioned as past results.
-- The reason can be anywhere: an "Indication" line, "Reason for referral", "Clinical information",
-  "History", or the body of a letter. Read the whole referral, not just one section.
-- "stecho" only when the referral asks for a stress ECHO; a plain stress / treadmill test is "est".
-- For each test, "indication" is ONE of the listed options copied exactly when one clearly matches
-  the referral's reason; otherwise a short reason in the referral's own words (e.g. "family history
-  of sarcoid"). Use the reason given for that test; if none is given for it, use the referral's
-  overall reason (symptoms / history the referral describes). Use null if there is no reason at all.
-- "holter_duration": one of "24h", "48h", "72h", "2w" if a Holter duration is marked, else null.
-- "contrast": true only if the referral marks the contrast option for echo / stress echo.
+- Which tests to include comes ONLY from the APPOINTMENT: include a test only if it names it (abbreviations
+  count, e.g. "ECHO-ECG" is echo and ecg, "TTE" is echo, "GXT" / "treadmill" is est). A doctor's name and
+  words like "F/UP", "NP", "IN PERSON", "waiting for DR" are not tests. A test the DOCUMENT asks for or mentions, but the APPOINTMENT does not name, must NOT be included.
+- "stecho" only when the appointment says stress ECHO; a plain stress / treadmill test is "est".
+- "contrast": true only if the appointment says contrast for that echo / stress echo.
+- "holter_duration": one of "24h", "48h", "72h", "2w", from the appointment, or from the DOCUMENT if the
+  appointment does not say; else null.
+- The indication comes from the DOCUMENT. The reason can be anywhere: an "Indication" line, "Reason for
+  referral", "Clinical information", "History", or the body of a letter. Read the whole document.
+- For each test, "indication" is ONE of the listed options copied exactly when one clearly matches the
+  document's reason; otherwise a short reason in the document's own words (e.g. "family history of
+  sarcoid"). Use the reason given for that test; if none is given for it, use the document's overall
+  reason (symptoms / history it describes). Use null if there is no reason at all.
 - For "consult", "indication" is the reason for referral (short), or null.
 
 Tests:
@@ -78,9 +89,12 @@ Tests:
 Reply with JSON only, no other text:
 {{"tests": {{"<test id>": {{"indication": "<option or short reason or null>", "contrast": false}}}},
   "holter_duration": null,
-  "explanation": "<one sentence: what the referral asks for>"}}
+  "explanation": "<one sentence: what is booked and why>"}}
 
-Referral (OCR text):
+APPOINTMENT:
+{appointment_reason}
+
+DOCUMENT (OCR text):
 {referral_text}
 """
 

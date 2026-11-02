@@ -88,6 +88,21 @@ def test_bad_response_raises():
 
 
 def test_prompt_lists_tests_and_options():
-    prompt = rr.build_referral_prompt("OCR TEXT", FORM_JSON)
+    prompt = rr.build_referral_prompt("OCR TEXT", "ECHO-ECG", FORM_JSON)
     assert '"holter"' in prompt and "Chest pain of suspected cardiac origin." in prompt
+    assert "APPOINTMENT:\nECHO-ECG" in prompt
     assert prompt.rstrip().endswith("OCR TEXT")
+
+
+def test_encounter_reason_comes_from_the_current_note_header():
+    note = "[29-Oct-2026 .: F/UP- ECG - IN PERSON - waiting for DR]\n\nsome text"
+    assert rr.encounter_reason(["", note]) == "F/UP- ECG - IN PERSON - waiting for DR"
+
+
+def test_encounter_reason_joins_a_wrapped_header():
+    assert rr.encounter_reason(["[29-Oct-2026\n.: F/UP- ECG -\nIN PERSON]"]) == "F/UP- ECG - IN PERSON"
+
+
+def test_encounter_reason_is_empty_without_a_header_or_reason():
+    assert rr.encounter_reason([]) == ""
+    assert rr.encounter_reason(["free text", "[29-Oct-2026 .: ]"]) == ""

@@ -160,6 +160,23 @@ class Oscar:
         # Switch back to home window
         self.driver.switch_to.window(self.home_window)
 
+    def get_encounter_note_texts(self):
+        """
+        Iterates over the opened windows. If an encounter window is opened will return the
+        text of the note boxes being edited in that window, so the header of the current note.
+        """
+        try:
+            for handle in self.driver.window_handles:
+                self.driver.switch_to.window(handle)
+                if re.search(r"demographicNo=(\d+)", self.driver.current_url):
+                    return self.driver.execute_script(
+                        "return Array.from(document.querySelectorAll('textarea[name=caseNote_note]')).map(function (t) { return t.value; });"
+                    )
+            return []
+        finally:
+            # Switch back to home window
+            self.driver.switch_to.window(self.home_window)
+
     def get_patient_name(self):
         """
         Iterates over the opened windows. If an encounter window is opened will return the
