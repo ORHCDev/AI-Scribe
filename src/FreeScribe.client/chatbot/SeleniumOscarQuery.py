@@ -10,6 +10,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 import logging
 import requests
+import threading
 import urllib3
 import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -30,6 +31,9 @@ class SOQ:
 
         self.session = requests.session()
         self.query_timeout = query_timeout
+        # Serializes access to the single Selenium driver so a session probe
+        # triggered from the UI cannot race a chatbot query.
+        self._query_lock = threading.RLock()
         self.initialize_driver()
 
 
@@ -155,23 +159,37 @@ class SOQ:
         if 'None' in query:
             raise ValueError("A query parameter was not provided.\n Please provide all necessary parameters.")
 
-        try:
-            return self._submit_qbe_query(query)
-        except Exception as e:
-            # A QBE page that stops responding almost always means the Oscar admin session expired 
-            logging.warning(
-                f"QBE query failed ({e.__class__.__name__}: {e}); "
-                "re-logging into Oscar and retrying once"
-            )
-            try: # Re-login once and retry before giving up
-                self.run()
+        with self._query_lock:
+            try:
                 return self._submit_qbe_query(query)
-            except Exception as retry_e:
-                logging.error(
-                    f"QBE query failed after re-login ({retry_e.__class__.__name__}: "
-                    f"{retry_e}); assuming no results"
+            except Exception as e:
+                # A QBE page that stops responding almost always means the Oscar admin session expired 
+                logging.warning(
+                    f"QBE query failed ({e.__class__.__name__}: {e}); "
+                    "re-logging into Oscar and retrying once"
                 )
-                return []
+                try: # Re-login once and retry before giving up
+                    self.run()
+                    return self._submit_qbe_query(query)
+                except Exception as retry_e:
+                    logging.error(
+                        f"QBE query failed after re-login ({retry_e.__class__.__name__}: "
+                        f"{retry_e}); assuming no results"
+                    )
+                    return []
+
+    def probe_session(self) -> tuple[bool, str]:
+        """
+        Check whether the headless Oscar QBE session is still authenticated
+        """
+        with self._query_lock:
+            try:
+                # A small query that renders the QBE results table
+                self._submit_qbe_query("SELECT demographic_no FROM demographic LIMIT 1")
+                return True, "Authenticated QBE query succeeded."
+            except Exception as e:
+                logging.warning(f"Oscar session probe failed ({e.__class__.__name__}: {e})")
+                return False, f"QBE query failed ({e.__class__.__name__}: {e})."
 
     def _submit_qbe_query(self, query):
         """

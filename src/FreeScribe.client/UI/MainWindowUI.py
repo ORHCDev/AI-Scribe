@@ -1,5 +1,7 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
+import threading
+from datetime import datetime
 import UI.MainWindow as mw
 from UI.SettingsWindow import FeatureToggle
 from UI.SettingsWindowUI import SettingsWindowUI
@@ -20,14 +22,17 @@ class MainWindowUI:
     :param settings: The application settings passed to control the containers' behavior.
     """
     
-    def __init__(self, root, settings, prompts):
+    def __init__(self, root, settings, prompts, session_checker=None):
         """
         Initialize the MainWindowUI class.
 
         :param root: The Tkinter root window.
         :param settings: The application settings used to control container states.
+        :param prompts: The application prompts.
+        :param session_checker: Optional callable returning the Oscar session status.
         """
         self.root = root  # Tkinter root window
+        self.session_checker = session_checker
         self.docker_status_bar = None  # Docker status bar frame
         self.is_status_bar_enabled = False  # Flag to indicate if the Docker status bar is enabled
         self.app_settings = settings  # Application settings
@@ -196,6 +201,7 @@ class MainWindowUI:
         self.menu_bar = tk.Menu(self.root)
         self.root.config(menu=self.menu_bar)
         self._create_settings_menu()
+        self._create_oscar_menu()
         self._create_help_menu()
         self._create_prompt_menu()
 
@@ -208,6 +214,7 @@ class MainWindowUI:
             self.menu_bar.destroy()
             self.menu_bar = None
             self._destroy_settings_menu()
+            self._destroy_oscar_menu()
             self._destroy_help_menu()
             self._destroy_prompt_menu()
 
@@ -226,6 +233,54 @@ class MainWindowUI:
             setting_menu = self.menu_bar.nametowidget('Settings')
             if setting_menu is not None:
                 setting_menu.destroy()
+
+    def _create_oscar_menu(self):
+        """Add the Oscar menu with a headless session check."""
+        if self.session_checker is None:
+            return
+        oscar_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="Oscar", menu=oscar_menu)
+        oscar_menu.add_command(label="Check Session", command=self._check_oscar_session)
+
+    def _destroy_oscar_menu(self):
+        """Destroy the Oscar menu if it exists."""
+        if self.menu_bar is not None:
+            oscar_menu = self.menu_bar.nametowidget('Oscar')
+            if oscar_menu is not None:
+                oscar_menu.destroy()
+
+    def _check_oscar_session(self):
+        """Probe the Oscar session in the background and report the result."""
+        if self.session_checker is None:
+            return
+        threading.Thread(target=self._probe_oscar_session, daemon=True).start()
+
+    def _probe_oscar_session(self):
+        """Run the session probe off the Tk thread, then marshal the result back."""
+        try:
+            result = self.session_checker()
+        except Exception as e:
+            result = {
+                "mode": "unknown",
+                "active": False,
+                "detail": f"{type(e).__name__}: {e}",
+            }
+        self.root.after(0, lambda: self._show_oscar_session_result(result))
+
+    def _show_oscar_session_result(self, result: dict):
+        """Display the Oscar session probe result."""
+        checked_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        active = bool(result.get("active"))
+        message = (
+            f"Mode: {result.get('mode', 'unknown')}\n"
+            f"Status: {'ACTIVE' if active else 'EXPIRED / UNAVAILABLE'}\n"
+            f"Checked: {checked_at}\n\n"
+            f"{result.get('detail', '')}"
+        )
+        if active:
+            messagebox.showinfo("Oscar Session", message)
+        else:
+            messagebox.showwarning("Oscar Session", message)
 
     def _create_help_menu(self):
         # Add Help menu

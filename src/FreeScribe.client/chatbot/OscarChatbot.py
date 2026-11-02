@@ -246,6 +246,48 @@ class OscarCB:
             pass
 
 
+    def check_session_status(self) -> dict:
+        """
+        Probe whether the configured Oscar database session is usable
+        """
+        db_conn = self.db_conn
+        if db_conn is None:
+            return {
+                "mode": "uninitialized",
+                "active": False,
+                "detail": "Oscar database connection is not initialized.",
+            }
+
+        if isinstance(db_conn, SOQ):
+            active, detail = db_conn.probe_session()
+            return {
+                "mode": "Selenium QBE (headless Firefox)",
+                "active": active,
+                "detail": detail,
+            }
+
+        if isinstance(db_conn, OscarDB):
+            try:
+                db_conn.query_database("SELECT 1")
+                return {
+                    "mode": "SSH tunnel + MySQL",
+                    "active": True,
+                    "detail": "Database reachable over the SSH tunnel.",
+                }
+            except Exception as e:
+                return {
+                    "mode": "SSH tunnel + MySQL",
+                    "active": False,
+                    "detail": f"Database check failed ({type(e).__name__}: {e}).",
+                }
+
+        return {
+            "mode": type(db_conn).__name__,
+            "active": False,
+            "detail": "Unrecognized database connection type.",
+        }
+
+
     def cleanup(self):
         """
         Closes opened connections.
