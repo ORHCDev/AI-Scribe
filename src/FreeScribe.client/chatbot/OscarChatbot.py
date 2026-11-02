@@ -288,6 +288,81 @@ class OscarCB:
         }
 
 
+    def refresh_session(self) -> dict:
+        """
+        Force a fresh login to Oscar and verify the configured database session.
+        """
+        if self.db_conn is None:
+            logging.info("Oscar database connection missing; re-initializing before refresh.")
+            self._initialize_oscar_db()
+
+        db_conn = self.db_conn
+        if db_conn is None:
+            return {
+                "mode": "uninitialized",
+                "active": False,
+                "detail": "Oscar database connection is not initialized.",
+            }
+
+        if isinstance(db_conn, SOQ):
+            active, detail = db_conn.refresh_session()
+            return {
+                "mode": "Selenium QBE (headless Firefox)",
+                "active": active,
+                "detail": detail,
+            }
+
+        if isinstance(db_conn, OscarDB):
+            try:
+                if self.oscar is None and not self._initialize_oscar():
+                    return {
+                        "mode": "SSH tunnel + MySQL",
+                        "active": False,
+                        "detail": "Could not initialize the Oscar login required to refresh cookies.",
+                    }
+
+                self.oscar.refresh_login()
+                self.oscar.pass_cookies(db_conn.session)
+                db_conn.query_database("SELECT 1")
+                return {
+                    "mode": "SSH tunnel + MySQL",
+                    "active": True,
+                    "detail": "Oscar login refreshed and database reachable over the SSH tunnel.",
+                }
+            except Exception as e:
+                logging.warning(
+                    f"Oscar refresh failed ({e.__class__.__name__}: {e}); "
+                    "reconnecting the SSH tunnel and retrying"
+                )
+                try:
+                    db_conn.cleanup()
+                    db_conn.connect()
+                    if self.oscar is not None:
+                        self.oscar.pass_cookies(db_conn.session)
+                    db_conn.query_database("SELECT 1")
+                    return {
+                        "mode": "SSH tunnel + MySQL",
+                        "active": True,
+                        "detail": "Oscar login refreshed and SSH tunnel reconnected.",
+                    }
+                except Exception as retry_e:
+                    logging.error(
+                        f"Oscar refresh failed after reconnecting "
+                        f"({retry_e.__class__.__name__}: {retry_e})"
+                    )
+                    return {
+                        "mode": "SSH tunnel + MySQL",
+                        "active": False,
+                        "detail": f"Refresh failed ({retry_e.__class__.__name__}: {retry_e}).",
+                    }
+
+        return {
+            "mode": type(db_conn).__name__,
+            "active": False,
+            "detail": "Unrecognized database connection type.",
+        }
+
+
     def cleanup(self):
         """
         Closes opened connections.

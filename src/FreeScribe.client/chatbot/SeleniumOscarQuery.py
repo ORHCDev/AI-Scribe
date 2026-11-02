@@ -178,6 +178,39 @@ class SOQ:
                     )
                     return []
 
+    def refresh_session(self) -> tuple[bool, str]:
+        """
+        Force a fresh login and verify that QBE queries work again.
+        """
+        with self._query_lock:
+            try:
+                self.run()
+            except Exception as e:
+                logging.warning(
+                    f"Oscar re-login failed ({e.__class__.__name__}: {e}); "
+                    "restarting the headless browser"
+                )
+                try:
+                    self.cleanup()
+                    self.initialize_driver()
+                    self.run()
+                except Exception as retry_e:
+                    logging.error(
+                        f"Oscar re-login failed after restarting the browser "
+                        f"({retry_e.__class__.__name__}: {retry_e})"
+                    )
+                    return False, f"Re-login failed ({retry_e.__class__.__name__}: {retry_e})."
+
+            try:
+                self._submit_qbe_query("SELECT demographic_no FROM demographic LIMIT 1")
+                return True, "Re-login succeeded and a QBE query responded."
+            except Exception as e:
+                logging.error(
+                    f"Oscar re-login succeeded but the QBE probe failed "
+                    f"({e.__class__.__name__}: {e})"
+                )
+                return False, f"Re-login ran but the QBE query failed ({e.__class__.__name__}: {e})."
+
     def probe_session(self) -> tuple[bool, str]:
         """
         Check whether the headless Oscar QBE session is still authenticated

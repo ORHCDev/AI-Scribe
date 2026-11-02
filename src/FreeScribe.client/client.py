@@ -112,7 +112,7 @@ if app_settings.editable_settings[SettingsKeys.USE_NEW_UI.value]:
 else:
     new_ui = False
     print("Legacy UI selected")
-window = MainWindowUI(root, app_settings, ai_prompts, session_checker=chatbot.check_session_status)
+window = MainWindowUI(root, app_settings, ai_prompts, session_checker=chatbot.check_session_status, session_refresher=chatbot.refresh_session)
 
 app_settings.set_main_window(window)
 

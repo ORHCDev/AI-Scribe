@@ -22,7 +22,7 @@ class MainWindowUI:
     :param settings: The application settings passed to control the containers' behavior.
     """
     
-    def __init__(self, root, settings, prompts, session_checker=None):
+    def __init__(self, root, settings, prompts, session_checker=None, session_refresher=None):
         """
         Initialize the MainWindowUI class.
 
@@ -30,9 +30,12 @@ class MainWindowUI:
         :param settings: The application settings used to control container states.
         :param prompts: The application prompts.
         :param session_checker: Optional callable returning the Oscar session status.
+        :param session_refresher: Optional callable that re-logs in to Oscar and returns the resulting status.
         """
         self.root = root  # Tkinter root window
         self.session_checker = session_checker
+        self.session_refresher = session_refresher
+        self._oscar_refresh_in_progress = False
         self.docker_status_bar = None  # Docker status bar frame
         self.is_status_bar_enabled = False  # Flag to indicate if the Docker status bar is enabled
         self.app_settings = settings  # Application settings
@@ -241,6 +244,11 @@ class MainWindowUI:
         oscar_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Oscar", menu=oscar_menu)
         oscar_menu.add_command(label="Check Session", command=self._check_oscar_session)
+        oscar_menu.add_command(
+            label="Refresh Login",
+            command=self._refresh_oscar_login,
+            state=tk.NORMAL if self.session_refresher is not None else tk.DISABLED,
+        )
 
     def _destroy_oscar_menu(self):
         """Destroy the Oscar menu if it exists."""
@@ -269,6 +277,34 @@ class MainWindowUI:
 
     def _show_oscar_session_result(self, result: dict):
         """Display the Oscar session probe result."""
+        self._show_oscar_result("Oscar Session", result)
+
+    def _refresh_oscar_login(self):
+        """Re-login to the Oscar session in the background and report the result."""
+        if self.session_refresher is None or self._oscar_refresh_in_progress:
+            return
+        self._oscar_refresh_in_progress = True
+        threading.Thread(target=self._probe_oscar_refresh, daemon=True).start()
+
+    def _probe_oscar_refresh(self):
+        """Run the re-login off the Tk thread, then marshal the result back."""
+        try:
+            result = self.session_refresher()
+        except Exception as e:
+            result = {
+                "mode": "unknown",
+                "active": False,
+                "detail": f"{type(e).__name__}: {e}",
+            }
+        self.root.after(0, lambda: self._finish_oscar_refresh(result))
+
+    def _finish_oscar_refresh(self, result: dict):
+        """Clear the in-progress flag and display the re-login result."""
+        self._oscar_refresh_in_progress = False
+        self._show_oscar_result("Oscar Login Refresh", result)
+
+    def _show_oscar_result(self, title: str, result: dict):
+        """Display an Oscar session/refresh result in a message box."""
         checked_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         active = bool(result.get("active"))
         message = (
@@ -278,9 +314,9 @@ class MainWindowUI:
             f"{result.get('detail', '')}"
         )
         if active:
-            messagebox.showinfo("Oscar Session", message)
+            messagebox.showinfo(title, message)
         else:
-            messagebox.showwarning("Oscar Session", message)
+            messagebox.showwarning(title, message)
 
     def _create_help_menu(self):
         # Add Help menu

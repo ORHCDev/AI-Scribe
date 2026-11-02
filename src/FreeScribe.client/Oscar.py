@@ -83,6 +83,19 @@ class Oscar:
         self.pass_cookies(self.session)
 
 
+    def refresh_login(self):
+        """Re-authenticate against Oscar and refresh the request-session cookies."""
+        try:
+            self.driver.get(self.oscar_login_url)
+        except Exception:
+            # The browser or its WebDriver session may have died
+            self.initialize_driver() 
+            self.driver.get(self.oscar_login_url)
+        self.oscar_login()
+        self.home_window = self.driver.current_window_handle
+        self.pass_cookies(self.session)
+
+
     def cleanup(self):
         """Close WebDriver"""
         try:
