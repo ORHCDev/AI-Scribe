@@ -2,6 +2,7 @@
 New-patient referral letters -> requisition eForm (fid 716).
 """
 
+import ast
 import difflib
 import json
 import re
@@ -151,7 +152,7 @@ Rules:
 Tests:
 {tests_block}
 
-Reply with JSON only, no other text:
+Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
 {{"indications": {{"<test id>": "<option or short reason or null>"}},
   "holter_duration": null,
   "explanation": "<one sentence: the referral's reason>"}}
@@ -190,10 +191,21 @@ def _load_json_object(raw: str) -> dict:
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
         raise ValueError("No JSON object in the LLM response")
-    data = json.loads(text[start:end + 1])
+    try:
+        data = json.loads(text[start:end + 1])
+    except json.JSONDecodeError as e:
+        # Some models answer with Python-style quotes / True / None, which is not JSON.
+        try:
+            data = ast.literal_eval(text[start:end + 1])
+        except (ValueError, SyntaxError):
+            raise ValueError(f"LLM response is not valid JSON ({e})") from e
     if not isinstance(data, dict):
         raise ValueError("LLM response is not a JSON object")
     return data
+
+
+RETRY_JSON_INSTRUCTION = ("\n\nYour previous reply was not valid JSON. Reply again with ONLY the JSON object, "
+                          'and do not use double quotes (") inside any text value.')
 
 
 def parse_referral_response(raw: str, form_json: dict, booked: dict) -> dict:

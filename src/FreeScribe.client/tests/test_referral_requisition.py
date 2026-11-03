@@ -103,6 +103,18 @@ def test_fenced_json_is_accepted():
     assert result["tests"] == ["ecg"] and result["explanation"] == "SOB"
 
 
+def test_python_style_answer_is_accepted():
+    raw = "{'indications': {'ecg': 'family history of sarcoid'}, 'holter_duration': None, 'explanation': 'x'}"
+    result = rr.parse_referral_response(raw, FORM_JSON, rr.tests_from_reason("ECG"))
+    assert result["indications"]["ecg"] == ("family history of sarcoid", False)
+
+
+def test_unescaped_quote_in_a_value_raises_a_value_error():
+    raw = '{"indications": {"ecg": "pt says "dizzy" spells"}, "explanation": "x"}'
+    with pytest.raises(ValueError, match="not valid JSON"):
+        rr.parse_referral_response(raw, FORM_JSON, rr.tests_from_reason("ECG"))
+
+
 def test_bad_response_raises():
     with pytest.raises(ValueError):
         rr.parse_referral_response("I could not read the referral.", FORM_JSON, rr.tests_from_reason("ECG"))

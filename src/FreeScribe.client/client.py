@@ -2067,8 +2067,15 @@ def referral_requisition_from_chart():
                 return root.after(0, finish, f"No text read from referral document {document_no}; requisition eForm not opened.")
             root.after(0, _show_in_input_box, text)
             form_json = get_referral_json()
-            raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, booked["tests"], form_json))
-            result = referral_requisition.parse_referral_response(raw, form_json, booked)
+            prompt = referral_requisition.build_referral_prompt(text, booked["tests"], form_json)
+            raw = send_text_to_chatgpt(prompt)
+            try:
+                result = referral_requisition.parse_referral_response(raw, form_json, booked)
+            except ValueError as e:
+                # One retry: a single stray quote in the LLM's JSON should not stop the form.
+                print(f"[{REFERRAL_REQUISITION_PROMPT}] LLM reply could not be read ({e}); asking again")
+                raw = send_text_to_chatgpt(prompt + referral_requisition.RETRY_JSON_INSTRUCTION)
+                result = referral_requisition.parse_referral_response(raw, form_json, booked)
             window, fill = _open_referral_requisition_eform(demo_no, result["fields"])
             if window:
                 _focus_eform_window(oscar.driver, window)
