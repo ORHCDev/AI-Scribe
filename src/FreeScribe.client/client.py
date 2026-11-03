@@ -1994,10 +1994,25 @@ REFERRAL_REQUISITION_PROMPT = "Referral Requisition"
 
 
 def _latest_referral_document(demo_no):
+    # No connection must not look like "no referral".
     if not eform_selection_panel._ensure_db_conn():
-        return None
+        raise RuntimeError("no Oscar database connection")
     rows = eform_selection_panel.db_conn.query_database(referral_requisition.latest_referral_query(demo_no))
     return rows[0] if rows else None
+
+
+def _recent_documents_text(demo_no):
+    """The patient's recent documents, one per line, to show why none was taken as the referral."""
+    try:
+        rows = eform_selection_panel.db_conn.query_database(referral_requisition.patient_documents_query(demo_no))
+    except Exception as e:
+        return f"(could not list the documents: {type(e).__name__})"
+    print(f"[{REFERRAL_REQUISITION_PROMPT}] demographic {demo_no}: {len(rows)} recent documents, types "
+          f"{sorted({str(r.get('doctype') or '') for r in rows})}")
+    if not rows:
+        return "(the database returned no documents at all for this patient: check the Oscar connection)"
+    return "\n".join(f"- {referral_requisition.describe_document(r)}"
+                     + (f" [status {r.get('status')}]" if str(r.get("status") or "") == "D" else "") for r in rows)
 
 
 def _show_in_input_box(text):
@@ -2026,13 +2041,18 @@ def referral_requisition_from_chart():
     if not appointment:
         messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "No appointment reason found in the note on the encounter page.")
         return finish("No appointment reason on the encounter page; requisition eForm not opened.")
+    booked = referral_requisition.tests_from_reason(appointment)
+    if not booked["tests"]:
+        messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, f"No test named in the appointment reason:\n\n{appointment}")
+        return finish(f"No test named in the appointment; requisition eForm not opened.\n\nAppointment: {appointment}")
     try:
         document = _latest_referral_document(demo_no)
     except Exception as e:
         return finish(f"Could not look up the patient's documents ({type(e).__name__}): {e}")
     if not document:
         messagebox.showwarning(REFERRAL_REQUISITION_PROMPT, "This patient has no document with \"referral\" in its type or description.")
-        return finish("No referral document found; requisition eForm not opened.")
+        return finish("No referral document found (no \"referral\" in the type or description); requisition eForm "
+                      f"not opened.\n\nRecent documents of this patient:\n{_recent_documents_text(demo_no)}")
     document_no = document["document_no"]
     document_line = f"Referral document: {referral_requisition.describe_document(document)}"
 
@@ -2047,11 +2067,8 @@ def referral_requisition_from_chart():
                 return root.after(0, finish, f"No text read from referral document {document_no}; requisition eForm not opened.")
             root.after(0, _show_in_input_box, text)
             form_json = get_referral_json()
-            raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, appointment, form_json))
-            result = referral_requisition.parse_referral_response(raw, form_json)
-            if not result["tests"]:
-                return root.after(0, finish, "No test named in the appointment; requisition eForm not opened.\n\n"
-                                             f"Appointment: {appointment}\n{document_line}\n\n{result['explanation']}")
+            raw = send_text_to_chatgpt(referral_requisition.build_referral_prompt(text, booked["tests"], form_json))
+            result = referral_requisition.parse_referral_response(raw, form_json, booked)
             window, fill = _open_referral_requisition_eform(demo_no, result["fields"])
             if window:
                 _focus_eform_window(oscar.driver, window)

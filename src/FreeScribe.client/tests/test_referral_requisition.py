@@ -12,17 +12,45 @@ from utils import referral_requisition as rr
 FORM_JSON = json.loads((Path(__file__).resolve().parents[1] / "utils" / "referral_form.json").read_text())
 
 
-def _parse(answer: dict):
-    return rr.parse_referral_response(json.dumps(answer), FORM_JSON)
+def _parse(answer: dict, reason: str):
+    return rr.parse_referral_response(json.dumps(answer), FORM_JSON, rr.tests_from_reason(reason))
 
 
 def _value(result, field_id):
     return next(f["value"] for f in result["fields"] if f["id"] == field_id)
 
 
+@pytest.mark.parametrize("reason,tests", [
+    ("STRESS ECHO - DR. MAHESH", ["stecho"]),
+    ("ECHO-ECG - DR. RAGHAVAN", ["ecg", "echo"]),
+    ("F/UP- ECG - IN PERSON - DR. MAHESH - waiting for DR", ["ecg"]),
+    ("ECHO- DR. MAHESH", ["echo"]),
+    ("GXT / treadmill", ["est"]),
+    ("Exercise stress test + 48 hr Holter", ["est", "holter"]),
+    ("Consult - DR. ZEMAN", ["consult"]),
+    ("NP IN PERSON", []),
+    ("Phone f/u", []),
+])
+def test_tests_come_only_from_the_appointment_reason(reason, tests):
+    assert rr.tests_from_reason(reason)["tests"] == tests
+
+
+def test_reason_gives_contrast_and_holter_duration():
+    assert rr.tests_from_reason("CONTRAST STRESS ECHO")["contrast"] is True
+    assert rr.tests_from_reason("STRESS ECHO")["contrast"] is False
+    assert rr.tests_from_reason("HOLTER 14 day")["holter_duration"] == "2w"
+    assert rr.tests_from_reason("ECG 48 hr")["holter_duration"] is None
+
+
+def test_llm_cannot_add_tests_the_appointment_does_not_name():
+    result = _parse({"indications": {"consult": "SOB", "echo": "SOB", "stecho": "fatigue/ SOB"}},
+                    "STRESS ECHO - DR. MAHESH")
+    assert result["tests"] == ["stecho"]
+    assert [f["id"] for f in result["fields"]] == ["stecho", "stecho-input"]
+
+
 def test_matching_option_uses_the_dropdown_value():
-    result = _parse({"tests": {"ecg": {"indication": "Chest pain of suspected cardiac origin."}}})
-    assert result["tests"] == ["ecg"]
+    result = _parse({"indications": {"ecg": "Chest pain of suspected cardiac origin."}}, "ECG")
     assert _value(result, "ecg-input") == "Cor Health Ind. # 1.1. Chest pain of suspected cardiac origin."
     assert result["indications"]["ecg"][1] is True
 
@@ -33,64 +61,57 @@ def test_option_match_ignores_case_punctuation_and_small_typos():
     assert from_dropdown and value.startswith("Cor Health Ind. # 1.1")
 
 
-def test_no_matching_option_writes_the_referral_wording():
-    result = _parse({"tests": {"echo": {"indication": "family history of sarcoid"}}})
-    assert _value(result, "echo-input") == "family history of sarcoid"
+def test_no_matching_option_writes_the_document_wording():
+    result = _parse({"indications": {"echo": "family history of sarcoid"}}, "ECHO")
     assert result["indications"]["echo"] == ("family history of sarcoid", False)
 
 
-def test_tests_follow_form_order_and_unknown_ids_are_ignored():
-    result = _parse({"tests": {"echo": {}, "mri": {"indication": "x"}, "ecg": {}}})
-    assert result["tests"] == ["ecg", "echo"]
-    assert [f["id"] for f in result["fields"]] == ["ecg", "echo"]
+def test_old_answer_format_is_still_read():
+    result = _parse({"indications": {"echo": {"indication": "family history of sarcoid"}}}, "ECHO")
+    assert _value(result, "echo-input") == "family history of sarcoid"
 
 
 def test_null_indication_ticks_the_test_without_text():
-    result = _parse({"tests": {"ecg": {"indication": None}, "echo": {"indication": "null"}}})
+    result = _parse({"indications": {"ecg": None, "echo": "null"}}, "ECHO-ECG")
     assert result["tests"] == ["ecg", "echo"]
     assert all(f["type"] == "check" for f in result["fields"])
 
 
-def test_holter_duration_is_ticked_after_its_indication():
-    result = _parse({"tests": {"holter": {"indication": "palpitation.  Cor Health Ind. # 2"}},
-                     "holter_duration": "48h"})
+def test_holter_duration_from_the_appointment_wins_and_comes_after_the_indication():
+    result = _parse({"indications": {"holter": "palpitations"}, "holter_duration": "24h"}, "48 hr HOLTER")
     assert [f["id"] for f in result["fields"]] == ["holter", "holter-input", "48hr"]
 
 
-def test_unknown_holter_duration_is_left_for_the_doctor():
-    result = _parse({"tests": {"holter": {}}, "holter_duration": "1 week"})
-    assert [f["id"] for f in result["fields"]] == ["holter"]
+def test_holter_duration_falls_back_to_the_document():
+    result = _parse({"indications": {}, "holter_duration": "72h"}, "HOLTER")
+    assert [f["id"] for f in result["fields"]] == ["holter", "72hr"]
 
 
-def test_contrast_only_when_marked():
-    assert "contrastecho" in [f["id"] for f in _parse({"tests": {"echo": {"contrast": True}}})["fields"]]
-    assert "contrastecho" not in [f["id"] for f in _parse({"tests": {"echo": {"contrast": "no"}}})["fields"]]
+def test_contrast_comes_from_the_appointment():
+    assert "contrast" in [f["id"] for f in _parse({}, "CONTRAST STRESS ECHO")["fields"]]
+    assert "contrastecho" not in [f["id"] for f in _parse({}, "ECHO")["fields"]]
 
 
 def test_consult_reason_goes_to_the_reason_box():
-    result = _parse({"tests": {"consult": {"indication": "new onset SOBOE"}}})
+    result = _parse({"indications": {"consult": "new onset SOBOE"}}, "CONSULT")
     assert _value(result, rr.CONSULT_REASON_ID) == "new onset SOBOE"
 
 
-def test_list_of_tests_and_fenced_json_are_accepted():
-    raw = "```json\n" + json.dumps({"tests": ["ecg"], "explanation": "ECG requested"}) + "\n```"
-    result = rr.parse_referral_response(raw, FORM_JSON)
-    assert result["tests"] == ["ecg"] and result["explanation"] == "ECG requested"
-
-
-def test_no_tests_gives_no_fields():
-    assert _parse({"tests": {}})["fields"] == []
+def test_fenced_json_is_accepted():
+    raw = "```json\n" + json.dumps({"indications": {}, "explanation": "SOB"}) + "\n```"
+    result = rr.parse_referral_response(raw, FORM_JSON, rr.tests_from_reason("ECG"))
+    assert result["tests"] == ["ecg"] and result["explanation"] == "SOB"
 
 
 def test_bad_response_raises():
     with pytest.raises(ValueError):
-        rr.parse_referral_response("I could not read the referral.", FORM_JSON)
+        rr.parse_referral_response("I could not read the referral.", FORM_JSON, rr.tests_from_reason("ECG"))
 
 
-def test_prompt_lists_tests_and_options():
-    prompt = rr.build_referral_prompt("OCR TEXT", "ECHO-ECG", FORM_JSON)
-    assert '"holter"' in prompt and "Chest pain of suspected cardiac origin." in prompt
-    assert "APPOINTMENT:\nECHO-ECG" in prompt
+def test_prompt_lists_only_the_booked_tests_and_their_options():
+    prompt = rr.build_referral_prompt("OCR TEXT", ["ecg"], FORM_JSON)
+    assert '"ecg"' in prompt and "Chest pain of suspected cardiac origin." in prompt
+    assert '"holter"' not in prompt
     assert prompt.rstrip().endswith("OCR TEXT")
 
 
@@ -126,3 +147,8 @@ def test_describe_document_shows_type_description_and_date():
 
 def test_describe_document_without_details():
     assert rr.describe_document({"doctype": None, "docdesc": "", "observationdate": None}) == "Document (no date)"
+
+
+def test_patient_documents_query_lists_all_types_of_this_patient():
+    query = rr.patient_documents_query("123")
+    assert "cd.module_id = 123" in query and "referral" not in query and "LIMIT 15" in query

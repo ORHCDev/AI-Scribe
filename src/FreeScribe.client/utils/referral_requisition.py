@@ -61,6 +61,19 @@ def latest_referral_query(demo_no) -> str:
     """
 
 
+def patient_documents_query(demo_no, limit: int = 15) -> str:
+    """The patient's most recent documents of any type, to show why none was taken as the referral."""
+    return f"""
+        SELECT cd.document_no, d.doctype, d.docdesc, d.observationdate, d.status
+        FROM ctl_document AS cd
+        JOIN document AS d ON cd.document_no = d.document_no
+        WHERE cd.module = "demographic"
+          AND cd.module_id = {int(demo_no)}
+        ORDER BY d.observationdate DESC, cd.document_no DESC
+        LIMIT {int(limit)};
+    """
+
+
 def describe_document(row: dict) -> str:
     """A document row as "Referral - Letter from Dr. X (2026-10-15)", to show which one was used."""
     name = " - ".join(str(row.get(k)).strip() for k in ("doctype", "docdesc") if str(row.get(k) or "").strip())
@@ -76,45 +89,72 @@ def encounter_reason(note_texts: list) -> str:
     return ""
 
 
-def build_referral_prompt(referral_text: str, appointment_reason: str, form_json: dict) -> str:
+# Tests named in an appointment reason such as "STRESS ECHO - DR. X" or "ECHO-ECG". A stress echo is
+# matched first and removed, so its "ECHO" is not also taken as an echo.
+_REASON_STRESS_ECHO = r"\bstress[\s-]*echo\w*"
+_REASON_TESTS = {
+    "consult": r"\bconsult\w*",
+    "ecg": r"\b(ecg|ekg|electrocardiog\w*)\b",
+    "echo": r"\b(echo\w*|tte)\b",
+    "est": r"\b(stress[\s-]*test\w*|treadmill|exercise[\s-]*(stress[\s-]*)?test\w*|est|ett|gxt)\b",
+    "holter": r"\bholter\b",
+}
+_REASON_HOLTER_DURATIONS = {
+    "24h": r"\b24\s*-?\s*(h|hr|hrs|hours?)\b", "48h": r"\b48\s*-?\s*(h|hr|hrs|hours?)\b",
+    "72h": r"\b(72\s*-?\s*(h|hr|hrs|hours?)|3\s*-?\s*days?)\b",
+    "2w": r"\b(2\s*-?\s*(w|wk|wks|weeks?)|14\s*-?\s*days?)\b",
+}
+
+
+def tests_from_reason(reason: str) -> dict:
+    """{"tests": [...], "contrast": bool, "holter_duration": str | None} named in the appointment reason,
+    in form order. Only these tests are ticked; the referral document only gives their indications."""
+    text = (reason or "").lower()
+    found = set()
+    if re.search(_REASON_STRESS_ECHO, text):
+        found.add("stecho")
+        text = re.sub(_REASON_STRESS_ECHO, " ", text)
+    found |= {test for test, pattern in _REASON_TESTS.items() if re.search(pattern, text)}
+    duration = next((d for d, pattern in _REASON_HOLTER_DURATIONS.items() if re.search(pattern, text)), None)
+    return {
+        "tests": [t for t in REFERRAL_TESTS if t in found],
+        "contrast": bool(re.search(r"\bcontrast\b", (reason or "").lower())),
+        "holter_duration": duration if "holter" in found else None,
+    }
+
+
+def build_referral_prompt(referral_text: str, tests: list, form_json: dict) -> str:
+    """Asks only for the indications of `tests` (already chosen from the appointment) from the document."""
     options = indication_options(form_json)
     lines = []
-    for test, (name, input_id) in REFERRAL_TESTS.items():
+    for test in tests:
+        name, input_id = REFERRAL_TESTS[test]
         lines.append(f'- "{test}": {name}')
         if input_id and options.get(test):
             lines.append("  indication options:")
             lines.extend(f"    * {o['label']}" for o in options[test])
     tests_block = "\n".join(lines)
-    return f"""You are preparing a cardiology requisition for a new patient. You are given the reason of the patient's
-current APPOINTMENT and their referral DOCUMENT (often an OCR scan, in any format: our requisition form, another
-clinic's form, or a free-text letter).
+    return f"""You are reading a new patient's cardiology referral DOCUMENT (often an OCR scan, in any format:
+our requisition form, another clinic's form, or a free-text letter). The tests below are already booked;
+give the indication for each of them from the document.
 
 Rules:
-- Which tests to include comes ONLY from the APPOINTMENT: include a test only if it names it (abbreviations
-  count, e.g. "ECHO-ECG" is echo and ecg, "TTE" is echo, "GXT" / "treadmill" is est). A doctor's name and
-  words like "F/UP", "NP", "IN PERSON", "waiting for DR" are not tests. A test the DOCUMENT asks for or mentions, but the APPOINTMENT does not name, must NOT be included.
-- "stecho" only when the appointment says stress ECHO; a plain stress / treadmill test is "est".
-- "contrast": true only if the appointment says contrast for that echo / stress echo.
-- "holter_duration": one of "24h", "48h", "72h", "2w", from the appointment, or from the DOCUMENT if the
-  appointment does not say; else null.
-- The indication comes from the DOCUMENT. The reason can be anywhere: an "Indication" line, "Reason for
-  referral", "Clinical information", "History", or the body of a letter. Read the whole document.
+- The reason can be anywhere: an "Indication" line, "Reason for referral", "Clinical information",
+  "History", or the body of a letter. Read the whole document.
 - For each test, "indication" is ONE of the listed options copied exactly when one clearly matches the
   document's reason; otherwise a short reason in the document's own words (e.g. "family history of
   sarcoid"). Use the reason given for that test; if none is given for it, use the document's overall
   reason (symptoms / history it describes). Use null if there is no reason at all.
 - For "consult", "indication" is the reason for referral (short), or null.
+- "holter_duration": one of "24h", "48h", "72h", "2w" if the document marks a Holter duration, else null.
 
 Tests:
 {tests_block}
 
 Reply with JSON only, no other text:
-{{"tests": {{"<test id>": {{"indication": "<option or short reason or null>", "contrast": false}}}},
+{{"indications": {{"<test id>": "<option or short reason or null>"}},
   "holter_duration": null,
-  "explanation": "<one sentence: what is booked and why>"}}
-
-APPOINTMENT:
-{appointment_reason}
+  "explanation": "<one sentence: the referral's reason>"}}
 
 DOCUMENT (OCR text):
 {referral_text}
@@ -156,27 +196,30 @@ def _load_json_object(raw: str) -> dict:
     return data
 
 
-def parse_referral_response(raw: str, form_json: dict) -> dict:
-    """LLM answer -> {"fields": [...], "tests": [...], "indications": {test: (value, from_dropdown)},
-    "explanation": str}. Each field is {"type": "check"|"text", "id", "value"} in fill order:
+def parse_referral_response(raw: str, form_json: dict, booked: dict) -> dict:
+    """LLM answer + `booked` (from tests_from_reason) -> {"fields": [...], "tests": [...],
+    "indications": {test: (value, from_dropdown)}, "explanation": str}. Only the booked tests are ticked,
+    whatever the LLM answers. Each field is {"type": "check"|"text", "id", "value"} in fill order:
     a test's checkbox (and contrast / Holter duration) before its indication."""
     data = _load_json_object(raw)
-    requested = data.get("tests") or {}
-    if isinstance(requested, list):
-        requested = {t: {} for t in requested}
-    requested = {str(k).strip().lower(): (v if isinstance(v, dict) else {}) for k, v in requested.items()}
+    given = data.get("indications") or {}
+    if not isinstance(given, dict):
+        given = {}
+    given = {str(k).strip().lower(): v for k, v in given.items()}
     options = indication_options(form_json)
 
     fields, tests, indications = [], [], {}
-    for test, (_name, input_id) in REFERRAL_TESTS.items():
-        if test not in requested:
+    for test in booked.get("tests") or []:
+        if test not in REFERRAL_TESTS:
             continue
-        info = requested[test]
+        input_id = REFERRAL_TESTS[test][1]
         tests.append(test)
         fields.append({"type": "check", "id": test, "value": True})
-        if info.get("contrast") is True and test in CONTRAST_OPTIONS:
+        if booked.get("contrast") and test in CONTRAST_OPTIONS:
             fields.append({"type": "check", "id": CONTRAST_OPTIONS[test], "value": True})
-        indication = info.get("indication")
+        indication = given.get(test)
+        if isinstance(indication, dict):
+            indication = indication.get("indication")
         if isinstance(indication, str) and indication.strip().lower() not in ("", "null", "none"):
             if input_id:
                 value, from_dropdown = match_indication(indication, options.get(test, []))
@@ -186,7 +229,9 @@ def parse_referral_response(raw: str, form_json: dict) -> dict:
             indications[test] = (value, from_dropdown)
         if test == "holter":
             # After the indication: the duration radio's onclick appends ". 24 hour study. " to it.
-            duration = HOLTER_DURATIONS.get(str(data.get("holter_duration") or "").strip().lower())
+            # The appointment's duration wins over the document's.
+            duration = HOLTER_DURATIONS.get(
+                booked.get("holter_duration") or str(data.get("holter_duration") or "").strip().lower())
             if duration:
                 fields.append({"type": "check", "id": duration, "value": True})
 
