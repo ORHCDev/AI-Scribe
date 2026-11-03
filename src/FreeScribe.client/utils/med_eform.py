@@ -4,6 +4,9 @@ Medication eForm (0.1Rfx) auto-fill logic used after a consult upload.
 
 import json
 import re
+from datetime import date
+
+from dateutil import parser as date_parser
 
 from utils.rx_med_options import RX_MED_OPTIONS
 from utils.rx_med_update import MED_UPDATE_JS
@@ -146,7 +149,7 @@ def build_med_prompt(plan: str) -> str:
         '{"medication": [{"action": "start|increase|decrease|stop", "name": "drug name", '
         '"text": "prescription line", "ordered": true or false}], "labs": {"required": true or false, '
         '"period": string (such as "7d", "2w", "1m", etc)}, "requisition": {"period": string (such as "7d", '
-        '"2w", "1m", etc) | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
+        '"2w", "1m", etc) | null, "date": "YYYY-MM-DD" | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
         '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
         '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null, '
         '"indications": {"ecg": str, "echo": str, "stecho": str, "est": str, "holter": str} }, '
@@ -195,6 +198,9 @@ def build_med_prompt(plan: str) -> str:
         'visit. For example, if the plan states "I\'m gonna bring the patient back in 1 year for an echocardiogram", then '
         '"requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations '
         'or diagnostics are required, then simply have "period" be null.\n'
+        'If the plan gives a calendar date for the next visit or for these tests (e.g. "see in clinic on January 27, '
+        '2027"), set "date" to that date as "YYYY-MM-DD"; otherwise "date" is null. A date of a past test or visit '
+        'is not a "date".\n'
         'The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period '
         'other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that '
         'this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" '
@@ -222,8 +228,8 @@ def build_med_prompt(plan: str) -> str:
         '"est" refers to an exercise stress test, and should be true if and only if one is desired.\n'
         '"holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is '
         'desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. '
-        'Note that the plan may mention something like "3 days", for example, which must be appropriately translated '
-        'into "72h".\n'
+        'Days are not weeks: "1 day" is "24h", "2 days" is "48h", "3 days" is "72h", and only "2 weeks" / "14 days" '
+        'is "2w".\n'
         '"indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical '
         'reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only '
         'what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives '
@@ -266,6 +272,13 @@ REQUISITION_INDICATION_TESTS = ("ecg", "echo", "stecho", "est", "holter")
 _HOLTER_PERIODS = {"24h": "24h", "24hr": "24h", "1d": "24h", "48h": "48h", "48hr": "48h", "2d": "48h",
                    "72h": "72h", "72hr": "72h", "3d": "72h", "2w": "2w", "2wk": "2w", "14d": "2w"}
 _STRESS_ECHO_PATTERN = r"\bstress[\s-]*echo"
+# How each Holter option is written in a PLAN or an appointment reason ("2 days" is 48 h, not 2 weeks).
+_HOLTER_DURATION_TEXT = {
+    "24h": r"\b(24\s*-?\s*(h|hr|hrs|hours?)|(1|one)\s*-?\s*days?)\b",
+    "48h": r"\b(48\s*-?\s*(h|hr|hrs|hours?)|(2|two)\s*-?\s*days?)\b",
+    "72h": r"\b(72\s*-?\s*(h|hr|hrs|hours?)|(3|three)\s*-?\s*days?)\b",
+    "2w": r"\b((2|two)\s*-?\s*(w|wk|wks|weeks?)|14\s*-?\s*days?)\b",
+}
 
 # How each requisition test is written in a PLAN (contrast options go with their base test).
 _REQUISITION_TEST_PATTERNS = {
@@ -340,6 +353,51 @@ def strip_time_text(text) -> str | None:
     return re.sub(r"\s+", " ", text).strip(" ,;:.-\u2014") or None
 
 
+def holter_periods_in_text(text: str | None) -> list[str]:
+    """The Holter options written in `text`, in form order ("48 hr", "2 days" -> "48h"; "2 weeks" -> "2w")."""
+    text = str(text or "").lower()
+    return [period for period, pattern in _HOLTER_DURATION_TEXT.items() if re.search(pattern, text)]
+
+
+def plan_holter_period(plan: str | None) -> str | None:
+    """The Holter option the PLAN's Holter sentences name, or None when they name none or more than one."""
+    sentences = [s for s in re.split(r"[\n;]|\.(?=\s|$)", str(plan or "")) if re.search(r"\bholter\b", s, re.IGNORECASE)]
+    periods = {p for s in sentences for p in holter_periods_in_text(s)}
+    return periods.pop() if len(periods) == 1 else None
+
+
+_PERIOD_UNITS = (("d", r"days?|d"), ("w", r"weeks?|wks?|w"), ("m", r"months?|mos?|m"), ("y", r"years?|yrs?|y"))
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+                 "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "a": 1, "an": 1}
+
+
+def normalize_period(value) -> str | None:
+    """A follow-up period as "<n>d" / "<n>w" / "<n>m" / "<n>y" ("4 months" -> "4m", "six weeks" -> "6w"),
+    or None when it is not one."""
+    text = re.sub(r"^(in|about|approximately|~)\s+", "", str(value or "").strip().lower())
+    match = re.fullmatch(r"(\d+|[a-z]+)\s*-?\s*([a-z]+)", text)
+    if not match:
+        return None
+    amount = int(match.group(1)) if match.group(1).isdigit() else _NUMBER_WORDS.get(match.group(1))
+    unit = next((u for u, pattern in _PERIOD_UNITS if re.fullmatch(pattern, match.group(2))), None)
+    return f"{amount}{unit}" if amount and unit else None
+
+
+def normalize_requisition_date(value, today: date | None = None) -> date | None:
+    """The model's "date" as a date after today ("2027-01-27", "January 27, 2027"), None otherwise."""
+    if not value or not str(value).strip():
+        return None
+    try:
+        parsed = date_parser.parse(str(value).strip()).date()
+    except (ValueError, OverflowError):
+        print(f'[requisition eForm] date "{value}" could not be read; using the period instead')
+        return None
+    if parsed <= (today or date.today()):
+        print(f"[requisition eForm] date {parsed} is not in the future; using the period instead")
+        return None
+    return parsed
+
+
 def normalize_holter_period(value) -> str | None:
     """The model's holter value as one of "24h" / "48h" / "72h" / "2w", or None when it is not one of them."""
     key = re.sub(r"[\s-]+", "", str(value or "").lower())
@@ -399,6 +457,11 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
         ticked.discard("contrast")
     if "holter" in ticked:
         ticked.add("ecg")
+        # The PLAN's own words win over the model's pick ("Holter 2 days" must not become 2 weeks).
+        written = plan_holter_period(plan)
+        if written and written != holter_period:
+            print(f"[requisition eForm] Holter duration {written} from the PLAN, not the LLM's {holter_raw!r}")
+            holter_period = written
 
     indications_raw = raw.get("indications")
     indications = {}
@@ -411,12 +474,16 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
 
     period = raw.get("period")
     period = str(period).strip() if period is not None and str(period).strip() else None
+    if period and not normalize_period(period):
+        print(f'[requisition eForm] period "{period}" could not be read; keeping the form\'s own date')
+    period = normalize_period(period)
     diagnostics = [t for t in REQUISITION_TESTS if t in ticked]
     if llm_ticked and not diagnostics:
         print(f"[requisition eForm] LLM asked for {llm_ticked} but no test passed the PLAN checks; not opening the form")
     return {
         "requisition": bool(diagnostics),
         "requisition_period": period,
+        "requisition_date": normalize_requisition_date(raw.get("date")),
         "requisition_period_reason": strip_time_text(raw.get("period_reason")),
         "requisition_diagnostics": diagnostics,
         "requisition_indications": indications,
@@ -586,6 +653,7 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         "lab_checkboxes": med.get("lab_checkboxes"),
         "requisition": med.get("requisition"),
         "requisition_period": med.get("requisition_period"),
+        "requisition_date": med.get("requisition_date"),
         "requisition_period_reason": med.get("requisition_period_reason"),
         "requisition_diagnostics": med.get("requisition_diagnostics") or [],
         "requisition_indications": med.get("requisition_indications") or {},

@@ -7,6 +7,8 @@ import difflib
 import json
 import re
 
+from utils.med_eform import holter_periods_in_text, normalize_holter_period
+
 REFERRAL_REQUISITION_FID = 716
 
 # Test checkbox id -> (name shown to the LLM, indication input id or None)
@@ -100,11 +102,6 @@ _REASON_TESTS = {
     "est": r"\b(stress[\s-]*test\w*|treadmill|exercise[\s-]*(stress[\s-]*)?test\w*|est|ett|gxt)\b",
     "holter": r"\bholter\b",
 }
-_REASON_HOLTER_DURATIONS = {
-    "24h": r"\b24\s*-?\s*(h|hr|hrs|hours?)\b", "48h": r"\b48\s*-?\s*(h|hr|hrs|hours?)\b",
-    "72h": r"\b(72\s*-?\s*(h|hr|hrs|hours?)|3\s*-?\s*days?)\b",
-    "2w": r"\b(2\s*-?\s*(w|wk|wks|weeks?)|14\s*-?\s*days?)\b",
-}
 
 
 def tests_from_reason(reason: str) -> dict:
@@ -116,7 +113,8 @@ def tests_from_reason(reason: str) -> dict:
         found.add("stecho")
         text = re.sub(_REASON_STRESS_ECHO, " ", text)
     found |= {test for test, pattern in _REASON_TESTS.items() if re.search(pattern, text)}
-    duration = next((d for d, pattern in _REASON_HOLTER_DURATIONS.items() if re.search(pattern, text)), None)
+    durations = holter_periods_in_text(text)
+    duration = durations[0] if len(durations) == 1 else None
     return {
         "tests": [t for t in REFERRAL_TESTS if t in found],
         "contrast": bool(re.search(r"\bcontrast\b", (reason or "").lower())),
@@ -147,7 +145,7 @@ Rules:
   sarcoid"). Use the reason given for that test; if none is given for it, use the document's overall
   reason (symptoms / history it describes). Use null if there is no reason at all.
 - For "consult", "indication" is the reason for referral (short), or null.
-- "holter_duration": one of "24h", "48h", "72h", "2w" if the document marks a Holter duration, else null.
+- "holter_duration": one of "24h", "48h", "72h", "2w" if the document marks a Holter duration, else null. Days are not weeks: "2 days" is "48h"; only "2 weeks" / "14 days" is "2w".
 
 Tests:
 {tests_block}
@@ -243,7 +241,7 @@ def parse_referral_response(raw: str, form_json: dict, booked: dict) -> dict:
             # After the indication: the duration radio's onclick appends ". 24 hour study. " to it.
             # The appointment's duration wins over the document's.
             duration = HOLTER_DURATIONS.get(
-                booked.get("holter_duration") or str(data.get("holter_duration") or "").strip().lower())
+                booked.get("holter_duration") or normalize_holter_period(data.get("holter_duration")))
             if duration:
                 fields.append({"type": "check", "id": duration, "value": True})
 

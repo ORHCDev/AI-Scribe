@@ -1883,6 +1883,7 @@ def _open_relevant_eforms(consult_text: str = ""):
             decisions["requisition_diagnostics"], 
             decisions["holter_period"],
             decisions.get("requisition_indications"),
+            decisions.get("requisition_date"),
         )
     else:
         print("No requisition test (ECG, echo, Holter, ...) requested in the plan; skipping requisition eForm")
@@ -1969,12 +1970,19 @@ def generate_requisition_from_latest_note():
                 decisions["requisition_diagnostics"],
                 decisions["holter_period"],
                 decisions.get("requisition_indications"),
+                decisions.get("requisition_date"),
             )
             _log_eform_decision("Requisition", bool(requisition_window), explanation)
             if requisition_window:
                 _focus_eform_window(oscar.driver, requisition_window)
             tests = ", ".join(decisions["requisition_diagnostics"])
-            period = decisions["requisition_period"] or "date from the form's Dater"
+            if decisions.get("requisition_date"):
+                period = decisions["requisition_date"].strftime("%Y-%m-%d")
+            elif decisions["requisition_period"]:
+                period = f'{_translate_period(decisions["requisition_period"])} ' \
+                         f'({_offset_from_today(decisions["requisition_period"]).strftime("%Y-%m-%d")})'
+            else:
+                period = "date from the form's Dater"
             root.after(0, finish, (f"Requisition eForm opened from the letter of {letter['form_date']}.\n\n"
                                    f"Tests: {tests}\nBook for: {period}" if requisition_window
                                    else "The requisition eForm could not be opened; see the console."))
@@ -2258,7 +2266,7 @@ def _translate_period(labwork_period: str) -> str:
 
 
 def _open_requisition_eform(requisition_period: str, requisition_period_reason: str, data: list, holter_period: str,
-                            indications: dict | None = None):
+                            indications: dict | None = None, requisition_date: date | None = None):
     REQUISITION_FORM_FID = 698
 
     try:
@@ -2337,11 +2345,13 @@ def _open_requisition_eform(requisition_period: str, requisition_period_reason: 
                 urgency_element.click()
             print(f'"Book for" checkbox ticked')
 
-            # no follow-up period in the PLAN: keep the date Dater worked out
-            if requisition_period:
+            # A date written in the PLAN wins over a period; with neither, keep the date Dater worked out
+            if requisition_date or requisition_period:
+                book_date = requisition_date or _offset_from_today(requisition_period)
                 date_input = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "date")))
                 date_input.clear()
-                date_input.send_keys(_offset_from_today(requisition_period).strftime("%Y-%m-%d"))
+                date_input.send_keys(book_date.strftime("%Y-%m-%d"))
+                print(f'"Book for" date: {book_date}')
         except Exception as e:
             print(f"Failed to edit requisition eForm ({type(e).__name__}): {e}")
         finally:

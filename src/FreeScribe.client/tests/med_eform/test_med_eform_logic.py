@@ -6,6 +6,7 @@ model's output is cleaned, and the exact prescription-body text that gets writte
 """
 
 import json
+from datetime import date
 
 import pytest
 
@@ -687,3 +688,52 @@ def test_recommended_tests_do_not_open_the_requisition():
     r = req({"period": "1y", "echo": True, "holter": "48h"},
             "I recommend a repeat echo. Consider a Holter if palpitations persist. Follow up in 1 year.")
     assert r["requisition"] is False
+
+
+# --- requisition date / period / Holter duration from the PLAN -----------------------------------
+
+@pytest.mark.parametrize("value,expected", [
+    ("1y", "1y"), ("4m", "4m"), ("4 months", "4m"), ("six weeks", "6w"), ("in 3 months", "3m"),
+    ("a year", "1y"), ("2-week", "2w"), ("soon", None), (None, None), ("", None)])
+def test_period_is_normalized(value, expected):
+    assert med_eform.normalize_period(value) == expected
+
+
+def test_unreadable_period_is_dropped_not_kept():
+    r = req({"period": "4 months", "echo": True}, "Repeat echo in 4 months.")
+    assert r["requisition_period"] == "4m"
+    r = req({"period": "soon", "echo": True}, "Repeat echo soon.")
+    assert r["requisition_period"] is None
+
+
+@pytest.mark.parametrize("value", ["2027-01-27", "January 27, 2027", "27 Jan 2027"])
+def test_plan_date_is_read(value):
+    assert med_eform.normalize_requisition_date(value, today=date(2026, 11, 3)) == date(2027, 1, 27)
+
+
+@pytest.mark.parametrize("value", [None, "", "not a date", "2025-01-27"])
+def test_missing_bad_or_past_date_is_none(value):
+    assert med_eform.normalize_requisition_date(value, today=date(2026, 11, 3)) is None
+
+
+def test_requisition_returns_the_plan_date():
+    r = req({"period": "1y", "date": "2099-01-27", "echo": True}, "Echo before clinic visit on January 27, 2099.")
+    assert r["requisition_date"] == date(2099, 1, 27)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Holter 2 days", ["48h"]), ("two day Holter", ["48h"]), ("48 hr Holter", ["48h"]), ("1 day Holter", ["24h"]),
+    ("3 days", ["72h"]), ("2 weeks", ["2w"]), ("14 days", ["2w"]), ("12 days", []), ("Holter", [])])
+def test_holter_periods_in_text(text, expected):
+    assert med_eform.holter_periods_in_text(text) == expected
+
+
+def test_plan_holter_duration_wins_over_the_llm():
+    r = req({"period": "1y", "holter": "2w"}, "Arrange a Holter for 2 days. Follow up in 2 weeks.")
+    assert r["holter_period"] == "48h"
+
+
+def test_llm_holter_duration_kept_when_the_plan_names_none_or_several():
+    assert req({"period": "1y", "holter": "72h"}, "Arrange a Holter.")["holter_period"] == "72h"
+    r = req({"period": "1y", "holter": "2w"}, "Holter 48 hours; if negative, Holter 2 weeks.")
+    assert r["holter_period"] == "2w"

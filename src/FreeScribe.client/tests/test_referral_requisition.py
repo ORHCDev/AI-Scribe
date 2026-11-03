@@ -164,3 +164,14 @@ def test_describe_document_without_details():
 def test_patient_documents_query_lists_all_types_of_this_patient():
     query = rr.patient_documents_query("123")
     assert "cd.module_id = 123" in query and "referral" not in query and "LIMIT 15" in query
+
+
+@pytest.mark.parametrize("reason,expected", [
+    ("HOLTER 2 DAYS", "48h"), ("HOLTER 2 WEEKS", "2w"), ("HOLTER 1 day", "24h"), ("HOLTER", None)])
+def test_holter_days_are_not_read_as_weeks(reason, expected):
+    assert rr.tests_from_reason(reason)["holter_duration"] == expected
+
+
+def test_document_holter_duration_in_words_is_read():
+    result = _parse({"indications": {}, "holter_duration": "2 days"}, "HOLTER")
+    assert [f["id"] for f in result["fields"]] == ["holter", "48hr"]
