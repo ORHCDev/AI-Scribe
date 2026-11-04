@@ -2096,7 +2096,13 @@ def referral_requisition_from_chart():
                 except ValueError as e:
                     # Those indications stay empty, as they were not filled
                     print(f"[{REFERRAL_REQUISITION_PROMPT}] corrected reply could not be read ({e})")
-            window, fill = _open_referral_requisition_eform(demo_no, result["fields"])
+            for test in result["tests"]:
+                # No document text in the console (PHI): only whether each test got an indication
+                state = ("filled" if test in result["indications"] else
+                         "no words from the document for it" if test in result["unsupported"] else "none given")
+                print(f"[{REFERRAL_REQUISITION_PROMPT}] {test} indication: {state}")
+            window, fill = _open_referral_requisition_eform(
+                demo_no, referral_requisition.reset_fields(booked) + result["fields"])
             if window:
                 _focus_eform_window(oscar.driver, window)
             lines = []

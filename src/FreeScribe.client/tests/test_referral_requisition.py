@@ -124,7 +124,7 @@ def test_prompt_lists_only_the_booked_tests_and_their_options():
     prompt = rr.build_referral_prompt("OCR TEXT", ["ecg"], FORM_JSON)
     assert '"ecg"' in prompt and "Chest pain of suspected cardiac origin." in prompt
     assert '"holter"' not in prompt
-    assert prompt.rstrip().endswith("OCR TEXT")
+    assert prompt.index("OCR TEXT") < prompt.index("Tests:")
 
 
 def test_encounter_reason_comes_from_the_current_note_header():
@@ -209,6 +209,7 @@ def test_indication_without_words_from_the_document_is_not_filled(evidence):
 def test_prompt_asks_for_evidence_and_no_unsupported_options():
     prompt = rr.build_referral_prompt("OCR TEXT", ["echo"], FORM_JSON)
     assert '"evidence"' in prompt and "does not mention" in prompt
+    assert prompt.index('"evidence"') < prompt.index('"indication": "<')  # quote first, then choose
 
 
 def test_correction_replaces_only_the_unsupported_indications():
@@ -236,3 +237,28 @@ def test_correction_with_no_reason_leaves_the_indication_empty():
 def test_correction_prompt_names_the_rejected_indications():
     prompt = rr.correction_prompt("PROMPT", {"echo": "shortness of breath"})
     assert prompt.startswith("PROMPT") and '"echo": "shortness of breath"' in prompt
+
+
+def test_reset_unticks_tests_not_booked_and_empties_every_indication_box():
+    fields = rr.reset_fields(rr.tests_from_reason("ECHO"))
+    unticked = {f["id"] for f in fields if f["type"] == "check"}
+    emptied = {f["id"] for f in fields if f["type"] == "text"}
+    assert "echo" not in unticked and {"consult", "ecg", "stecho", "est", "holter", "contrastecho", "48hr"} <= unticked
+    assert {"ecg-input", "echo-input", "stecho-input", "est-input", "holter-input", rr.CONSULT_REASON_ID} == emptied
+    assert all(f["reset"] and f["value"] in (False, "") for f in fields)
+
+
+def test_reset_keeps_a_booked_contrast():
+    fields = rr.reset_fields(rr.tests_from_reason("CONTRAST ECHO"))
+    assert "contrastecho" not in {f["id"] for f in fields}
+
+
+def test_evidence_with_an_ellipsis_checks_each_part():
+    assert rr.evidence_in_document("previous hx of TIA ... Patent foramene ovale", DOCUMENT)
+    assert not rr.evidence_in_document("previous hx of TIA ... shortness of breath", DOCUMENT)
+
+
+def test_evidence_may_come_as_its_own_map():
+    raw = json.dumps({"indications": {"echo": "Patient shunt"}, "evidence": {"echo": "Patent foramene ovale"}})
+    result = rr.parse_referral_response(raw, FORM_JSON, rr.tests_from_reason("ECHO"), DOCUMENT)
+    assert result["indications"]["echo"][1] is True and result["unsupported"] == {}

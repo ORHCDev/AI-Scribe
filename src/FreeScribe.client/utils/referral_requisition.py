@@ -134,35 +134,37 @@ def build_referral_prompt(referral_text: str, tests: list, form_json: dict) -> s
             lines.extend(f"    * {o['label']}" for o in options[test])
     tests_block = "\n".join(lines)
     return f"""You are reading a new patient's cardiology referral DOCUMENT (often an OCR scan, in any format:
-our requisition form, another clinic's form, or a free-text letter). The tests below are already booked;
-give the indication for each of them from the document.
+our requisition form, another clinic's form, or a free-text letter).
 
-Rules:
-- The reason can be anywhere: an "Indication" line, "Reason for referral", "Clinical information",
-  "History", or the body of a letter. Read the whole document.
-- For each test, "indication" is ONE of the listed options copied exactly when the document states that
-  reason; otherwise a short reason in the document's own words (e.g. "family history of sarcoid"). Use the
-  reason given for that test; if none is given for it, use the document's overall reason (symptoms /
-  history it describes). Use null if there is no reason at all.
-- Never choose an option for a symptom or condition the document does not mention (e.g. do not choose
-  "shortness of breath" unless the document says shortness of breath / SOB / dyspnea). When no option
-  fits what the document says, write the document's own words instead; do not pick the nearest option.
-- For each test, "evidence" is the words copied exactly from the DOCUMENT (at most 20 words) that state
-  that reason. If you cannot copy such words from the document, "indication" and "evidence" are null.
-- For "consult", "indication" is the reason for referral (short), or null.
-- "holter_duration": one of "24h", "48h", "72h", "2w" if the document marks a Holter duration, else null. Days are not weeks: "2 days" is "48h"; only "2 weeks" / "14 days" is "2w".
+DOCUMENT (OCR text):
+{referral_text}
+
+END OF DOCUMENT.
+
+The tests below are already booked. For each of them, find in the DOCUMENT above why it is needed.
 
 Tests:
 {tests_block}
 
+For each test, work in this order:
+1. "evidence": copy, word for word, the sentence or phrase of the DOCUMENT (at most 20 words) that gives
+   the reason: an "Indication" line, "Reason for referral", "Clinical information", "History", or the
+   body of a letter. Use the reason given for that test; if none is given for it, the document's overall
+   reason (the symptoms / history it describes). The evidence must be the DOCUMENT's words, never an
+   option's words. If the document gives no reason, "evidence" is null.
+2. "indication": the option above that says the same thing as your evidence, copied exactly. If no option
+   says the same thing as the evidence, write the evidence's reason in a few of the document's own words
+   instead; never pick an option about a symptom or condition the evidence does not mention. If
+   "evidence" is null, "indication" is null.
+- For "consult", "indication" is the reason for referral (short), or null.
+- "holter_duration": one of "24h", "48h", "72h", "2w" if the document marks a Holter duration, else null.
+  Days are not weeks: "2 days" is "48h"; only "2 weeks" / "14 days" is "2w".
+
 Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
-{{"indications": {{"<test id>": {{"indication": "<option or short reason or null>",
-                                  "evidence": "<words copied from the document or null>"}}}},
+{{"indications": {{"<test id>": {{"evidence": "<words copied from the DOCUMENT or null>",
+                                  "indication": "<option or short reason or null>"}}}},
   "holter_duration": null,
   "explanation": "<one sentence: the referral's reason>"}}
-
-DOCUMENT (OCR text):
-{referral_text}
 """
 
 
@@ -212,10 +214,11 @@ def correction_prompt(prompt: str, unsupported: dict) -> str:
     """`prompt` again, telling the LLM which indications had no words from the document behind them."""
     rejected = "\n".join(f'- "{test}": "{indication}"' for test, indication in unsupported.items())
     return (f"{prompt}\n\nYour previous answer gave these indications, but the words you gave as evidence "
-            f"are not in the DOCUMENT:\n{rejected}\nRead the DOCUMENT again for these tests only. Give the "
-            "indication the document actually states, with \"evidence\" copied exactly from the DOCUMENT; if "
-            "the document gives no reason for a test, its indication and evidence are null. Reply with the same "
-            "JSON format, for these tests only.")
+            f"are not in the DOCUMENT (an option's words are not evidence):\n{rejected}\nRead the DOCUMENT again "
+            "for these tests only. First copy the DOCUMENT's own words that give the reason as \"evidence\", "
+            "then choose the indication that says the same thing, or write the reason in the document's words "
+            "when no option does. If the document gives no reason for a test, its evidence and indication are "
+            "null. Reply with the same JSON format, for these tests only.")
 
 
 def merge_correction(raw: str, corrected_raw: str, tests) -> str:
@@ -242,6 +245,10 @@ def evidence_in_document(evidence, document_text: str) -> bool:
     """True when `evidence` is in the document, ignoring case / punctuation, with a little room
     for the LLM tidying the OCR ("foramene" -> "foramen"): some stretch of the document of about
     the same length is at least 80% the same."""
+    parts = [p for p in re.split(r"\.{3,}|\u2026", str(evidence or "")) if _norm(p)]
+    if len(parts) > 1:
+        # "previous hx of TIA ... Patent foramene ovale": each part must be in the document
+        return all(evidence_in_document(p, document_text) for p in parts)
     target, document = _norm(str(evidence or "")), _norm(document_text)
     if len(target) < 3:
         return False
@@ -279,7 +286,8 @@ def parse_referral_response(raw: str, form_json: dict, booked: dict, document_te
         fields.append({"type": "check", "id": test, "value": True})
         if booked.get("contrast") and test in CONTRAST_OPTIONS:
             fields.append({"type": "check", "id": CONTRAST_OPTIONS[test], "value": True})
-        indication, quote = given.get(test), None
+        indication, quote = given.get(test), (data.get("evidence") or {}).get(test) \
+            if isinstance(data.get("evidence"), dict) else None
         if isinstance(indication, dict):
             indication, quote = indication.get("indication"), indication.get("evidence")
         if isinstance(indication, str) and indication.strip().lower() not in ("", "null", "none") \
@@ -312,14 +320,30 @@ def parse_referral_response(raw: str, form_json: dict, booked: dict, document_te
     }
 
 
+def reset_fields(booked: dict) -> list:
+    """Fields that undo what the new form carries over from the patient's last requisition: tests (and
+    contrast / Holter durations) the appointment does not name are unticked, and every indication box is
+    emptied. Filled before parse_referral_response's fields; ids the form does not have are skipped."""
+    tests = set(booked.get("tests") or [])
+    unticks = [t for t in REFERRAL_TESTS if t not in tests]
+    unticks += [c for t, c in CONTRAST_OPTIONS.items() if not (t in tests and booked.get("contrast"))]
+    unticks += list(HOLTER_DURATIONS.values())
+    boxes = [input_id for _, input_id in REFERRAL_TESTS.values() if input_id] + [CONSULT_REASON_ID]
+    return ([{"type": "check", "id": i, "value": False, "reset": True} for i in unticks]
+            + [{"type": "text", "id": i, "value": "", "reset": True} for i in boxes])
+
+
 # Ticks (click, so the form's onclick runs) and fills fields by id in the open eForm window.
 # Errors thrown by the form's own onclick handlers do not stop the rest.
 FILL_FIELDS_JS = """
     var result = {done: [], missing: []};
     arguments[0].forEach(function (f) {
         var el = document.getElementById(f.id);
-        if (!el) { result.missing.push(f.id); return; }
-        if (f.type === "check") {
+        if (!el) { if (!f.reset) { result.missing.push(f.id); } return; }
+        if (f.type === "check" && f.value === false) {
+            if (el.checked) { try { el.click(); } catch (e) {} }
+            el.checked = false;
+        } else if (f.type === "check") {
             if (!el.checked) { try { el.click(); } catch (e) {} }
             if (!el.checked) { el.checked = true; }
         } else {
