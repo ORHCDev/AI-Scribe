@@ -175,3 +175,64 @@ def test_holter_days_are_not_read_as_weeks(reason, expected):
 def test_document_holter_duration_in_words_is_read():
     result = _parse({"indications": {}, "holter_duration": "2 days"}, "HOLTER")
     assert [f["id"] for f in result["fields"]] == ["holter", "48hr"]
+
+
+DOCUMENT = ("Reason for consultation: previous hx of TIA at age 37 (investigation at that time showed "
+            "Patent foramene ovale and factor V Leiden). one episode of severe chest pain back in March 2026")
+
+
+def _parse_with_document(answer: dict, reason: str):
+    return rr.parse_referral_response(json.dumps(answer), FORM_JSON, rr.tests_from_reason(reason), DOCUMENT)
+
+
+def test_indication_with_words_from_the_document_is_filled_and_shown():
+    result = _parse_with_document({"indications": {"echo": {
+        "indication": "Patient shunt", "evidence": "Patent foramene ovale and factor V Leiden"}}}, "ECHO")
+    assert result["indications"]["echo"][1] is True
+    assert result["evidence"]["echo"] == "Patent foramene ovale and factor V Leiden"
+    assert result["unsupported"] == {}
+
+
+def test_evidence_tidied_by_the_llm_still_counts():
+    assert rr.evidence_in_document("patent foramen ovale and factor V Leiden", DOCUMENT)
+
+
+@pytest.mark.parametrize("evidence", [None, "", "shortness of breath on exertion"])
+def test_indication_without_words_from_the_document_is_not_filled(evidence):
+    result = _parse_with_document({"indications": {"echo": {
+        "indication": "shortness of breath", "evidence": evidence}}}, "ECHO")
+    assert result["tests"] == ["echo"]
+    assert [f["id"] for f in result["fields"]] == ["echo"]
+    assert result["unsupported"] == {"echo": "shortness of breath"}
+
+
+def test_prompt_asks_for_evidence_and_no_unsupported_options():
+    prompt = rr.build_referral_prompt("OCR TEXT", ["echo"], FORM_JSON)
+    assert '"evidence"' in prompt and "does not mention" in prompt
+
+
+def test_correction_replaces_only_the_unsupported_indications():
+    first = json.dumps({"indications": {
+        "ecg": {"indication": "Patient shunt", "evidence": "Patent foramene ovale"},
+        "echo": {"indication": "shortness of breath", "evidence": "SOB"}}, "explanation": "x"})
+    corrected = json.dumps({"indications": {
+        "echo": {"indication": "Patient shunt", "evidence": "Patent foramene ovale and factor V Leiden"}}})
+    merged = rr.merge_correction(first, corrected, {"echo": "shortness of breath"})
+    result = rr.parse_referral_response(merged, FORM_JSON, rr.tests_from_reason("ECHO-ECG"), DOCUMENT)
+    assert result["unsupported"] == {}
+    assert result["indications"]["echo"][1] is True
+    assert result["evidence"]["echo"] == "Patent foramene ovale and factor V Leiden"
+    assert result["explanation"] == "x"
+
+
+def test_correction_with_no_reason_leaves_the_indication_empty():
+    first = json.dumps({"indications": {"echo": {"indication": "shortness of breath", "evidence": None}}})
+    corrected = json.dumps({"indications": {"echo": {"indication": None, "evidence": None}}})
+    merged = rr.merge_correction(first, corrected, {"echo": "shortness of breath"})
+    result = rr.parse_referral_response(merged, FORM_JSON, rr.tests_from_reason("ECHO"), DOCUMENT)
+    assert result["unsupported"] == {} and "echo" not in result["indications"]
+
+
+def test_correction_prompt_names_the_rejected_indications():
+    prompt = rr.correction_prompt("PROMPT", {"echo": "shortness of breath"})
+    assert prompt.startswith("PROMPT") and '"echo": "shortness of breath"' in prompt

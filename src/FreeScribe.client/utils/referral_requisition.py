@@ -140,10 +140,15 @@ give the indication for each of them from the document.
 Rules:
 - The reason can be anywhere: an "Indication" line, "Reason for referral", "Clinical information",
   "History", or the body of a letter. Read the whole document.
-- For each test, "indication" is ONE of the listed options copied exactly when one clearly matches the
-  document's reason; otherwise a short reason in the document's own words (e.g. "family history of
-  sarcoid"). Use the reason given for that test; if none is given for it, use the document's overall
-  reason (symptoms / history it describes). Use null if there is no reason at all.
+- For each test, "indication" is ONE of the listed options copied exactly when the document states that
+  reason; otherwise a short reason in the document's own words (e.g. "family history of sarcoid"). Use the
+  reason given for that test; if none is given for it, use the document's overall reason (symptoms /
+  history it describes). Use null if there is no reason at all.
+- Never choose an option for a symptom or condition the document does not mention (e.g. do not choose
+  "shortness of breath" unless the document says shortness of breath / SOB / dyspnea). When no option
+  fits what the document says, write the document's own words instead; do not pick the nearest option.
+- For each test, "evidence" is the words copied exactly from the DOCUMENT (at most 20 words) that state
+  that reason. If you cannot copy such words from the document, "indication" and "evidence" are null.
 - For "consult", "indication" is the reason for referral (short), or null.
 - "holter_duration": one of "24h", "48h", "72h", "2w" if the document marks a Holter duration, else null. Days are not weeks: "2 days" is "48h"; only "2 weeks" / "14 days" is "2w".
 
@@ -151,7 +156,8 @@ Tests:
 {tests_block}
 
 Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
-{{"indications": {{"<test id>": "<option or short reason or null>"}},
+{{"indications": {{"<test id>": {{"indication": "<option or short reason or null>",
+                                  "evidence": "<words copied from the document or null>"}}}},
   "holter_duration": null,
   "explanation": "<one sentence: the referral's reason>"}}
 
@@ -202,15 +208,61 @@ def _load_json_object(raw: str) -> dict:
     return data
 
 
+def correction_prompt(prompt: str, unsupported: dict) -> str:
+    """`prompt` again, telling the LLM which indications had no words from the document behind them."""
+    rejected = "\n".join(f'- "{test}": "{indication}"' for test, indication in unsupported.items())
+    return (f"{prompt}\n\nYour previous answer gave these indications, but the words you gave as evidence "
+            f"are not in the DOCUMENT:\n{rejected}\nRead the DOCUMENT again for these tests only. Give the "
+            "indication the document actually states, with \"evidence\" copied exactly from the DOCUMENT; if "
+            "the document gives no reason for a test, its indication and evidence are null. Reply with the same "
+            "JSON format, for these tests only.")
+
+
+def merge_correction(raw: str, corrected_raw: str, tests) -> str:
+    """The first answer with the indications of `tests` taken from the corrected answer, as JSON."""
+    data, corrected = _load_json_object(raw), _load_json_object(corrected_raw)
+    indications = data.get("indications") if isinstance(data.get("indications"), dict) else {}
+    fixes = corrected.get("indications") if isinstance(corrected.get("indications"), dict) else {}
+    fixes = {str(k).strip().lower(): v for k, v in fixes.items()}
+    indications = {str(k).strip().lower(): v for k, v in indications.items()}
+    for test in tests:
+        indications[test] = fixes.get(test)
+    data["indications"] = indications
+    return json.dumps(data)
+
+
 RETRY_JSON_INSTRUCTION = ("\n\nYour previous reply was not valid JSON. Reply again with ONLY the JSON object, "
                           'and do not use double quotes (") inside any text value.')
 
 
-def parse_referral_response(raw: str, form_json: dict, booked: dict) -> dict:
+_EVIDENCE_MATCH_RATIO = 0.8
+
+
+def evidence_in_document(evidence, document_text: str) -> bool:
+    """True when `evidence` is in the document, ignoring case / punctuation, with a little room
+    for the LLM tidying the OCR ("foramene" -> "foramen"): some stretch of the document of about
+    the same length is at least 80% the same."""
+    target, document = _norm(str(evidence or "")), _norm(document_text)
+    if len(target) < 3:
+        return False
+    if target in document:
+        return True
+    matcher = difflib.SequenceMatcher(None, autojunk=False)
+    matcher.set_seq2(target)
+    for start in [0] + [m.end() for m in re.finditer(r" ", document)]:
+        matcher.set_seq1(document[start:start + len(target) + 5])
+        if matcher.real_quick_ratio() >= _EVIDENCE_MATCH_RATIO and matcher.ratio() >= _EVIDENCE_MATCH_RATIO:
+            return True
+    return False
+
+
+def parse_referral_response(raw: str, form_json: dict, booked: dict, document_text: str | None = None) -> dict:
     """LLM answer + `booked` (from tests_from_reason) -> {"fields": [...], "tests": [...],
-    "indications": {test: (value, from_dropdown)}, "explanation": str}. Only the booked tests are ticked,
-    whatever the LLM answers. Each field is {"type": "check"|"text", "id", "value"} in fill order:
-    a test's checkbox (and contrast / Holter duration) before its indication."""
+    "indications": {test: (value, from_dropdown)}, "evidence": {test: quote}, "unsupported": {test: indication},
+    "explanation": str}. Only the booked tests are ticked, whatever the LLM answers. Each field is
+    {"type": "check"|"text", "id", "value"} in fill order: a test's checkbox (and contrast / Holter
+    duration) before its indication. With `document_text`, an indication is only filled when its evidence
+    is found in the document; otherwise it is left out and listed in "unsupported"."""
     data = _load_json_object(raw)
     given = data.get("indications") or {}
     if not isinstance(given, dict):
@@ -218,7 +270,7 @@ def parse_referral_response(raw: str, form_json: dict, booked: dict) -> dict:
     given = {str(k).strip().lower(): v for k, v in given.items()}
     options = indication_options(form_json)
 
-    fields, tests, indications = [], [], {}
+    fields, tests, indications, evidence, unsupported = [], [], {}, {}, {}
     for test in booked.get("tests") or []:
         if test not in REFERRAL_TESTS:
             continue
@@ -227,10 +279,15 @@ def parse_referral_response(raw: str, form_json: dict, booked: dict) -> dict:
         fields.append({"type": "check", "id": test, "value": True})
         if booked.get("contrast") and test in CONTRAST_OPTIONS:
             fields.append({"type": "check", "id": CONTRAST_OPTIONS[test], "value": True})
-        indication = given.get(test)
+        indication, quote = given.get(test), None
         if isinstance(indication, dict):
-            indication = indication.get("indication")
-        if isinstance(indication, str) and indication.strip().lower() not in ("", "null", "none"):
+            indication, quote = indication.get("indication"), indication.get("evidence")
+        if isinstance(indication, str) and indication.strip().lower() not in ("", "null", "none") \
+                and document_text is not None and not evidence_in_document(quote, document_text):
+            unsupported[test] = indication.strip()
+        elif isinstance(indication, str) and indication.strip().lower() not in ("", "null", "none"):
+            if document_text is not None:
+                evidence[test] = " ".join(str(quote).split())
             if input_id:
                 value, from_dropdown = match_indication(indication, options.get(test, []))
             else:
@@ -249,6 +306,8 @@ def parse_referral_response(raw: str, form_json: dict, booked: dict) -> dict:
         "fields": fields,
         "tests": tests,
         "indications": indications,
+        "evidence": evidence,
+        "unsupported": unsupported,
         "explanation": str(data.get("explanation") or "").strip(),
     }
 
