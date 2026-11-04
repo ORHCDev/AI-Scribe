@@ -2078,20 +2078,41 @@ def referral_requisition_from_chart():
             prompt = referral_requisition.build_referral_prompt(text, booked["tests"], form_json)
             raw = send_text_to_chatgpt(prompt)
             try:
-                result = referral_requisition.parse_referral_response(raw, form_json, booked)
+                result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
             except ValueError as e:
                 # One retry: a single stray quote in the LLM's JSON should not stop the form.
                 print(f"[{REFERRAL_REQUISITION_PROMPT}] LLM reply could not be read ({e}); asking again")
                 raw = send_text_to_chatgpt(prompt + referral_requisition.RETRY_JSON_INSTRUCTION)
-                result = referral_requisition.parse_referral_response(raw, form_json, booked)
-            window, fill = _open_referral_requisition_eform(demo_no, result["fields"])
+                result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
+            if result["unsupported"]:
+                # An indication the document does not back up is wrong: ask once more for those tests.
+                print(f"[{REFERRAL_REQUISITION_PROMPT}] no words from the document for "
+                      f"{sorted(result['unsupported'])}; asking the LLM to correct them")
+                try:
+                    corrected = send_text_to_chatgpt(
+                        referral_requisition.correction_prompt(prompt, result["unsupported"]))
+                    raw = referral_requisition.merge_correction(raw, corrected, result["unsupported"])
+                    result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
+                except ValueError as e:
+                    # Those indications stay empty, as they were not filled
+                    print(f"[{REFERRAL_REQUISITION_PROMPT}] corrected reply could not be read ({e})")
+            for test in result["tests"]:
+                # No document text in the console (PHI): only whether each test got an indication
+                state = ("filled" if test in result["indications"] else
+                         "no words from the document for it" if test in result["unsupported"] else "none given")
+                print(f"[{REFERRAL_REQUISITION_PROMPT}] {test} indication: {state}")
+            window, fill = _open_referral_requisition_eform(
+                demo_no, referral_requisition.reset_fields(booked) + result["fields"])
             if window:
                 _focus_eform_window(oscar.driver, window)
             lines = []
             for test in result["tests"]:
                 value, from_dropdown = result["indications"].get(test, (None, False))
-                lines.append(f"- {test}: {value} ({'dropdown' if from_dropdown else 'free text'})" if value
-                             else f"- {test}: no indication")
+                if value:
+                    lines.append(f"- {test}: {value} ({'dropdown' if from_dropdown else 'free text'})\n"
+                                 f"    from the document: \"{result['evidence'].get(test, '')}\"")
+                else:
+                    lines.append(f"- {test}: no indication")
             missing = f"\n\nNot found on the form: {', '.join(fill['missing'])}" if fill["missing"] else ""
             root.after(0, finish, f"Requisition eForm opened; check it and submit.\n\n" + "\n".join(lines)
                        + missing + f"\n\nAppointment: {appointment}\n{document_line}"

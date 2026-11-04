@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
@@ -346,6 +349,47 @@ class MainWindowUI:
         self.menu_bar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="Debug Window", command=lambda: DebugPrintWindow(self.root))
         help_menu.add_command(label="About", command=lambda: self._show_md_content(get_file_path('markdown','help','about.md'), 'About'))
+        help_menu.add_separator()
+        # A packaged build has no git checkout to pull into
+        help_menu.add_command(label="Update and Restart", command=self._update_and_restart,
+                              state=tk.DISABLED if getattr(sys, "frozen", False) else tk.NORMAL)
+
+    def _update_and_restart(self):
+        """Pull the latest code with git, then restart AI-Scribe so it runs it."""
+        if not messagebox.askyesno(
+                "Update and Restart",
+                "Pull the latest code with git and restart AI-Scribe?\n\n"
+                "AI-Scribe and the Oscar windows it opened will close; unsaved text and forms in them are lost."):
+            return
+        print("[Update] Pulling the latest code...")
+        self.root.config(cursor="watch")
+        threading.Thread(target=self._git_pull, daemon=True).start()
+
+    def _git_pull(self):
+        """Run git pull off the Tk thread (git finds the repository from this folder upwards)."""
+        try:
+            result = subprocess.run(
+                ["git", "pull", "--ff-only"], cwd=os.path.dirname(os.path.abspath(__file__)),
+                capture_output=True, text=True, timeout=120,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            ok, output = result.returncode == 0, (result.stdout + result.stderr).strip()
+        except (OSError, subprocess.SubprocessError) as e:
+            ok, output = False, f"{type(e).__name__}: {e}"
+        self.root.after(0, lambda: self._after_git_pull(ok, output))
+
+    def _after_git_pull(self, ok: bool, output: str):
+        self.root.config(cursor="")
+        print(f"[Update] git pull {'done' if ok else 'failed'}:\n{output}")
+        if not ok:
+            # Nothing changed on disk; keep running the current code
+            messagebox.showerror("Update and Restart",
+                                 f"git pull failed, AI-Scribe was not restarted.\n\n{output[-1500:]}")
+            return
+        if "up to date" in output.lower() and not messagebox.askyesno(
+                "Update and Restart", "The code is already up to date. Restart anyway?"):
+            return
+        if self.app_settings.restart_callback:
+            self.app_settings.restart_callback()
 
     def _destroy_help_menu(self):
         """
