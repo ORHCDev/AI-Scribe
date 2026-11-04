@@ -10,7 +10,6 @@ import time
 import torch
 import whisper
 import yaml
-from pyannote.audio import Pipeline
 
 from dailylogger import setup_daily_logger
 
@@ -22,6 +21,11 @@ DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 
 with open(r".\configs\config.yaml", "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
+
+FFMPEG_DLL_DIR = config.get("FFMPEG_DLL_DIR")
+FFMPEG_DLL_HANDLE = None
+if os.name == "nt" and FFMPEG_DLL_DIR and os.path.isdir(FFMPEG_DLL_DIR):
+    FFMPEG_DLL_HANDLE = os.add_dll_directory(FFMPEG_DLL_DIR)
 
 WHISPER_API_KEY = config.get("WHISPER_API_KEY")
 MAX_UPLOAD_SIZE = config.get("MAX_UPLOAD_SIZE", DEFAULT_MAX_UPLOAD_SIZE)
@@ -47,6 +51,8 @@ logger.info("Whisper model loaded successfully")
 # transcription if loading fails, e.g. missing HuggingFace token).
 diarize_pipeline = None
 try:
+    from pyannote.audio import Pipeline
+
     print(f"Loading diarization pipeline '{DIARIZATION_MODEL}'...")
     logger.info("Loading diarization pipeline '%s'...", DIARIZATION_MODEL)
     try:
@@ -72,8 +78,9 @@ def _overlap_duration(start: float, end: float, other_start: float, other_end: f
     return max(0.0, min(end, other_end) - max(start, other_start))
 
 def extract_turns(diarization) -> list[tuple[float, float, str]]:
+    annotation = getattr(diarization, "speaker_diarization", diarization)
     turns = [(turn.start, turn.end, label)
-             for turn, _, label in diarization.itertracks(yield_label=True)]
+             for turn, _, label in annotation.itertracks(yield_label=True)]
     return sorted(turns)
 
 def assign_speakers_to_segments(segments: list[dict], turns: list[tuple[float, float, str]]) -> list[dict]:
