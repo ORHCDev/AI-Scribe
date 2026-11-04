@@ -92,12 +92,14 @@ def pdf_image_to_text(pdf_path=None, pdf_bytes=None, first_page=None, last_page=
 
 
 
-def file_reader(file_path):
+def file_reader(file_path, last_page=None):
     """
     Assumes passed file is either .txt or .pdf and will extract the text from the file.
     
     Will also try and extract additional information from the file name and text like 
     the file type and patient name.
+
+    `last_page` limits a PDF to its first pages (all pages when None).
     """
     print(f"Reading file {file_path}")
     
@@ -110,9 +112,9 @@ def file_reader(file_path):
         elif file_path.lower().endswith(".pdf"):
             filename = os.path.basename(file_path)
             if detect_type(filename) == "HOLTER":
-                text = pdf_image_to_text(pdf_path=file_path, last_page=2)
+                text = pdf_image_to_text(pdf_path=file_path, last_page=min(2, last_page or 2))
             else:
-                text = pdf_image_to_text(pdf_path=file_path) 
+                text = pdf_image_to_text(pdf_path=file_path, last_page=last_page)
             return text
 
         else:
