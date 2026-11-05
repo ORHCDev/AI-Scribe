@@ -1,6 +1,11 @@
+import copy
 import os
 import shutil
 import yaml
+
+CONSULT_COMPLETE_PROMPT = "Consult Complete"
+CONSULT_COMPLETE_MASTER_SECTION = "Master Prompt"
+
 
 class PromptsWindow():
     """
@@ -56,6 +61,7 @@ class PromptsWindow():
         self.data = {}
         self.cache = {}
         self.hl7_prompt_list = None
+        self.consult_complete = {}
 
         if not os.path.exists(default_path):
             print(f"No default .yaml file to read at {default_path}")
@@ -74,6 +80,113 @@ class PromptsWindow():
         self.data = data
         self.cache = data["Prompts"].copy()
         self.hl7_prompt_list = data["HL7_Prompts"]
+        self._load_consult_complete()
+
+
+    def _read_default_consult_complete(self):
+        """Returns the Consult Complete prompts from the default yaml file, if available."""
+        if not os.path.exists(self.default_path):
+            return {}
+        try:
+            with open(self.default_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            return data.get("Consult_Complete") or {}
+        except Exception as e:
+            print(f"Unable to read default Consult Complete prompts: {e}")
+            return {}
+
+
+    def _load_consult_complete(self):
+        """Loads Consult Complete prompts, filling in any that are missing from the defaults."""
+        defaults = self._read_default_consult_complete()
+        current = self.data.get("Consult_Complete")
+        changed = False
+
+        if not isinstance(current, dict):
+            current = {}
+            self.data["Consult_Complete"] = current
+            changed = True
+
+        if "Master" not in current and "Master" in defaults:
+            current["Master"] = defaults["Master"]
+            changed = True
+
+        sections = current.get("Sections")
+        if not isinstance(sections, dict):
+            sections = {}
+            current["Sections"] = sections
+            changed = True
+
+        for name, text in defaults.get("Sections", {}).items():
+            if name not in sections:
+                sections[name] = text
+                changed = True
+
+        self.consult_complete = current
+
+        if changed:
+            self.save_yaml()
+
+
+    def list_consult_complete_sections(self):
+        """Returns the editable Consult Complete section names, with the master prompt first."""
+        return [CONSULT_COMPLETE_MASTER_SECTION] + list(self.consult_complete.get("Sections", {}).keys())
+
+
+    def get_consult_complete_master(self):
+        """Returns the Consult Complete master prompt template."""
+        return self.consult_complete.get("Master", "") or ""
+
+
+    def get_consult_complete_section(self, section):
+        """Returns the prompt for the given Consult Complete section."""
+        if section == CONSULT_COMPLETE_MASTER_SECTION:
+            return self.get_consult_complete_master()
+        return self.consult_complete.get("Sections", {}).get(section, "") or ""
+
+
+    def cache_consult_complete_section(self, section, text):
+        """Caches a Consult Complete section. Changes only last for the current session."""
+        if section == CONSULT_COMPLETE_MASTER_SECTION:
+            self.consult_complete["Master"] = text
+        else:
+            self.consult_complete.setdefault("Sections", {})[section] = text
+
+
+    def save_consult_complete_section(self, section, text):
+        """Saves a Consult Complete section to the yaml file."""
+        self.cache_consult_complete_section(section, text)
+        self.save_consult_complete()
+
+
+    def save_consult_complete(self):
+        """Saves all Consult Complete prompts to the yaml file."""
+        self.data["Consult_Complete"] = self.consult_complete
+        self.save_yaml()
+
+
+    def restore_consult_complete_section(self, section):
+        """Restores a Consult Complete section to its default (if it exists)."""
+        defaults = self._read_default_consult_complete()
+        if section == CONSULT_COMPLETE_MASTER_SECTION:
+            if "Master" in defaults:
+                self.save_consult_complete_section(section, defaults["Master"])
+            else:
+                print(f"{section} is not in default Consult Complete prompts")
+        elif section in defaults.get("Sections", {}):
+            self.save_consult_complete_section(section, defaults["Sections"][section])
+        else:
+            print(f"{section} is not in default Consult Complete prompts")
+
+
+    def restore_all_consult_complete(self):
+        """Restores all Consult Complete prompts to their defaults."""
+        defaults = self._read_default_consult_complete()
+        if not defaults:
+            return
+        self.consult_complete = copy.deepcopy(defaults)
+        self.data["Consult_Complete"] = self.consult_complete
+        self.save_yaml()
 
 
     def restore_prompt(self, name):

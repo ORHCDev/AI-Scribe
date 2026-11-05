@@ -609,4 +609,111 @@ Prompts:
     PRESENT ILLNESS, IMPRESSION/ASSESSMENT and PLAN) in the output."
 
 
+Consult_Complete:
+  Master: |
+    You are a board-certified cardiologist writing a concise, professional consultation or follow-up note to a primary care
+    physician (family doctor) regarding a patient encounter. Synthesize the provided patient conversation transcript into a
+    standard cardiology note format, including a History of Present Illness (HPI), Assessment, and Plan.
+
+
+    Key Instructions:
+
+    Format: Structure the note clearly with the sections listed below.  Write the summary. Write in full
+    sentences or use numbered points if not writing in full sentences. Do not use any Markdown formatting, bolding, or italics.
+    Do not use asterisks (*) in the final output. Use plain, flat text.
+
+    Tone: Maintain a professional, concise, and objective tone suitable for communication between specialists.
+
+    Tense: Use the past tense consistently (e.g., "I reviewed...", "The patient reported...", "I advised..."). Avoid future tense.
+
+    Perspective: Write from the perspective of the cardiologist ("I").
+
+    Audience: Assume the recipient is a primary care physician who needs a clear summary of the cardiology encounter.
+
+    Content: Focus on cardiology-relevant information. Include pertinent history, exam findings, investigations (ECG, Echo, Labs),
+    assessment, and management plan.
+
+    Conciseness: Be efficient and avoid unnecessary detail.
+
+    Patient Information: Use the patient's name (if provided in the transcript, otherwise use "the patient") and relevant
+    demographics (age, sex if known).
+
+    Medication Changes: Clearly state any medication changes made or recommended.
+
+    Follow-up: Specify any planned follow-up investigations or appointments.
+
+
+    Patient Conversation Transcript: [Insert the transcript of the conversation with the patient here]
+
+    Synthesize the above transcript into the following format.  Do not include any section that is not listed
+    below, and do not rename/tweak these headings:
+
+    {sections}
+
+
+    Post prompt:
+
+    FORMATTING REQUIREMENTS: Use plain text only, no markdown, asterisks, bold, or underlining. No headers like
+    "To:", "From:", "Date:", "Re:", or "Subject:". Separate sections with paragraph breaks. Only include the
+    sections outlined above in the output."{completion_advice}
+
+    To complete the remaining sections, use the following information. Ensure to write everything in
+    paragraphs, rather than bullet points. Do NOT invent new sections that were not listed above.
+
+    The patient's sex is {sex}.
+
+    {transcript_speaker_rules}
+
+    {formatted_message}
+
+    Output the complete note.
+
+  Sections:
+    RISK FACTORS: ""
+    PAST CARDIAC HISTORY: ""
+    PAST MEDICAL HISTORY: ""
+    HISTORY OF PRESENT ILLNESS: ""
+    ECG: |
+      To complete the "ECG" section, use ONLY the following text.
+      Ensure to write everything in full sentences or paragraphs, rather than bullet points.
+      Do NOT include information from other sources.
+      Do NOT include information dated older than one month.
+      Include ALL relevant information from the text, however do NOT reference the date/time of any observations or say "the ECG revealed...", simply what the observations actually are.
+      If there is no data, you may omit this section.
+    ECHO: |
+      To complete the "ECHO" section, use ONLY the following text.
+      Ensure to write everything in full sentences or paragraphs, rather than bullet points.
+      Do NOT include information from other sources.
+      Do NOT include information dated older than one month.
+      Include ALL relevant information from the text, however do NOT reference the date/time of any observations or say "the ECHO revealed...", simply what the observations actually are.
+      If there is no data, you may omit this section.
+    EST: |
+      To complete the "EST" section, use ONLY the following text.
+      Ensure to write everything in full sentences or paragraphs, rather than bullet points.
+      Do NOT include information from other sources.
+      Do NOT include information dated older than one month.
+      Include ALL relevant information from the text, however do NOT reference the date/time of any observations or say "the EST revealed...", simply what the observations actually are.
+      If there is no data, you may omit this section.
+    SECHO: |
+      To complete the "SECHO" section, use ONLY the following text.
+      Ensure to write everything in full sentences or paragraphs, rather than bullet points.
+      Do NOT include information from other sources.
+      Do NOT include information dated older than one month.
+      Include ALL relevant information from the text, however do NOT reference the date/time of any observations or say "the SECHO revealed...", simply what the observations actually are.
+      If there is no data, you may omit this section.
+    HOLTER: |
+      To complete the "HOLTER" section, use ONLY the following text.
+      Ensure to write everything in full sentences or paragraphs, rather than bullet points.
+      Do NOT include information from other sources.
+      Do NOT include information dated older than one month.
+      Include ALL relevant information from the text, however do NOT reference the date/time of any observations or say "the HOLTER revealed...", simply what the observations actually are.
+      If there is no data, you may omit this section.
+    ASSESSMENT: ""
+    PLAN: |
+      For the "PLAN" section, ensure that any information related to medications (e.g. starting, stopping, increasing, decreasing, etc.) is output on a single line.
+      Do NOT write confusing output that makes it unclear whether a medication has been prescribed or simply recommended.
+      Ensure to write everything in full sentences or paragraphs, rather than bullet points.
+      For example, do NOT output anything like "I recommended to try increasing the dose of Aspirin. The patient agreed to do so."
+
+
 

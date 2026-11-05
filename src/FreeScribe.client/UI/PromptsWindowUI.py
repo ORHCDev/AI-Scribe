@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
+from UI.PromptsWindow import CONSULT_COMPLETE_MASTER_SECTION, CONSULT_COMPLETE_PROMPT
+
 class PromptsWindowUI:
     def __init__(self, parent, prompts):
         """
@@ -26,18 +28,32 @@ class PromptsWindowUI:
         self.prompt_selector.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.prompt_selector.bind("<<ComboboxSelected>>", self.on_prompt_selected)
 
-        # --- Buttons ---
-        button_frame = tk.Frame(self.window)
-        button_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        self.section_frame = tk.Frame(self.window)
+        tk.Label(self.section_frame, text="Section:").pack(side=tk.LEFT, padx=(0, 5))
+        self.section_var = tk.StringVar()
+        self.section_selector = ttk.Combobox(
+            self.section_frame, textvariable=self.section_var, state="readonly"
+        )
+        self.section_selector.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.section_selector.bind("<<ComboboxSelected>>", self.on_section_selected)
+        self.section_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        tk.Button(button_frame, text="New", width=10, command=self.create_prompt).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Save", width=10, command=self.save_prompt).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cache", width=10, command=self.cache_current_prompt).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Refresh", width=10, command=self.refresh_prompts).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Delete", width=10, command=self.delete_prompt).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Restore", width=10, command=self.restore_prompt).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Restore All", width=10, command=self.restore_all_prompts).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Close", width=10, command=self.close).pack(side=tk.RIGHT, padx=5)
+        # --- Buttons ---
+        self.button_frame = tk.Frame(self.window)
+        self.button_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+
+        tk.Button(self.button_frame, text="New", width=10, command=self.create_prompt).pack(side=tk.LEFT, padx=5)
+        tk.Button(self.button_frame, text="Save", width=10, command=self.save_prompt).pack(side=tk.LEFT, padx=5)
+        tk.Button(self.button_frame, text="Cache", width=10, command=self.cache_current_prompt).pack(side=tk.LEFT, padx=5)
+        tk.Button(self.button_frame, text="Refresh", width=10, command=self.refresh_prompts).pack(side=tk.LEFT, padx=5)
+        tk.Button(self.button_frame, text="Delete", width=10, command=self.delete_prompt).pack(side=tk.LEFT, padx=5)
+        tk.Button(self.button_frame, text="Restore", width=10, command=self.restore_prompt).pack(side=tk.LEFT, padx=5)
+        tk.Button(self.button_frame, text="Restore All", width=10, command=self.restore_all_prompts).pack(side=tk.LEFT, padx=5)
+        tk.Button(self.button_frame, text="Close", width=10, command=self.close).pack(side=tk.RIGHT, padx=5)
+
+        self.section_frame.pack_forget()
+        self._current_prompt = None
+        self._current_section = None
 
         # --- Text box for prompt content ---
         text_frame = tk.Frame(self.window)
@@ -62,31 +78,87 @@ class PromptsWindowUI:
 
     def load_prompts(self):
         """Load available prompt names from the prompt directory."""
-        # Get file names without .txt ending
-        prompts = self.prompts.list_prompts()
-        self.prompt_selector["values"] = prompts
-        if prompts:
-            self.prompt_selector.current(0)
-            self.load_prompt(prompts[0])
+        values = self._prompt_values()
+        self.prompt_selector["values"] = values
+        if not values:
+            return
+
+        current = self.prompt_var.get()
+        if current not in values:
+            current = values[0]
+        self.prompt_selector.set(current)
+        self.load_prompt(current)
+
+    def _prompt_values(self):
+        """Returns the prompt names shown in the selector."""
+        return self.prompts.list_prompts() + [CONSULT_COMPLETE_PROMPT]
+
+    def _show_section_selector(self):
+        """Shows the section selector for Consult Complete."""
+        values = self.prompts.list_consult_complete_sections()
+        self.section_selector["values"] = values
+        if self.section_var.get() not in values:
+            self.section_var.set(CONSULT_COMPLETE_MASTER_SECTION)
+        self.section_frame.pack(fill=tk.X, padx=10, pady=5, before=self.button_frame)
+
+    def _hide_section_selector(self):
+        """Hides the section selector when a regular prompt is selected."""
+        self.section_frame.pack_forget()
 
     def load_prompt(self, name):
         """Load a prompt (from cache or file)."""
+        self._current_prompt = name
+        if name == CONSULT_COMPLETE_PROMPT:
+            self._show_section_selector()
+            section = self.section_var.get() or CONSULT_COMPLETE_MASTER_SECTION
+            self._load_section(section)
+            return
+
+        self._hide_section_selector()
+        self._current_section = None
         if name in self.prompts.cache:
             content = self.prompts.cache[name]
             self.text_widget.delete("1.0", tk.END)
             self.text_widget.insert(tk.END, content)
         else:
             print(f"Prompts {name} does not exist")
-        
 
+    def _load_section(self, section):
+        """Loads a Consult Complete section into the text box."""
+        self._current_section = section
+        content = self.prompts.get_consult_complete_section(section)
+        self.text_widget.delete("1.0", tk.END)
+        self.text_widget.insert(tk.END, content)
+
+    def _cache_current_section(self):
+        """Caches edits made to the current Consult Complete section."""
+        if self._current_prompt == CONSULT_COMPLETE_PROMPT and self._current_section:
+            self.prompts.cache_consult_complete_section(
+                self._current_section,
+                self.text_widget.get("1.0", tk.END).strip()
+            )
 
     # --- Event handlers ---
 
     def on_prompt_selected(self, event=None):
         """When user selects a prompt from dropdown."""
         name = self.prompt_var.get()
-        if name:
-            self.load_prompt(name)
+        if not name:
+            return
+
+        if self._current_prompt == CONSULT_COMPLETE_PROMPT and name != CONSULT_COMPLETE_PROMPT:
+            self._cache_current_section()
+
+        self.load_prompt(name)
+
+    def on_section_selected(self, event=None):
+        """When user selects a Consult Complete section from the dropdown."""
+        section = self.section_var.get()
+        if not section or section == self._current_section:
+            return
+
+        self._cache_current_section()
+        self._load_section(section)
 
 
     # --- User actions ---
@@ -97,15 +169,15 @@ class PromptsWindowUI:
         if not name:
             return
 
-        if name == "Auto" or name == "None":
-            messagebox.showerror("Error", f"Can not use 'Auto' or 'None' for prompt name, as they are defaults")
+        if name in {"Auto", "None", CONSULT_COMPLETE_PROMPT}:
+            messagebox.showerror("Error", f"Can not use '{name}' for prompt name, as it is a default")
             return
 
         
         self.prompts.create_prompt(name, "")
         self.load_prompts()
         self.prompt_selector.set(name)
-        self.text_widget.delete("1.0", tk.END)
+        self.load_prompt(name)
 
         self.refresh_dropdown(self.prompts.list_prompts())
 
@@ -116,6 +188,18 @@ class PromptsWindowUI:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
             return
 
+        if name == CONSULT_COMPLETE_PROMPT:
+            section = self.section_var.get()
+            if not section:
+                messagebox.showwarning("Warning", "No section selected.", parent=self.window)
+                return
+            self._cache_current_section()
+            self.prompts.save_consult_complete()
+            messagebox.showinfo(
+                "Saved", "Consult Complete prompts saved successfully.", parent=self.window
+            )
+            return
+
         self.prompts.save_prompt(name, self.text_widget.get("1.0", tk.END).strip())
 
         messagebox.showinfo("Saved", f"Prompt '{name}' saved successfully.", parent=self.window)
@@ -123,7 +207,9 @@ class PromptsWindowUI:
     def cache_current_prompt(self):
         """Cache current text under the currently selected prompt."""
         current = self.prompt_var.get()
-        if current:
+        if current == CONSULT_COMPLETE_PROMPT:
+            self._cache_current_section()
+        elif current:
             self.prompts.cache_prompt(current, self.text_widget.get("1.0", tk.END).strip())
 
     def refresh_prompts(self):
@@ -135,7 +221,7 @@ class PromptsWindowUI:
 
     def refresh_dropdown(self, values):
         """Refreshes main window prompt selector"""
-        defaults = ["Auto", "None", "Scribe"]
+        defaults = ["Auto", "None", "Scribe", CONSULT_COMPLETE_PROMPT, "Consult Complete + MH"]
         for widget in self.parent.winfo_children():
             if getattr(widget, "_id", None) == "prompt_selector":
                 if values:
@@ -149,6 +235,14 @@ class PromptsWindowUI:
         name = self.prompt_var.get()
         if not name:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
+            return
+
+        if name == CONSULT_COMPLETE_PROMPT:
+            messagebox.showwarning(
+                "Warning",
+                "Consult Complete sections cannot be deleted.",
+                parent=self.window
+            )
             return
 
         # Ask for confirmation before deleting
@@ -185,19 +279,28 @@ class PromptsWindowUI:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
             return
 
-        # Ask for confirmation before deleting
+        target = self.section_var.get() if name == CONSULT_COMPLETE_PROMPT else name
+        if not target:
+            messagebox.showwarning("Warning", "No section selected.", parent=self.window)
+            return
+
+        # Ask for confirmation before restoring
         confirm = messagebox.askyesno(
             "Confirm Restore",
-            f"Are you sure you want to restore '{name}'? All changes will be overwritten.",
+            f"Are you sure you want to restore '{target}'? All changes will be overwritten.",
             parent=self.window
         )
 
         if not confirm:
           return  # User cancelled
-        
-        self.prompts.restore_prompt(name)
-        self.load_prompts()
-        self.prompt_var.set(name)
+
+        if name == CONSULT_COMPLETE_PROMPT:
+            self.prompts.restore_consult_complete_section(target)
+            self._load_section(target)
+        else:
+            self.prompts.restore_prompt(name)
+            self.load_prompts()
+            self.prompt_var.set(name)
 
     def restore_all_prompts(self):
         """Restores all prompts to default"""
@@ -206,7 +309,7 @@ class PromptsWindowUI:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
             return
 
-        # Ask for confirmation before deleting
+        # Ask for confirmation before restoring
         confirm = messagebox.askyesno(
             "Confirm Restore",
             f"Are you sure you want to restore all prompts to their default?",
@@ -215,8 +318,9 @@ class PromptsWindowUI:
 
         if not confirm:
           return  # User cancelled
-        
+
         self.prompts.restore_all_prompts()
+        self.prompts.restore_all_consult_complete()
         self.refresh_prompts()
 
     def close(self):
