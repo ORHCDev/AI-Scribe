@@ -171,6 +171,20 @@ is_audio_processing_whole_canceled = threading.Event()
 # Constants
 DEFAULT_BUTTON_COLOUR = "SystemButtonFace"
 
+CONSULT_COMPLETE_SECTIONS = (
+    ("RISK FACTORS", "medical_history"),
+    ("PAST CARDIAC HISTORY", "medical_history"),
+    ("PAST MEDICAL HISTORY", "medical_history"),
+    ("HISTORY OF PRESENT ILLNESS", "always"),
+    ("ECG", "measurement"),
+    ("ECHO", "measurement"),
+    ("EST", "measurement"),
+    ("SECHO", "measurement"),
+    ("HOLTER", "measurement"),
+    ("ASSESSMENT", "always"),
+    ("PLAN", "always"),
+)
+
 #Thread tracking variables
 REALTIME_TRANSCRIBE_THREAD_ID = None
 GENERATION_THREAD_ID = None
@@ -1254,135 +1268,45 @@ def generate_note(formatted_message):
                     print(f"[TIMING] measurement processing: {time.perf_counter() - step_start:.2f}s")
 
                     step_start = time.perf_counter()
-                    sections = ""
+                    measurement_texts = {
+                        "ECG": ecg_text,
+                        "ECHO": echo_text,
+                        "EST": est_text,
+                        "SECHO": secho_text,
+                        "HOLTER": holt_text,
+                    }
+                    include_medical_history = prompt_type == "Consult Complete + MH"
+
+                    included_sections = []
+                    for section_name, include_rule in CONSULT_COMPLETE_SECTIONS:
+                        if include_rule == "medical_history" and not include_medical_history:
+                            continue
+                        if include_rule == "measurement" and not measurement_texts.get(section_name):
+                            continue
+                        included_sections.append(section_name)
+
+                    sections = "\n".join(f"- {section_name}" for section_name in included_sections)
+
                     completion_advice = ""
-                    if prompt_type == "Consult Complete + MH":
-                        sections = "- RISK FACTORS\n- PAST CARDIAC HISTORY\n- PAST MEDICAL HISTORY\n"
-                    else:
-                        sections = ""
-                    sections += "- HISTORY OF PRESENT ILLNESS"
-                    if ecg_text: 
-                        sections += "\n- ECG"
-                        print(f"ECG NOTE: {ecg_text}")
-                        completion_advice += (
-                            "\n\nTo complete the \"ECG\" section, use ONLY the following text. Ensure to write everything in "
-                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
-                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
-                            "from the text, however do NOT reference the date/time of any observations or say \"the ECG "
-                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
-                            f"section\n\n{ecg_text}"
-                        )
-                    if echo_text: 
-                        sections += "\n- ECHO"
-                        print(f"ECHO NOTE: {echo_text}")
-                        completion_advice += (
-                            "\n\nTo complete the \"ECHO\" section, use ONLY the following text. Ensure to write everything in "
-                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
-                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
-                            "from the text, however do NOT reference the date/time of any observations or say \"the ECHO "
-                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
-                            f"section.\n\n{echo_text}"
-                        )
-                    if est_text: 
-                        sections += "\n- EST"
-                        print(f"EST NOTE: {est_text}")
-                        completion_advice += (
-                            "\n\nTo complete the \"EST\" section, use ONLY the following text. Ensure to write everything in "
-                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
-                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
-                            "from the text, however do NOT reference the date/time of any observations or say \"the EST "
-                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
-                            f"section.\n\n{est_text}"
-                        )
-                    if secho_text: 
-                        sections += "\n- SECHO"
-                        print(f"SECHO NOTE: {secho_text}")
-                        completion_advice += (
-                            "\n\nTo complete the \"SECHO\" section, use ONLY the following text. Ensure to write everything in "
-                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
-                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
-                            "from the text, however do NOT reference the date/time of any observations or say \"the SECHO "
-                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
-                            f"section\n\n{secho_text}"
-                        )
-                    if holt_text: 
-                        sections += "\n- HOLTER"
-                        print(f"HOLT NOTE: {holt_text}")
-                        completion_advice += (
-                            "\n\nTo complete the \"HOLTER\" section, use ONLY the following text. Ensure to write everything in "
-                            "full sentences or paragraphs, rather than bullet points. Do NOT include information from other "
-                            "sources. Do NOT include information dated older than one month. Include ALL relevant information "
-                            "from the text, however do NOT reference the date/time of any observations or say \"the HOLTER "
-                            "revealed...\", simply what the observations actually are. If there is no data, you may omit this "
-                            f"section\n\n{holt_text}"
-                        )
-                    sections += "\n- ASSESSMENT\n- PLAN"
-                    completion_advice += (
-                        '\n\nFor the "PLAN" section, ensure that any information related to medications (e.g. starting, '
-                        'stopping, increasing, decreasing, etc.) is output on a single line. Do NOT write confusing output '
-                        'that makes it unclear whether a medication has been prescribed or simply recommended. For example, '
-                        'do NOT output anything like "I recommended to try increasing the dose of Aspirin. The patient agreed '
-                        'to do so."'
+                    for section_name in included_sections:
+                        section_prompt = ai_prompts.get_consult_complete_section(section_name)
+                        if section_prompt:
+                            completion_advice += f"\n\n{section_prompt.strip()}"
+
+                        measurement_text = measurement_texts.get(section_name)
+                        if measurement_text:
+                            print(f"{section_name} NOTE: {measurement_text}")
+                            completion_advice += f"\n\n{measurement_text}"
+
+                    master_prompt = ai_prompts.get_consult_complete_master()
+                    master_prompt = (
+                        master_prompt
+                        .replace("{sections}", sections)
+                        .replace("{completion_advice}", completion_advice)
+                        .replace("{sex}", sex)
+                        .replace("{transcript_speaker_rules}", TRANSCRIPT_SPEAKER_RULES)
+                        .replace("{formatted_message}", formatted_message)
                     )
-
-                    master_prompt = f"""
-                    You are a board-certified cardiologist writing a concise, professional consultation or follow-up note to a primary care 
-                    physician (family doctor) regarding a patient encounter. Synthesize the provided patient conversation transcript into a 
-                    standard cardiology note format, including a History of Present Illness (HPI), Assessment, and Plan.
-                    
-
-                    Key Instructions:
-                    
-                    Format: Structure the note clearly with the sections listed below.  Write the summary. Write in full
-                    sentences or use numbered points if not writing in full sentences. Do not use any Markdown formatting, bolding, or italics. 
-                    Do not use asterisks (*) in the final output. Use plain, flat text.
-                    
-                    Tone: Maintain a professional, concise, and objective tone suitable for communication between specialists.
-                    
-                    Tense: Use the past tense consistently (e.g., "I reviewed...", "The patient reported...", "I advised..."). Avoid future tense.
-                    
-                    Perspective: Write from the perspective of the cardiologist ("I").
-                    
-                    Audience: Assume the recipient is a primary care physician who needs a clear summary of the cardiology encounter.
-                    
-                    Content: Focus on cardiology-relevant information. Include pertinent history, exam findings, investigations (ECG, Echo, Labs), 
-                    assessment, and management plan.
-                    
-                    Conciseness: Be efficient and avoid unnecessary detail.
-                    
-                    Patient Information: Use the patient's name (if provided in the transcript, otherwise use "the patient") and relevant 
-                    demographics (age, sex if known).
-                    
-                    Medication Changes: Clearly state any medication changes made or recommended.
-                    
-                    Follow-up: Specify any planned follow-up investigations or appointments.
-                    
-
-                    Patient Conversation Transcript: [Insert the transcript of the conversation with the patient here]
-                    
-                    Synthesize the above transcript into the following format.  Do not include any section that is not listed 
-                    below, and do not rename/tweak these headings:
-
-                    {sections}
-                    
-
-                    Post prompt:
-                    
-                    FORMATTING REQUIREMENTS: Use plain text only, no markdown, asterisks, bold, or underlining. No headers like 
-                    "To:", "From:", "Date:", "Re:", or "Subject:". Separate sections with paragraph breaks. Only include the 
-                    sections outlined above in the output."{completion_advice}
-
-                    To complete the remaining sections, use the following information. Ensure to write everything in 
-                    paragraphs, rather than bullet points. Do NOT invent new sections that were not listed above.
-                    
-                    The patient's sex is {sex}.
-
-                    {TRANSCRIPT_SPEAKER_RULES}
-
-                    {formatted_message}
-
-                    Output the complete note.
-                    """
                     master_response = send_text_to_chatgpt(master_prompt)
                     print(f"[TIMING] Master LLM: {time.perf_counter() - step_start:.2f}s")
 
