@@ -306,3 +306,23 @@ def test_option_is_kept_unless_the_check_says_it_is_not_the_same(verdict):
     result = _ph_result()
     assert rr.apply_option_check(result, json.dumps({"echo": verdict})) == []
     assert result["indications"]["echo"][1] is True
+
+
+def test_default_prompts_yaml_has_the_same_referral_prompts():
+    import yaml
+    data = yaml.safe_load((Path(__file__).resolve().parents[1] / "prompts" / "default_prompts.yaml").read_text("utf-8"))
+    sections = data["Referral_Requisition"]["Sections"]
+    assert {k: v.strip() for k, v in sections.items()} == {k: v.strip() for k, v in rr.PROMPT_SECTIONS.items()}
+
+
+def test_edited_prompt_is_used_and_a_deleted_placeholder_is_added_at_the_end():
+    prompt = rr.build_referral_prompt("OCR TEXT", ["ecg"], FORM_JSON, "Find the reasons.\n{TESTS}")
+    assert prompt.startswith("Find the reasons.") and '"ecg"' in prompt
+    assert prompt.rstrip().endswith("DOCUMENT:\nOCR TEXT")
+
+
+def test_retry_and_correction_use_their_templates():
+    assert rr.retry_json_instruction("Only JSON please.") == "\n\nOnly JSON please."
+    assert "Your previous reply was not valid JSON" in rr.retry_json_instruction()
+    prompt = rr.correction_prompt("PROMPT", {"echo": "x"}, "Fix these: {REJECTED}")
+    assert prompt.startswith("PROMPT\n\nFix these: - \"echo\": \"x\"")

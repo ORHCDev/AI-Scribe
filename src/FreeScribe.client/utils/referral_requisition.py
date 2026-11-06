@@ -122,29 +122,21 @@ def tests_from_reason(reason: str) -> dict:
     }
 
 
-def build_referral_prompt(referral_text: str, tests: list, form_json: dict) -> str:
-    """Asks only for the indications of `tests` (already chosen from the appointment) from the document."""
-    options = indication_options(form_json)
-    lines = []
-    for test in tests:
-        name, input_id = REFERRAL_TESTS[test]
-        lines.append(f'- "{test}": {name}')
-        if input_id and options.get(test):
-            lines.append("  indication options:")
-            lines.extend(f"    * {o['label']}" for o in options[test])
-    tests_block = "\n".join(lines)
-    return f"""You are reading a new patient's cardiology referral DOCUMENT (often an OCR scan, in any format:
+# The prompts of the "Referral Requisition" prompt, editable in the Prompt window (prompts/default_prompts.yaml,
+# Referral_Requisition). These are the defaults, used when a prompt is missing or empty there. A {NAME} in a
+# prompt is replaced by the text the code puts there; one that was deleted is added at the end instead.
+INDICATIONS_PROMPT = """You are reading a new patient's cardiology referral DOCUMENT (often an OCR scan, in any format:
 our requisition form, another clinic's form, or a free-text letter).
 
 DOCUMENT (OCR text):
-{referral_text}
+{DOCUMENT}
 
 END OF DOCUMENT.
 
 The tests below are already booked. For each of them, find in the DOCUMENT above why it is needed.
 
 Tests:
-{tests_block}
+{TESTS}
 
 For each test, work in this order:
 1. "evidence": copy, word for word, the sentence or phrase of the DOCUMENT (at most 20 words) that gives
@@ -161,11 +153,51 @@ For each test, work in this order:
   Days are not weeks: "2 days" is "48h"; only "2 weeks" / "14 days" is "2w".
 
 Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
-{{"indications": {{"<test id>": {{"evidence": "<words copied from the DOCUMENT or null>",
-                                  "indication": "<option or short reason or null>"}}}},
+{"indications": {"<test id>": {"evidence": "<words copied from the DOCUMENT or null>",
+                                  "indication": "<option or short reason or null>"}},
   "holter_duration": null,
-  "explanation": "<one sentence: the referral's reason>"}}
-"""
+  "explanation": "<one sentence: the referral's reason>"}"""
+CORRECTION_PROMPT = """Your previous answer gave these indications, but the words you gave as evidence are not in the DOCUMENT (an option's words are not evidence):
+{REJECTED}
+Read the DOCUMENT again for these tests only. First copy the DOCUMENT's own words that give the reason as "evidence", then choose the indication that says the same thing, or write the reason in the document's words when no option does. If the document gives no reason for a test, its evidence and indication are null. Reply with the same JSON format, for these tests only."""
+OPTION_CHECK_PROMPT = """Each test below has an indication option chosen for it from a cardiology referral, and the words of
+the referral the option was chosen from.
+
+{CHOICES}
+
+For each test, decide whether the option names the same condition, symptom or reason as the document words.
+A different, broader or only related condition is not the same. If it is not the same, give "free_text": the
+reason in a few of the document's own words (at most 10 words, no patient age or name); otherwise null.
+
+Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
+{"<test id>": {"same": true or false, "free_text": "<reason in the document's words or null>"}}"""
+RETRY_JSON_PROMPT = """Your previous reply was not valid JSON. Reply again with ONLY the JSON object, and do not use double quotes (") inside any text value."""
+PROMPT_SECTIONS = {"Indications": INDICATIONS_PROMPT, "Correct Unsupported Indications": CORRECTION_PROMPT,
+                   "Check Dropdown Options": OPTION_CHECK_PROMPT, "Fix Invalid JSON": RETRY_JSON_PROMPT}
+
+
+def fill_prompt(template: str, **values) -> str:
+    """`template` with each {NAME} replaced by values[NAME]; a value whose {NAME} is not in it goes at the end."""
+    text = template.strip()
+    for name, value in values.items():
+        token = "{" + name + "}"
+        text = text.replace(token, value) if token in text else f"{text}\n\n{name}:\n{value}"
+    return text + "\n"
+
+
+def build_referral_prompt(referral_text: str, tests: list, form_json: dict, template: str | None = None) -> str:
+    """Asks only for the indications of `tests` (already chosen from the appointment) from the document.
+    `template` is the "Indications" prompt edited in the Prompt window (INDICATIONS_PROMPT when None)."""
+    options = indication_options(form_json)
+    lines = []
+    for test in tests:
+        name, input_id = REFERRAL_TESTS[test]
+        lines.append(f'- "{test}": {name}')
+        if input_id and options.get(test):
+            lines.append("  indication options:")
+            lines.extend(f"    * {o['label']}" for o in options[test])
+    tests_block = "\n".join(lines)
+    return fill_prompt(template or INDICATIONS_PROMPT, TESTS=tests_block, DOCUMENT=referral_text)
 
 
 def _norm(text: str) -> str:
@@ -210,15 +242,10 @@ def _load_json_object(raw: str) -> dict:
     return data
 
 
-def correction_prompt(prompt: str, unsupported: dict) -> str:
+def correction_prompt(prompt: str, unsupported: dict, template: str | None = None) -> str:
     """`prompt` again, telling the LLM which indications had no words from the document behind them."""
     rejected = "\n".join(f'- "{test}": "{indication}"' for test, indication in unsupported.items())
-    return (f"{prompt}\n\nYour previous answer gave these indications, but the words you gave as evidence "
-            f"are not in the DOCUMENT (an option's words are not evidence):\n{rejected}\nRead the DOCUMENT again "
-            "for these tests only. First copy the DOCUMENT's own words that give the reason as \"evidence\", "
-            "then choose the indication that says the same thing, or write the reason in the document's words "
-            "when no option does. If the document gives no reason for a test, its evidence and indication are "
-            "null. Reply with the same JSON format, for these tests only.")
+    return f"{prompt}\n\n" + fill_prompt(template or CORRECTION_PROMPT, REJECTED=rejected)
 
 
 def merge_correction(raw: str, corrected_raw: str, tests) -> str:
@@ -234,7 +261,7 @@ def merge_correction(raw: str, corrected_raw: str, tests) -> str:
     return json.dumps(data)
 
 
-def option_check_prompt(result: dict) -> str | None:
+def option_check_prompt(result: dict, template: str | None = None) -> str | None:
     """Asks whether each dropdown option chosen says the same thing as the document's words behind it,
     or None when no indication came from the dropdown."""
     chosen = {t: v for t, (v, from_dropdown) in result["indications"].items() if from_dropdown}
@@ -242,18 +269,7 @@ def option_check_prompt(result: dict) -> str | None:
         return None
     lines = "\n".join(f'- "{t}": option: "{v}"\n  document words: "{result["evidence"].get(t, "")}"'
                       for t, v in chosen.items())
-    return f"""Each test below has an indication option chosen for it from a cardiology referral, and the words of
-the referral the option was chosen from.
-
-{lines}
-
-For each test, decide whether the option names the same condition, symptom or reason as the document words.
-A different, broader or only related condition is not the same. If it is not the same, give "free_text": the
-reason in a few of the document's own words (at most 10 words, no patient age or name); otherwise null.
-
-Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
-{{"<test id>": {{"same": true or false, "free_text": "<reason in the document's words or null>"}}}}
-"""
+    return fill_prompt(template or OPTION_CHECK_PROMPT, CHOICES=lines)
 
 
 def apply_option_check(result: dict, raw: str) -> list:
@@ -284,8 +300,9 @@ def apply_option_check(result: dict, raw: str) -> list:
     return changed
 
 
-RETRY_JSON_INSTRUCTION = ("\n\nYour previous reply was not valid JSON. Reply again with ONLY the JSON object, "
-                          'and do not use double quotes (") inside any text value.')
+def retry_json_instruction(template: str | None = None) -> str:
+    """Added to a prompt whose reply was not valid JSON."""
+    return "\n\n" + (template or RETRY_JSON_PROMPT).strip()
 
 
 _EVIDENCE_MATCH_RATIO = 0.8
