@@ -1781,6 +1781,12 @@ def _log_eform_decision(name: str, opened: bool, explanation: str | None) -> Non
     print(f"[eForm] {name}: {status} — {reason}")
 
 
+def _requisition_rules():
+    """The "Requisition Rules" part of the PLAN eForm prompt edited in the Prompt window (Requisition Generation);
+    None (the built-in default) when it is missing or empty there."""
+    return ai_prompts.get_group_section("Requisition Generation", "Requisition Rules").strip() or None
+
+
 def _open_relevant_eforms(consult_text: str = ""):
     plan_text = extract_plan_section(consult_text) or ""
     if not plan_text:
@@ -1791,7 +1797,8 @@ def _open_relevant_eforms(consult_text: str = ""):
             _log_eform_decision(name, False, "no PLAN section found in the consult")
         return
     scope = plan_text
-    decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE)
+    decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE,
+                                                  _requisition_rules())
     print(f"eForm decisions: {decisions}")
     explanations = decisions.get("explanations") or {}
 
@@ -1891,7 +1898,8 @@ def generate_requisition_from_latest_note():
                 _log_eform_decision("Requisition", False, "no PLAN section found in the letter")
                 return root.after(0, finish, f"No PLAN section found in the letter of {letter['form_date']} "
                                              "(looked for \"PLAN\" and \"Plan:\"); no requisition generated.")
-            decisions = med_eform.analyze_plan_for_eforms(plan_text, send_text_to_chatgpt, _MED_GATE_MODE)
+            decisions = med_eform.analyze_plan_for_eforms(plan_text, send_text_to_chatgpt, _MED_GATE_MODE,
+                                                          _requisition_rules())
             print(f"eForm decisions: {decisions}")
             explanation = (decisions.get("explanations") or {}).get("requisition")
             if not decisions["requisition"]:
@@ -1935,6 +1943,12 @@ def generate_requisition_from_latest_note():
 REFERRAL_REQUISITION_PROMPT = "Referral Requisition"
 # Same, but the referral is the text pasted / uploaded into the input box instead of a document found in Oscar.
 REFERRAL_REQUISITION_INPUT_PROMPT = "Referral Requisition (from input)"
+
+
+def _referral_prompt(section):
+    """The "Referral Requisition" prompt section edited in the Prompt window; None (the built-in default)
+    when it is missing or empty there."""
+    return ai_prompts.get_group_section(REFERRAL_REQUISITION_PROMPT, section).strip() or None
 
 
 def _latest_referral_document(demo_no):
@@ -2024,14 +2038,16 @@ def referral_requisition_from_chart(from_input: bool = False):
                     return root.after(0, finish, f"No text read from referral document {document_no}; requisition eForm not opened.")
                 root.after(0, _show_in_input_box, text)
             form_json = get_referral_json()
-            prompt = referral_requisition.build_referral_prompt(text, booked["tests"], form_json)
+            prompt = referral_requisition.build_referral_prompt(text, booked["tests"], form_json,
+                                                                _referral_prompt("Indications"))
             raw = send_text_to_chatgpt(prompt)
             try:
                 result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
             except ValueError as e:
                 # One retry: a single stray quote in the LLM's JSON should not stop the form.
                 print(f"[{REFERRAL_REQUISITION_PROMPT}] LLM reply could not be read ({e}); asking again")
-                raw = send_text_to_chatgpt(prompt + referral_requisition.RETRY_JSON_INSTRUCTION)
+                raw = send_text_to_chatgpt(
+                    prompt + referral_requisition.retry_json_instruction(_referral_prompt("Fix Invalid JSON")))
                 result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
             if result["unsupported"]:
                 # An indication the document does not back up is wrong: ask once more for those tests.
@@ -2039,13 +2055,14 @@ def referral_requisition_from_chart(from_input: bool = False):
                       f"{sorted(result['unsupported'])}; asking the LLM to correct them")
                 try:
                     corrected = send_text_to_chatgpt(
-                        referral_requisition.correction_prompt(prompt, result["unsupported"]))
+                        referral_requisition.correction_prompt(prompt, result["unsupported"],
+                                                               _referral_prompt("Correct Unsupported Indications")))
                     raw = referral_requisition.merge_correction(raw, corrected, result["unsupported"])
                     result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
                 except ValueError as e:
                     # Those indications stay empty, as they were not filled
                     print(f"[{REFERRAL_REQUISITION_PROMPT}] corrected reply could not be read ({e})")
-            check = referral_requisition.option_check_prompt(result)
+            check = referral_requisition.option_check_prompt(result, _referral_prompt("Check Dropdown Options"))
             if check:
                 # The local model sometimes picks the nearest option for a condition the form has no option
                 # for (e.g. CHF for pulmonary hypertension): ask whether each option says what the document says.
@@ -2844,6 +2861,8 @@ prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
 prompt_dropdown._id = "prompt_selector"
+# Kept after the user's prompts when the Prompt window refreshes this menu
+prompt_dropdown._fixed_tail = values[len(["Auto", "None", "Scribe"] + ai_prompts.list_prompts()):]
 prompt_dropdown.grid(row=2, column=4, pady=(0, 6), sticky='new')
 
 # "Requisition Generation" is an action, not a note prompt: choosing it runs it straight away and
