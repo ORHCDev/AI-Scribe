@@ -262,3 +262,47 @@ def test_evidence_may_come_as_its_own_map():
     raw = json.dumps({"indications": {"echo": "Patient shunt"}, "evidence": {"echo": "Patent foramene ovale"}})
     result = rr.parse_referral_response(raw, FORM_JSON, rr.tests_from_reason("ECHO"), DOCUMENT)
     assert result["indications"]["echo"][1] is True and result["unsupported"] == {}
+
+
+PH_DOCUMENT = "her recent CT SHOWED PULMONARY HYPERTENSION. I would appreciate if she can be followed up"
+
+
+def _ph_result():
+    raw = json.dumps({"indications": {"echo": {"evidence": "recent CT SHOWED PULMONARY HYPERTENSION",
+                                               "indication": "CHF"}}})
+    return rr.parse_referral_response(raw, FORM_JSON, rr.tests_from_reason("ECHO"), PH_DOCUMENT)
+
+
+def test_option_check_asks_about_each_dropdown_option_with_its_evidence():
+    prompt = rr.option_check_prompt(_ph_result())
+    assert "CHF. Cor Health Ind. # 13.1" in prompt and "recent CT SHOWED PULMONARY HYPERTENSION" in prompt
+
+
+def test_option_check_not_needed_without_dropdown_options():
+    raw = json.dumps({"indications": {"echo": {"evidence": "recent CT SHOWED PULMONARY HYPERTENSION",
+                                               "indication": "pulmonary hypertension on CT"}}})
+    result = rr.parse_referral_response(raw, FORM_JSON, rr.tests_from_reason("ECHO"), PH_DOCUMENT)
+    assert rr.option_check_prompt(result) is None
+
+
+def test_option_that_is_not_the_same_becomes_free_text_on_the_form():
+    result = _ph_result()
+    changed = rr.apply_option_check(result, json.dumps(
+        {"echo": {"same": False, "free_text": "pulmonary hypertension on recent CT"}}))
+    assert changed == ["echo"]
+    assert result["indications"]["echo"] == ("pulmonary hypertension on recent CT", False)
+    assert next(f["value"] for f in result["fields"] if f["id"] == "echo-input") == "pulmonary hypertension on recent CT"
+    assert result["rejected_options"]["echo"].startswith("CHF")
+
+
+def test_option_without_free_text_falls_back_to_the_evidence():
+    result = _ph_result()
+    rr.apply_option_check(result, json.dumps({"echo": {"same": "false", "free_text": None}}))
+    assert result["indications"]["echo"] == ("recent CT SHOWED PULMONARY HYPERTENSION", False)
+
+
+@pytest.mark.parametrize("verdict", [{"same": True}, {}, {"same": "maybe"}, None])
+def test_option_is_kept_unless_the_check_says_it_is_not_the_same(verdict):
+    result = _ph_result()
+    assert rr.apply_option_check(result, json.dumps({"echo": verdict})) == []
+    assert result["indications"]["echo"][1] is True

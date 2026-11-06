@@ -2045,6 +2045,17 @@ def referral_requisition_from_chart(from_input: bool = False):
                 except ValueError as e:
                     # Those indications stay empty, as they were not filled
                     print(f"[{REFERRAL_REQUISITION_PROMPT}] corrected reply could not be read ({e})")
+            check = referral_requisition.option_check_prompt(result)
+            if check:
+                # The local model sometimes picks the nearest option for a condition the form has no option
+                # for (e.g. CHF for pulmonary hypertension): ask whether each option says what the document says.
+                try:
+                    changed = referral_requisition.apply_option_check(result, send_text_to_chatgpt(check))
+                    print(f"[{REFERRAL_REQUISITION_PROMPT}] dropdown options checked; replaced by free text: "
+                          f"{changed or 'none'}")
+                except ValueError as e:
+                    print(f"[{REFERRAL_REQUISITION_PROMPT}] option check reply could not be read ({e}); "
+                          "keeping the options")
             for test in result["tests"]:
                 # No document text in the console (PHI): only whether each test got an indication
                 state = ("filled" if test in result["indications"] else
@@ -2057,9 +2068,12 @@ def referral_requisition_from_chart(from_input: bool = False):
             lines = []
             for test in result["tests"]:
                 value, from_dropdown = result["indications"].get(test, (None, False))
+                rejected = result.get("rejected_options", {}).get(test)
                 if value:
                     lines.append(f"- {test}: {value} ({'dropdown' if from_dropdown else 'free text'})\n"
-                                 f"    from the document: \"{result['evidence'].get(test, '')}\"")
+                                 f"    from the document: \"{result['evidence'].get(test, '')}\""
+                                 + (f"\n    no matching dropdown option (\"{rejected.strip()}\" was not the same)"
+                                    if rejected else ""))
                 else:
                     lines.append(f"- {test}: no indication")
             missing = f"\n\nNot found on the form: {', '.join(fill['missing'])}" if fill["missing"] else ""

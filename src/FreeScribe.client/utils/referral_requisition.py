@@ -234,6 +234,56 @@ def merge_correction(raw: str, corrected_raw: str, tests) -> str:
     return json.dumps(data)
 
 
+def option_check_prompt(result: dict) -> str | None:
+    """Asks whether each dropdown option chosen says the same thing as the document's words behind it,
+    or None when no indication came from the dropdown."""
+    chosen = {t: v for t, (v, from_dropdown) in result["indications"].items() if from_dropdown}
+    if not chosen:
+        return None
+    lines = "\n".join(f'- "{t}": option: "{v}"\n  document words: "{result["evidence"].get(t, "")}"'
+                      for t, v in chosen.items())
+    return f"""Each test below has an indication option chosen for it from a cardiology referral, and the words of
+the referral the option was chosen from.
+
+{lines}
+
+For each test, decide whether the option names the same condition, symptom or reason as the document words.
+A different, broader or only related condition is not the same. If it is not the same, give "free_text": the
+reason in a few of the document's own words (at most 10 words, no patient age or name); otherwise null.
+
+Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
+{{"<test id>": {{"same": true or false, "free_text": "<reason in the document's words or null>"}}}}
+"""
+
+
+def apply_option_check(result: dict, raw: str) -> list:
+    """Replaces each dropdown option the check says does not match its evidence with free text (the check's
+    words, else the evidence) in `result`, field included. Returns the tests changed; the rejected options are
+    kept in result["rejected_options"]."""
+    data = {str(k).strip().lower(): v for k, v in _load_json_object(raw).items()}
+    result.setdefault("rejected_options", {})
+    changed = []
+    for test, (value, from_dropdown) in list(result["indications"].items()):
+        verdict = data.get(test)
+        # Only an explicit "not the same" changes the indication; a missing or unclear answer keeps it
+        if not from_dropdown or not isinstance(verdict, dict) \
+                or str(verdict.get("same")).strip().lower() not in ("false", "no"):
+            continue
+        free_text = str(verdict.get("free_text") or "").strip()
+        if free_text.lower() in ("", "null", "none"):
+            free_text = " ".join(str(result["evidence"].get(test, "")).split()[:15])
+        if not free_text:
+            continue
+        result["rejected_options"][test] = value
+        result["indications"][test] = (free_text, False)
+        field_id = REFERRAL_TESTS[test][1] or CONSULT_REASON_ID
+        for field in result["fields"]:
+            if field["type"] == "text" and field["id"] == field_id:
+                field["value"] = free_text
+        changed.append(test)
+    return changed
+
+
 RETRY_JSON_INSTRUCTION = ("\n\nYour previous reply was not valid JSON. Reply again with ONLY the JSON object, "
                           'and do not use double quotes (") inside any text value.')
 
