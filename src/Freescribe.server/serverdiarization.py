@@ -17,7 +17,7 @@ setup_daily_logger(log_dir="logs", log_filename="server.log")
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_UPLOAD_SIZE = 1024 * 1024 * 1024  # 1 GB
-DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
+DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
 
 with open(r".\configs\config.yaml", "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)

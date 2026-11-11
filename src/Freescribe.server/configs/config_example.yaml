@@ -5,8 +5,8 @@ WHISPER_MODEL: medium
 WHISPER_DEVICE: auto
 # Speaker diarization (serverdiarization.py). Labels transcript with SPEAKER_XX.
 # Requires a HuggingFace token (https://huggingface.co/settings/tokens) with access
-# to pyannote/speaker-diarization-3.1 and pyannote/segmentation-3.0 accepted.
-WHISPER_DIARIZATION_MODEL: pyannote/speaker-diarization-3.1
+# to pyannote/speaker-diarization-community-1 accepted (needs pyannote.audio 4.x).
+WHISPER_DIARIZATION_MODEL: pyannote/speaker-diarization-community-1
 WHISPER_HF_TOKEN: hf_token
 # Windows only: directory containing the FFmpeg shared DLLs (avcodec-*.dll, ...)
 # required by torchcodec/pyannote. Python 3.8+ does not search PATH for these.
