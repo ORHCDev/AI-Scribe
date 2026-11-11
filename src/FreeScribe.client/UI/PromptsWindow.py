@@ -5,6 +5,13 @@ import yaml
 
 CONSULT_COMPLETE_PROMPT = "Consult Complete"
 CONSULT_COMPLETE_MASTER_SECTION = "Master Prompt"
+REFERRAL_REQUISITION_PROMPT = "Referral Requisition"
+REQUISITION_GENERATION_PROMPT = "Requisition Generation"
+
+# Other prompts edited section by section (no master prompt): name shown in the Prompt window -> yaml key
+SECTION_GROUPS = {REQUISITION_GENERATION_PROMPT: "Requisition_Generation",
+                  REFERRAL_REQUISITION_PROMPT: "Referral_Requisition",
+                  "EBM": "EBM"}
 
 
 class PromptsWindow():
@@ -62,6 +69,7 @@ class PromptsWindow():
         self.cache = {}
         self.hl7_prompt_list = None
         self.consult_complete = {}
+        self.section_groups = {}
 
         if not os.path.exists(default_path):
             print(f"No default .yaml file to read at {default_path}")
@@ -81,6 +89,7 @@ class PromptsWindow():
         self.cache = data["Prompts"].copy()
         self.hl7_prompt_list = data["HL7_Prompts"]
         self._load_consult_complete()
+        self._load_section_groups()
 
 
     def _read_default_consult_complete(self):
@@ -186,6 +195,78 @@ class PromptsWindow():
             return
         self.consult_complete = copy.deepcopy(defaults)
         self.data["Consult_Complete"] = self.consult_complete
+        self.save_yaml()
+
+
+    def _read_default_group(self, group):
+        """Returns the Sections of the given section group from the default yaml file, if available."""
+        if not os.path.exists(self.default_path):
+            return {}
+        try:
+            with open(self.default_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            return (data.get(SECTION_GROUPS[group]) or {}).get("Sections") or {}
+        except Exception as e:
+            print(f"Unable to read default {group} prompts: {e}")
+            return {}
+
+
+    def _load_section_groups(self):
+        """Loads each section group, filling in any section that is missing from the defaults."""
+        changed = False
+        for group, key in SECTION_GROUPS.items():
+            current = self.data.get(key)
+            if not isinstance(current, dict) or not isinstance(current.get("Sections"), dict):
+                current = {"Sections": {}}
+                self.data[key] = current
+                changed = True
+            for name, text in self._read_default_group(group).items():
+                if name not in current["Sections"]:
+                    current["Sections"][name] = text
+                    changed = True
+            self.section_groups[group] = current
+        if changed:
+            self.save_yaml()
+
+
+    def list_group_sections(self, group):
+        """Returns the section names of the given section group."""
+        return list(self.section_groups.get(group, {}).get("Sections", {}).keys())
+
+
+    def get_group_section(self, group, section):
+        """Returns the prompt for the given section of a section group ("" when missing)."""
+        return self.section_groups.get(group, {}).get("Sections", {}).get(section, "") or ""
+
+
+    def cache_group_section(self, group, section, text):
+        """Caches a section of a section group. Changes only last for the current session."""
+        self.section_groups.setdefault(group, {"Sections": {}})["Sections"][section] = text
+
+
+    def save_group(self, group):
+        """Saves all sections of the given section group to the yaml file."""
+        self.data[SECTION_GROUPS[group]] = self.section_groups[group]
+        self.save_yaml()
+
+
+    def restore_group_section(self, group, section):
+        """Restores a section of a section group to its default (if it exists)."""
+        defaults = self._read_default_group(group)
+        if section in defaults:
+            self.cache_group_section(group, section, defaults[section])
+            self.save_group(group)
+        else:
+            print(f"{section} is not in default {group} prompts")
+
+
+    def restore_all_groups(self):
+        """Restores every section group to its defaults."""
+        for group, key in SECTION_GROUPS.items():
+            defaults = self._read_default_group(group)
+            if defaults:
+                self.section_groups[group] = {"Sections": copy.deepcopy(defaults)}
+                self.data[key] = self.section_groups[group]
         self.save_yaml()
 
 

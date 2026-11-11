@@ -365,14 +365,22 @@ class MainWindowUI:
         self.root.config(cursor="watch")
         threading.Thread(target=self._git_pull, daemon=True).start()
 
+    def _git(self, *args):
+        """Run one git command in this checkout (git finds the repository from this folder upwards)."""
+        return subprocess.run(
+            ["git", *args], cwd=os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True, text=True, timeout=120,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+
     def _git_pull(self):
-        """Run git pull off the Tk thread (git finds the repository from this folder upwards)."""
+        """Run git pull off the Tk thread, merging like a plain "git pull" when this checkout has commits of
+        its own. A merge that conflicts is undone, so the code on disk is never left half merged."""
         try:
-            result = subprocess.run(
-                ["git", "pull", "--ff-only"], cwd=os.path.dirname(os.path.abspath(__file__)),
-                capture_output=True, text=True, timeout=120,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            result = self._git("pull", "--no-rebase", "--no-edit")
             ok, output = result.returncode == 0, (result.stdout + result.stderr).strip()
+            if not ok and self._git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
+                self._git("merge", "--abort")
+                output += "\n\nThe merge was undone; the code on disk is unchanged."
         except (OSError, subprocess.SubprocessError) as e:
             ok, output = False, f"{type(e).__name__}: {e}"
         self.root.after(0, lambda: self._after_git_pull(ok, output))

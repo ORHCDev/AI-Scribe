@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
-from UI.PromptsWindow import CONSULT_COMPLETE_MASTER_SECTION, CONSULT_COMPLETE_PROMPT
+from UI.PromptsWindow import CONSULT_COMPLETE_MASTER_SECTION, CONSULT_COMPLETE_PROMPT, SECTION_GROUPS
 
 class PromptsWindowUI:
     def __init__(self, parent, prompts):
@@ -91,14 +91,46 @@ class PromptsWindowUI:
 
     def _prompt_values(self):
         """Returns the prompt names shown in the selector."""
-        return self.prompts.list_prompts() + [CONSULT_COMPLETE_PROMPT]
+        return self.prompts.list_prompts() + [CONSULT_COMPLETE_PROMPT] + list(SECTION_GROUPS)
+
+    # Consult Complete and the section groups (e.g. Referral Requisition) are edited section by section
+    def _is_sectioned(self, name):
+        return name == CONSULT_COMPLETE_PROMPT or name in SECTION_GROUPS
+
+    def _sections(self, name):
+        if name == CONSULT_COMPLETE_PROMPT:
+            return self.prompts.list_consult_complete_sections()
+        return self.prompts.list_group_sections(name)
+
+    def _get_section(self, name, section):
+        if name == CONSULT_COMPLETE_PROMPT:
+            return self.prompts.get_consult_complete_section(section)
+        return self.prompts.get_group_section(name, section)
+
+    def _cache_section(self, name, section, text):
+        if name == CONSULT_COMPLETE_PROMPT:
+            self.prompts.cache_consult_complete_section(section, text)
+        else:
+            self.prompts.cache_group_section(name, section, text)
+
+    def _save_sections(self, name):
+        if name == CONSULT_COMPLETE_PROMPT:
+            self.prompts.save_consult_complete()
+        else:
+            self.prompts.save_group(name)
+
+    def _restore_section(self, name, section):
+        if name == CONSULT_COMPLETE_PROMPT:
+            self.prompts.restore_consult_complete_section(section)
+        else:
+            self.prompts.restore_group_section(name, section)
 
     def _show_section_selector(self):
-        """Shows the section selector for Consult Complete."""
-        values = self.prompts.list_consult_complete_sections()
+        """Shows the section selector for the current sectioned prompt."""
+        values = self._sections(self._current_prompt)
         self.section_selector["values"] = values
         if self.section_var.get() not in values:
-            self.section_var.set(CONSULT_COMPLETE_MASTER_SECTION)
+            self.section_var.set(values[0] if values else "")
         self.section_frame.pack(fill=tk.X, padx=10, pady=5, before=self.button_frame)
 
     def _hide_section_selector(self):
@@ -108,10 +140,9 @@ class PromptsWindowUI:
     def load_prompt(self, name):
         """Load a prompt (from cache or file)."""
         self._current_prompt = name
-        if name == CONSULT_COMPLETE_PROMPT:
+        if self._is_sectioned(name):
             self._show_section_selector()
-            section = self.section_var.get() or CONSULT_COMPLETE_MASTER_SECTION
-            self._load_section(section)
+            self._load_section(self.section_var.get())
             return
 
         self._hide_section_selector()
@@ -124,16 +155,17 @@ class PromptsWindowUI:
             print(f"Prompts {name} does not exist")
 
     def _load_section(self, section):
-        """Loads a Consult Complete section into the text box."""
+        """Loads a section of the current sectioned prompt into the text box."""
         self._current_section = section
-        content = self.prompts.get_consult_complete_section(section)
+        content = self._get_section(self._current_prompt, section)
         self.text_widget.delete("1.0", tk.END)
         self.text_widget.insert(tk.END, content)
 
     def _cache_current_section(self):
-        """Caches edits made to the current Consult Complete section."""
-        if self._current_prompt == CONSULT_COMPLETE_PROMPT and self._current_section:
-            self.prompts.cache_consult_complete_section(
+        """Caches edits made to the current section."""
+        if self._is_sectioned(self._current_prompt) and self._current_section:
+            self._cache_section(
+                self._current_prompt,
                 self._current_section,
                 self.text_widget.get("1.0", tk.END).strip()
             )
@@ -146,13 +178,13 @@ class PromptsWindowUI:
         if not name:
             return
 
-        if self._current_prompt == CONSULT_COMPLETE_PROMPT and name != CONSULT_COMPLETE_PROMPT:
+        if self._is_sectioned(self._current_prompt) and name != self._current_prompt:
             self._cache_current_section()
 
         self.load_prompt(name)
 
     def on_section_selected(self, event=None):
-        """When user selects a Consult Complete section from the dropdown."""
+        """When user selects a section from the dropdown."""
         section = self.section_var.get()
         if not section or section == self._current_section:
             return
@@ -169,7 +201,7 @@ class PromptsWindowUI:
         if not name:
             return
 
-        if name in {"Auto", "None", CONSULT_COMPLETE_PROMPT}:
+        if name in {"Auto", "None", CONSULT_COMPLETE_PROMPT, *SECTION_GROUPS}:
             messagebox.showerror("Error", f"Can not use '{name}' for prompt name, as it is a default")
             return
 
@@ -188,15 +220,15 @@ class PromptsWindowUI:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
             return
 
-        if name == CONSULT_COMPLETE_PROMPT:
+        if self._is_sectioned(name):
             section = self.section_var.get()
             if not section:
                 messagebox.showwarning("Warning", "No section selected.", parent=self.window)
                 return
             self._cache_current_section()
-            self.prompts.save_consult_complete()
+            self._save_sections(name)
             messagebox.showinfo(
-                "Saved", "Consult Complete prompts saved successfully.", parent=self.window
+                "Saved", f"{name} prompts saved successfully.", parent=self.window
             )
             return
 
@@ -207,7 +239,7 @@ class PromptsWindowUI:
     def cache_current_prompt(self):
         """Cache current text under the currently selected prompt."""
         current = self.prompt_var.get()
-        if current == CONSULT_COMPLETE_PROMPT:
+        if self._is_sectioned(current):
             self._cache_current_section()
         elif current:
             self.prompts.cache_prompt(current, self.text_widget.get("1.0", tk.END).strip())
@@ -221,13 +253,12 @@ class PromptsWindowUI:
 
     def refresh_dropdown(self, values):
         """Refreshes main window prompt selector"""
-        defaults = ["Auto", "None", "Scribe", CONSULT_COMPLETE_PROMPT, "Consult Complete + MH"]
         for widget in self.parent.winfo_children():
             if getattr(widget, "_id", None) == "prompt_selector":
-                if values:
-                    widget["values"] = defaults + values
-                else:
-                    widget["values"] = defaults
+                # The entries after the prompts (Consult Complete, Requisition Generation, ...) are set by the
+                # main window, so they are kept instead of being dropped from the menu
+                tail = getattr(widget, "_fixed_tail", [CONSULT_COMPLETE_PROMPT, "Consult Complete + MH"])
+                widget["values"] = ["Auto", "None", "Scribe"] + list(values or []) + list(tail)
 
 
     def delete_prompt(self):
@@ -237,10 +268,10 @@ class PromptsWindowUI:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
             return
 
-        if name == CONSULT_COMPLETE_PROMPT:
+        if self._is_sectioned(name):
             messagebox.showwarning(
                 "Warning",
-                "Consult Complete sections cannot be deleted.",
+                f"{name} sections cannot be deleted.",
                 parent=self.window
             )
             return
@@ -279,7 +310,7 @@ class PromptsWindowUI:
             messagebox.showwarning("Warning", "No prompt selected.", parent=self.window)
             return
 
-        target = self.section_var.get() if name == CONSULT_COMPLETE_PROMPT else name
+        target = self.section_var.get() if self._is_sectioned(name) else name
         if not target:
             messagebox.showwarning("Warning", "No section selected.", parent=self.window)
             return
@@ -294,8 +325,8 @@ class PromptsWindowUI:
         if not confirm:
           return  # User cancelled
 
-        if name == CONSULT_COMPLETE_PROMPT:
-            self.prompts.restore_consult_complete_section(target)
+        if self._is_sectioned(name):
+            self._restore_section(name, target)
             self._load_section(target)
         else:
             self.prompts.restore_prompt(name)
@@ -321,6 +352,7 @@ class PromptsWindowUI:
 
         self.prompts.restore_all_prompts()
         self.prompts.restore_all_consult_complete()
+        self.prompts.restore_all_groups()
         self.refresh_prompts()
 
     def close(self):

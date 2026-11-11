@@ -716,4 +716,97 @@ Consult_Complete:
       For example, do NOT output anything like "I recommended to try increasing the dose of Aspirin. The patient agreed to do so."
 
 
+Referral_Requisition:
+  Sections:
+    Indications: |
+      You are reading a new patient's cardiology referral DOCUMENT (often an OCR scan, in any format:
+      our requisition form, another clinic's form, or a free-text letter).
 
+      DOCUMENT (OCR text):
+      {DOCUMENT}
+
+      END OF DOCUMENT.
+
+      The tests below are already booked. For each of them, find in the DOCUMENT above why it is needed.
+
+      Tests:
+      {TESTS}
+
+      For each test, work in this order:
+      1. "evidence": copy, word for word, the sentence or phrase of the DOCUMENT (at most 20 words) that gives
+         the reason: an "Indication" line, "Reason for referral", "Clinical information", "History", or the
+         body of a letter. Use the reason given for that test; if none is given for it, the document's overall
+         reason (the symptoms / history it describes). The evidence must be the DOCUMENT's words, never an
+         option's words. If the document gives no reason, "evidence" is null.
+      2. "indication": the option above that says the same thing as your evidence, copied exactly. If no option
+         says the same thing as the evidence, write the evidence's reason in a few of the document's own words
+         instead; never pick an option about a symptom or condition the evidence does not mention. If
+         "evidence" is null, "indication" is null.
+      - For "consult", "indication" is the reason for referral (short), or null.
+      - "holter_duration": one of "24h", "48h", "72h", "2w" if the document marks a Holter duration, else null.
+        Days are not weeks: "2 days" is "48h"; only "2 weeks" / "14 days" is "2w".
+
+      Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
+      {"indications": {"<test id>": {"evidence": "<words copied from the DOCUMENT or null>",
+                                        "indication": "<option or short reason or null>"}},
+        "holter_duration": null,
+        "explanation": "<one sentence: the referral's reason>"}
+    Correct Unsupported Indications: |
+      Your previous answer gave these indications, but the words you gave as evidence are not in the DOCUMENT (an option's words are not evidence):
+      {REJECTED}
+      Read the DOCUMENT again for these tests only. First copy the DOCUMENT's own words that give the reason as "evidence", then choose the indication that says the same thing, or write the reason in the document's words when no option does. If the document gives no reason for a test, its evidence and indication are null. Reply with the same JSON format, for these tests only.
+    Check Dropdown Options: |
+      Each test below has an indication option chosen for it from a cardiology referral, and the words of
+      the referral the option was chosen from.
+
+      {CHOICES}
+
+      For each test, decide whether the option names the same condition, symptom or reason as the document words.
+      A different, broader or only related condition is not the same. If it is not the same, give "free_text": the
+      reason in a few of the document's own words (at most 10 words, no patient age or name); otherwise null.
+
+      Reply with valid JSON only, no other text. Do not put double quotes (") inside the text values:
+      {"<test id>": {"same": true or false, "free_text": "<reason in the document's words or null>"}}
+    Fix Invalid JSON: |
+      Your previous reply was not valid JSON. Reply again with ONLY the JSON object, and do not use double quotes (") inside any text value.
+
+
+Requisition_Generation:
+  Sections:
+    Requisition Rules: |
+      "requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic visit. For example, if the plan states "I'm gonna bring the patient back in 1 year for an echocardiogram", then "requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations or diagnostics are required, then simply have "period" be null.
+      If the plan gives a calendar date for the next visit or for these tests (e.g. "see in clinic on January 27, 2027"), set "date" to that date as "YYYY-MM-DD"; otherwise "date" is null. A date of a past test or visit is not a "date".
+      The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
+      Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, or to be done at/before the next visit). Tests that were done today or before this visit, results that are reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. "I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to arrange a stress test").
+      "consult" refers to a cardiology consultation, and should be true if and only if one is desired for our clinic, not a referral elsewhere to a different doctor. If the PLAN indicates a desire for a consultation, but said consultation is not explicitly stated to be with a cardiologist, then "consult" MUST be false.
+      "ecg" refers to an electrocardiogram, and should be true if and only if one is desired.
+      "echo" refers to an echo doppler, and should be true if and only if one is desired It should be false if only a stress echocardiogram is desired, since these two diagnostics are not the same.
+      "contrastecho" can only be true if echo is true. It should be true when a contrast echocardiogram in specific is desired, and false if only a regular echocardiogram is desired.
+      "stecho" refers to a stress echocardiogram, and should be true if and only if the plan explicitly asks for a "stress echo" / "stress echocardiogram" as one test. "Stress test and echo", "treadmill test and echo" or "exercise stress test and echocardiogram" mean two separate tests: "est" true AND "echo" true, "stecho" false.
+      "contrast" can only be true if stecho is true. It should be true when a contrast stress echocardiogram in specific is desired, and false if only a regular stress echocardiogram is desired.
+      "est" refers to an exercise stress test, and should be true if and only if one is desired.
+      "holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. Days are not weeks: "1 day" is "24h", "2 days" is "48h", "3 days" is "72h", and only "2 weeks" / "14 days" is "2w".
+      "indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives no reason for it. Do not invent one.
+
+
+EBM:
+  Sections:
+    Action Plan: |
+      You are a cardiologist reviewing the action plan the clinic's EBM rules produced for a patient,
+      using the patient's chart below.
+
+      RULE-BASED ACTION PLAN:
+      {RULE_PLAN}
+
+      PATIENT CHART (fields of the EBM form; "Pertinent Negatives" lists what the patient does not have):
+      {CHART}
+
+      Write the final action plan:
+      - Keep each item of the rule-based plan that the chart supports.
+      - Leave out an item the chart contradicts, e.g. a drug the patient is allergic to or already takes at that dose,
+        a test done recently, or a condition the patient does not have.
+      - Add an item only when the chart clearly calls for it and the rule-based plan missed it. Never give a drug dose
+        the rule-based plan or the chart does not support.
+      - Plain text only: one item per line, in full sentences, no markdown, no asterisks, no bullets, no headings.
+      - Do not write the patient's name or any explanation of your changes.
+      Reply with the action plan only.

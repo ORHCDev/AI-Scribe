@@ -737,3 +737,27 @@ def test_llm_holter_duration_kept_when_the_plan_names_none_or_several():
     assert req({"period": "1y", "holter": "72h"}, "Arrange a Holter.")["holter_period"] == "72h"
     r = req({"period": "1y", "holter": "2w"}, "Holter 48 hours; if negative, Holter 2 weeks.")
     assert r["holter_period"] == "2w"
+
+
+def test_default_prompts_yaml_has_the_same_requisition_rules():
+    import yaml
+    from pathlib import Path
+    data = yaml.safe_load((Path(__file__).resolve().parents[2] / "prompts" / "default_prompts.yaml").read_text("utf-8"))
+    assert data["Requisition_Generation"]["Sections"]["Requisition Rules"].strip() == \
+        med_eform.REQUISITION_RULES_PROMPT.strip()
+
+
+def test_edited_requisition_rules_replace_only_the_requisition_part():
+    prompt = med_eform.build_med_prompt("PLAN TEXT", "MY REQUISITION RULES")
+    assert "MY REQUISITION RULES" in prompt and '"requisition" should be a dictionary' not in prompt
+    assert '"medication" lists every medication' in prompt and prompt.rstrip().endswith("with no other text.")
+    assert "PLAN:\nPLAN TEXT" in prompt
+
+
+def test_edited_requisition_rules_reach_the_llm(fake_llm):
+    seen = []
+    def llm(prompt):
+        seen.append(prompt)
+        return json.dumps({"medication": [], "labs": {"required": False}})
+    med_eform.analyze_plan_for_eforms("Echo in 1 year.", llm, requisition_rules="MY RULES")
+    assert "MY RULES" in seen[0]

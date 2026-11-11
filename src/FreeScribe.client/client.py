@@ -70,6 +70,7 @@ from utils.auto_processing import AutoProcessor
 from utils.patient_details import PatientDetailsDB, find_details_from_db
 from utils.referral_form_processor import get_referral_labels, get_referral_json
 from utils import referral_requisition
+from utils import ebm
 from utils.lab_analysis import analyze_plan_for_labs, pick_most_extensive
 from utils import med_eform
 from utils.note_prompts import with_speaker_rules, TRANSCRIPT_SPEAKER_RULES
@@ -841,6 +842,9 @@ def send_and_receive():
     global use_aiscribe, user_message
     user_message = user_input.scrolled_text.get("1.0", tk.END).strip()
 
+    if selected_prompt.get() == EBM_PROMPT:
+        generate_ebm_action_plan()
+        return
     if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT:
         display_text(f"\"{REFERRAL_REQUISITION_PROMPT}\" does not generate a note: open the patient's encounter "
                      "page and click Populate to fill the requisition eForm from their referral document.")
@@ -1781,6 +1785,12 @@ def _log_eform_decision(name: str, opened: bool, explanation: str | None) -> Non
     print(f"[eForm] {name}: {status} — {reason}")
 
 
+def _requisition_rules():
+    """The "Requisition Rules" part of the PLAN eForm prompt edited in the Prompt window (Requisition Generation);
+    None (the built-in default) when it is missing or empty there."""
+    return ai_prompts.get_group_section("Requisition Generation", "Requisition Rules").strip() or None
+
+
 def _open_relevant_eforms(consult_text: str = ""):
     plan_text = extract_plan_section(consult_text) or ""
     if not plan_text:
@@ -1791,7 +1801,8 @@ def _open_relevant_eforms(consult_text: str = ""):
             _log_eform_decision(name, False, "no PLAN section found in the consult")
         return
     scope = plan_text
-    decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE)
+    decisions = med_eform.analyze_plan_for_eforms(scope, send_text_to_chatgpt, _MED_GATE_MODE,
+                                                  _requisition_rules())
     print(f"eForm decisions: {decisions}")
     explanations = decisions.get("explanations") or {}
 
@@ -1891,7 +1902,8 @@ def generate_requisition_from_latest_note():
                 _log_eform_decision("Requisition", False, "no PLAN section found in the letter")
                 return root.after(0, finish, f"No PLAN section found in the letter of {letter['form_date']} "
                                              "(looked for \"PLAN\" and \"Plan:\"); no requisition generated.")
-            decisions = med_eform.analyze_plan_for_eforms(plan_text, send_text_to_chatgpt, _MED_GATE_MODE)
+            decisions = med_eform.analyze_plan_for_eforms(plan_text, send_text_to_chatgpt, _MED_GATE_MODE,
+                                                          _requisition_rules())
             print(f"eForm decisions: {decisions}")
             explanation = (decisions.get("explanations") or {}).get("requisition")
             if not decisions["requisition"]:
@@ -1927,6 +1939,125 @@ def generate_requisition_from_latest_note():
     threading.Thread(target=worker, daemon=True).start()
 
 
+# ── EBM: the clinic's EBM eForm rules, reviewed by the LLM -> APLAN measurement ─────────────
+# "EBM" prompt: with the patient's encounter page open, Generate Note runs the EBM eForm's rules in a hidden frame
+# and has the LLM review their action plan against the chart; the plan is shown in the result box. Populate saves
+# the result box to APLAN by submitting the EBM eForm, as is done by hand. The EBM form never opens on screen.
+EBM_PROMPT = "EBM"
+# The patient the shown action plan was generated for: Populate saves it to this patient only, and only once.
+_ebm_patient = {"demo_no": None}
+
+
+def _ebm_prompt():
+    """The "Action Plan" prompt edited in the Prompt window (EBM); None (the default) when missing or empty."""
+    return ai_prompts.get_group_section(EBM_PROMPT, "Action Plan").strip() or None
+
+
+def _run_ebm_frame(demo_no, fid, mode, plan=""):
+    """Run the EBM form in a hidden frame of the main Oscar window (see ebm.EBM_FRAME_JS)."""
+    driver = oscar.driver
+    url = oscar.new_eform_template.format(fid=fid, demo_no=int(demo_no))
+    driver.switch_to.window(oscar.home_window)
+    driver.set_script_timeout(120)
+    result = driver.execute_async_script(ebm.EBM_FRAME_JS, url, mode, plan, sorted(ebm.CHART_SKIP)) or {}
+    for error in result.get("errors") or []:
+        print(f"[{EBM_PROMPT}] EBM form script error: {error}")
+    return result
+
+
+def _ebm_checks():
+    """(demo_no, fid) of the open patient and the EBM form (0.1EBMp), or None after telling the user what is missing."""
+    if oscar is None or oscar.driver is None:
+        messagebox.showwarning(EBM_PROMPT, "Oscar is not connected. Click \"Open Oscar\" first.")
+        return None
+    demo_no = oscar.get_demographic_no()
+    if demo_no is None:
+        messagebox.showwarning(EBM_PROMPT, "Please open the encounter page of the patient first.")
+        return None
+    return demo_no, ebm.EBM_FORM_FID
+
+
+def generate_ebm_action_plan():
+    def finish(message):
+        print(message.splitlines()[0])
+        display_text(message)
+
+    checked = _ebm_checks()
+    if checked is None:
+        return
+    demo_no, fid = checked
+    _ebm_patient["demo_no"] = None
+
+    def worker():
+        try:
+            print(f"[{EBM_PROMPT}] demographic {demo_no}: running the EBM form rules")
+            result = _run_ebm_frame(demo_no, fid, "run")
+            if result.get("missing"):
+                return root.after(0, finish, f"{ebm.STATUS_PREFIX} The EBM form has no \"{result['missing']}\"; "
+                                             "no action plan made.")
+            rule_plan, chart = result.get("plan") or "", result.get("chart") or []
+            # Counts only: the plan and chart are PHI
+            print(f"[{EBM_PROMPT}] rule plan: {len(rule_plan.splitlines())} lines, chart: {len(chart)} fields")
+            plan = ebm.clean_action_plan(send_text_to_chatgpt(
+                ebm.build_action_plan_prompt(rule_plan, chart, _ebm_prompt())))
+            if not plan:
+                return root.after(0, finish, f"{ebm.STATUS_PREFIX} The LLM gave no action plan.")
+            _ebm_patient["demo_no"] = str(demo_no)
+            print(f"[{EBM_PROMPT}] action plan ready; Populate saves it to APLAN")
+            root.after(0, display_text, plan)
+        except Exception as e:
+            root.after(0, finish, f"{ebm.STATUS_PREFIX} Action plan failed ({type(e).__name__}): {e}")
+
+    display_text(f"{ebm.STATUS_PREFIX} Running the EBM rules and reviewing them with the LLM...")
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def save_ebm_action_plan():
+    def finish(message):
+        print(message.splitlines()[0])
+        display_text(message)
+
+    plan = ebm.plan_from_result_box(response_display.scrolled_text.get("1.0", tk.END))
+    if not plan:
+        messagebox.showwarning(EBM_PROMPT, "No action plan to save: click Generate Note first.")
+        return
+    checked = _ebm_checks()
+    if checked is None:
+        return
+    demo_no, fid = checked
+    if _ebm_patient["demo_no"] != str(demo_no):
+        # Not generated for the patient now open (or already saved): never save one patient's plan to another
+        messagebox.showwarning(EBM_PROMPT, "This action plan was not generated for the patient now open in Oscar, "
+                                           "or it was already saved. Click Generate Note for this patient first.")
+        return
+    _ebm_patient["demo_no"] = None
+
+    def worker():
+        try:
+            print(f"[{EBM_PROMPT}] demographic {demo_no}: saving the action plan with the EBM form")
+            result = _run_ebm_frame(demo_no, fid, "save", plan)
+            if result.get("missing") or not result.get("saved"):
+                _ebm_patient["demo_no"] = str(demo_no)
+                reason = f"the EBM form has no \"{result['missing']}\"" if result.get("missing") \
+                    else "the EBM form did not finish saving"
+                return root.after(0, finish, f"{ebm.STATUS_PREFIX} Not saved: {reason}.\n\n{plan}")
+            status = "Action plan saved to APLAN."
+            try:
+                rows = eform_selection_panel.db_conn.query_database(ebm.latest_aplan_query(demo_no))
+                saved = " ".join(str((rows or [{}])[0].get("dataField") or "").split())
+                if not saved.startswith(" ".join(plan.split())[:60]):
+                    status += " The newest APLAN in the database does not match it yet; check the chart."
+            except Exception as e:
+                status += f" (Could not check the database: {type(e).__name__}.)"
+            root.after(0, finish, f"{ebm.STATUS_PREFIX} {status}\n\n{plan}")
+        except Exception as e:
+            _ebm_patient["demo_no"] = str(demo_no)
+            root.after(0, finish, f"{ebm.STATUS_PREFIX} Saving failed ({type(e).__name__}): {e}\n\n{plan}")
+
+    display_text(f"{ebm.STATUS_PREFIX} Saving the action plan to APLAN...\n\n{plan}")
+    threading.Thread(target=worker, daemon=True).start()
+
+
 # ── Referral letters -> requisition eForm (fid 716) ──────────────────────────────
 # "Referral Requisition" prompt: open a new patient's encounter page and click Populate. Their referral
 # document is found in Oscar and its OCR text is put in the input box. The tests ticked are the ones named in the
@@ -1935,6 +2066,12 @@ def generate_requisition_from_latest_note():
 REFERRAL_REQUISITION_PROMPT = "Referral Requisition"
 # Same, but the referral is the text pasted / uploaded into the input box instead of a document found in Oscar.
 REFERRAL_REQUISITION_INPUT_PROMPT = "Referral Requisition (from input)"
+
+
+def _referral_prompt(section):
+    """The "Referral Requisition" prompt section edited in the Prompt window; None (the built-in default)
+    when it is missing or empty there."""
+    return ai_prompts.get_group_section(REFERRAL_REQUISITION_PROMPT, section).strip() or None
 
 
 def _latest_referral_document(demo_no):
@@ -2024,14 +2161,16 @@ def referral_requisition_from_chart(from_input: bool = False):
                     return root.after(0, finish, f"No text read from referral document {document_no}; requisition eForm not opened.")
                 root.after(0, _show_in_input_box, text)
             form_json = get_referral_json()
-            prompt = referral_requisition.build_referral_prompt(text, booked["tests"], form_json)
+            prompt = referral_requisition.build_referral_prompt(text, booked["tests"], form_json,
+                                                                _referral_prompt("Indications"))
             raw = send_text_to_chatgpt(prompt)
             try:
                 result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
             except ValueError as e:
                 # One retry: a single stray quote in the LLM's JSON should not stop the form.
                 print(f"[{REFERRAL_REQUISITION_PROMPT}] LLM reply could not be read ({e}); asking again")
-                raw = send_text_to_chatgpt(prompt + referral_requisition.RETRY_JSON_INSTRUCTION)
+                raw = send_text_to_chatgpt(
+                    prompt + referral_requisition.retry_json_instruction(_referral_prompt("Fix Invalid JSON")))
                 result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
             if result["unsupported"]:
                 # An indication the document does not back up is wrong: ask once more for those tests.
@@ -2039,12 +2178,24 @@ def referral_requisition_from_chart(from_input: bool = False):
                       f"{sorted(result['unsupported'])}; asking the LLM to correct them")
                 try:
                     corrected = send_text_to_chatgpt(
-                        referral_requisition.correction_prompt(prompt, result["unsupported"]))
+                        referral_requisition.correction_prompt(prompt, result["unsupported"],
+                                                               _referral_prompt("Correct Unsupported Indications")))
                     raw = referral_requisition.merge_correction(raw, corrected, result["unsupported"])
                     result = referral_requisition.parse_referral_response(raw, form_json, booked, text)
                 except ValueError as e:
                     # Those indications stay empty, as they were not filled
                     print(f"[{REFERRAL_REQUISITION_PROMPT}] corrected reply could not be read ({e})")
+            check = referral_requisition.option_check_prompt(result, _referral_prompt("Check Dropdown Options"))
+            if check:
+                # The local model sometimes picks the nearest option for a condition the form has no option
+                # for (e.g. CHF for pulmonary hypertension): ask whether each option says what the document says.
+                try:
+                    changed = referral_requisition.apply_option_check(result, send_text_to_chatgpt(check))
+                    print(f"[{REFERRAL_REQUISITION_PROMPT}] dropdown options checked; replaced by free text: "
+                          f"{changed or 'none'}")
+                except ValueError as e:
+                    print(f"[{REFERRAL_REQUISITION_PROMPT}] option check reply could not be read ({e}); "
+                          "keeping the options")
             for test in result["tests"]:
                 # No document text in the console (PHI): only whether each test got an indication
                 state = ("filled" if test in result["indications"] else
@@ -2057,9 +2208,12 @@ def referral_requisition_from_chart(from_input: bool = False):
             lines = []
             for test in result["tests"]:
                 value, from_dropdown = result["indications"].get(test, (None, False))
+                rejected = result.get("rejected_options", {}).get(test)
                 if value:
                     lines.append(f"- {test}: {value} ({'dropdown' if from_dropdown else 'free text'})\n"
-                                 f"    from the document: \"{result['evidence'].get(test, '')}\"")
+                                 f"    from the document: \"{result['evidence'].get(test, '')}\""
+                                 + (f"\n    no matching dropdown option (\"{rejected.strip()}\" was not the same)"
+                                    if rejected else ""))
                 else:
                     lines.append(f"- {test}: no indication")
             missing = f"\n\nNot found on the form: {', '.join(fill['missing'])}" if fill["missing"] else ""
@@ -2577,7 +2731,8 @@ def upload_consult_complete(overwrite):
 
 def upload_consult_by_type(upload_type, overwrite):
     # With a "Referral Requisition" prompt, Populate fills the requisition from the referral instead.
-    if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT: referral_requisition_from_chart()
+    if selected_prompt.get() == EBM_PROMPT: save_ebm_action_plan()
+    elif selected_prompt.get() == REFERRAL_REQUISITION_PROMPT: referral_requisition_from_chart()
     elif selected_prompt.get() == REFERRAL_REQUISITION_INPUT_PROMPT: referral_requisition_from_chart(from_input=True)
     elif upload_type == "consult": upload_consult()
     elif upload_type == "mh_and_consult": upload_consult_and_mh()
@@ -2825,11 +2980,14 @@ selected_prompt = tk.StringVar(value="Auto")
 values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Complete", "Consult Complete + MH",
                                                                    REQUISITION_GENERATION_PROMPT,
                                                                    REFERRAL_REQUISITION_PROMPT,
-                                                                   REFERRAL_REQUISITION_INPUT_PROMPT]
+                                                                   REFERRAL_REQUISITION_INPUT_PROMPT,
+                                                                   EBM_PROMPT]
 prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
 prompt_dropdown._id = "prompt_selector"
+# Kept after the user's prompts when the Prompt window refreshes this menu
+prompt_dropdown._fixed_tail = values[len(["Auto", "None", "Scribe"] + ai_prompts.list_prompts()):]
 prompt_dropdown.grid(row=2, column=4, pady=(0, 6), sticky='new')
 
 # "Requisition Generation" is an action, not a note prompt: choosing it runs it straight away and

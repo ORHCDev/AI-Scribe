@@ -140,9 +140,28 @@ def clean_med_changes(raw) -> list[dict]:
     return changes
 
 
-def build_med_prompt(plan: str) -> str:
+# The requisition part of build_med_prompt, editable in the Prompt window (prompts/default_prompts.yaml,
+# Requisition_Generation). This is the default, used when it is missing or empty there.
+REQUISITION_RULES_PROMPT = """"requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic visit. For example, if the plan states "I'm gonna bring the patient back in 1 year for an echocardiogram", then "requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations or diagnostics are required, then simply have "period" be null.
+If the plan gives a calendar date for the next visit or for these tests (e.g. "see in clinic on January 27, 2027"), set "date" to that date as "YYYY-MM-DD"; otherwise "date" is null. A date of a past test or visit is not a "date".
+The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
+Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, or to be done at/before the next visit). Tests that were done today or before this visit, results that are reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. "I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to arrange a stress test").
+"consult" refers to a cardiology consultation, and should be true if and only if one is desired for our clinic, not a referral elsewhere to a different doctor. If the PLAN indicates a desire for a consultation, but said consultation is not explicitly stated to be with a cardiologist, then "consult" MUST be false.
+"ecg" refers to an electrocardiogram, and should be true if and only if one is desired.
+"echo" refers to an echo doppler, and should be true if and only if one is desired It should be false if only a stress echocardiogram is desired, since these two diagnostics are not the same.
+"contrastecho" can only be true if echo is true. It should be true when a contrast echocardiogram in specific is desired, and false if only a regular echocardiogram is desired.
+"stecho" refers to a stress echocardiogram, and should be true if and only if the plan explicitly asks for a "stress echo" / "stress echocardiogram" as one test. "Stress test and echo", "treadmill test and echo" or "exercise stress test and echocardiogram" mean two separate tests: "est" true AND "echo" true, "stecho" false.
+"contrast" can only be true if stecho is true. It should be true when a contrast stress echocardiogram in specific is desired, and false if only a regular stress echocardiogram is desired.
+"est" refers to an exercise stress test, and should be true if and only if one is desired.
+"holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. Days are not weeks: "1 day" is "24h", "2 days" is "48h", "3 days" is "72h", and only "2 weeks" / "14 days" is "2w".
+"indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives no reason for it. Do not invent one."""
+
+
+def build_med_prompt(plan: str, requisition_rules: str | None = None) -> str:
     """Prompt asking for the plan's medication changes (in the eForm's wording), whether labs are required, and
-    whether a requisition is required and, if so, what consultations and diagnostics to perform."""
+    whether a requisition is required and, if so, what consultations and diagnostics to perform.
+    `requisition_rules` is the "Requisition Rules" prompt edited in the Prompt window (REQUISITION_RULES_PROMPT
+    when None)."""
     options = "\n".join(f"- {o}" for o in RX_MED_OPTIONS)
     return (
         "You are reviewing the PLAN section of a cardiology note. Return JSON in exactly this format:\n"
@@ -193,47 +212,8 @@ def build_med_prompt(plan: str) -> str:
         'doctor", "could be started at follow-up").\n\n'
         'If "labs"["required"] is true, then "labs"["period"] should represent when the lab work is requested '
         'to be completed. For example, if the note says "complete in 2 months", the value should be "2m". '
-        'If "labs"["required"] is false, "labs"["period"] should simply be null.\n\n'
-        '"requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic '
-        'visit. For example, if the plan states "I\'m gonna bring the patient back in 1 year for an echocardiogram", then '
-        '"requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations '
-        'or diagnostics are required, then simply have "period" be null.\n'
-        'If the plan gives a calendar date for the next visit or for these tests (e.g. "see in clinic on January 27, '
-        '2027"), set "date" to that date as "YYYY-MM-DD"; otherwise "date" is null. A date of a past test or visit '
-        'is not a "date".\n'
-        'The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period '
-        'other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that '
-        'this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" '
-        'is NOT a reason. Give only the reason, without any time, period or date.\n'
-        'Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, '
-        'or to be done at/before the next visit). Tests that were done today or before this visit, results that are '
-        'reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already '
-        'arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test '
-        'that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. '
-        '"I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to '
-        'arrange a stress test").\n'
-        '"consult" refers to a cardiology consultation, and should be true if and only if one is desired for our clinic, '
-        'not a referral elsewhere to a different doctor. If the PLAN indicates a desire for a consultation, but said '
-        'consultation is not explicitly stated to be with a cardiologist, then "consult" MUST be false.\n'
-        '"ecg" refers to an electrocardiogram, and should be true if and only if one is desired.\n'
-        '"echo" refers to an echo doppler, and should be true if and only if one is desired It should be false if only a '
-        'stress echocardiogram is desired, since these two diagnostics are not the same.\n'
-        '"contrastecho" can only be true if echo is true. It should be true when a contrast echocardiogram in specific '
-        'is desired, and false if only a regular echocardiogram is desired.\n'
-        '"stecho" refers to a stress echocardiogram, and should be true if and only if the plan explicitly asks for a '
-        '"stress echo" / "stress echocardiogram" as one test. "Stress test and echo", "treadmill test and echo" or '
-        '"exercise stress test and echocardiogram" mean two separate tests: "est" true AND "echo" true, "stecho" false.\n'
-        '"contrast" can only be true if stecho is true. It should be true when a contrast stress echocardiogram in specific '
-        'is desired, and false if only a regular stress echocardiogram is desired.\n'
-        '"est" refers to an exercise stress test, and should be true if and only if one is desired.\n'
-        '"holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is '
-        'desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. '
-        'Days are not weeks: "1 day" is "24h", "2 days" is "48h", "3 days" is "72h", and only "2 weeks" / "14 days" '
-        'is "2w".\n'
-        '"indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical '
-        'reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only '
-        'what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives '
-        'no reason for it. Do not invent one.\n\n'
+        'If "labs"["required"] is false, "labs"["period"] should simply be null.\n\n' +
+        (requisition_rules or REQUISITION_RULES_PROMPT).strip() + "\n\n" +
         f"STANDARD LINES:\n{options}\n\n"
         f"PLAN:\n{plan}\n\n"
         "Return ONLY the JSON object, with no other text."
@@ -561,10 +541,10 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
     }
 
 
-def extract_med_changes(plan: str, send_fn) -> dict:
+def extract_med_changes(plan: str, send_fn, requisition_rules: str | None = None) -> dict:
     """One LLM call via `send_fn(prompt) -> str`; see parse_med_response for the result.
     Raises on a failed call or unusable output so the caller can fall back to keywords."""
-    prompt = build_med_prompt(plan)
+    prompt = build_med_prompt(plan, requisition_rules)
     print(f"[med eForm] calling LLM ({len(plan)} chars of PLAN)")
     resp = send_fn(prompt)
     print(f"[med eForm] LLM replied: {str(resp)[:300]!r}")
@@ -583,7 +563,7 @@ def extract_med_changes(plan: str, send_fn) -> dict:
     return parsed_resp
 
 
-def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
+def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm", requisition_rules: str | None = None) -> dict:
     """Work out which eForms to open after a consult upload and what to pre-fill them with.
     `scope` is the PLAN section (or the whole consult if no PLAN heading was found).
     `mode` is "llm" or "keyword".
@@ -628,7 +608,7 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm") -> dict:
         }
 
     try:
-        med = extract_med_changes(scope, send_fn)
+        med = extract_med_changes(scope, send_fn, requisition_rules)
     except Exception as e:
         print(f"eForm LLM gate failed, falling back to keyword: {e}")
         flags = keyword_flags(scope)
