@@ -10,7 +10,8 @@ REQUISITION_GENERATION_PROMPT = "Requisition Generation"
 
 # Other prompts edited section by section (no master prompt): name shown in the Prompt window -> yaml key
 SECTION_GROUPS = {REQUISITION_GENERATION_PROMPT: "Requisition_Generation",
-                  REFERRAL_REQUISITION_PROMPT: "Referral_Requisition"}
+                  REFERRAL_REQUISITION_PROMPT: "Referral_Requisition",
+                  "EBM": "EBM"}
 
 
 class PromptsWindow():

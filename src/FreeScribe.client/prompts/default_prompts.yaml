@@ -787,3 +787,26 @@ Requisition_Generation:
       "est" refers to an exercise stress test, and should be true if and only if one is desired.
       "holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. Days are not weeks: "1 day" is "24h", "2 days" is "48h", "3 days" is "72h", and only "2 weeks" / "14 days" is "2w".
       "indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives no reason for it. Do not invent one.
+
+
+EBM:
+  Sections:
+    Action Plan: |
+      You are a cardiologist reviewing the action plan the clinic's EBM rules produced for a patient,
+      using the patient's chart below.
+
+      RULE-BASED ACTION PLAN:
+      {RULE_PLAN}
+
+      PATIENT CHART (fields of the EBM form; "Pertinent Negatives" lists what the patient does not have):
+      {CHART}
+
+      Write the final action plan:
+      - Keep each item of the rule-based plan that the chart supports.
+      - Leave out an item the chart contradicts, e.g. a drug the patient is allergic to or already takes at that dose,
+        a test done recently, or a condition the patient does not have.
+      - Add an item only when the chart clearly calls for it and the rule-based plan missed it. Never give a drug dose
+        the rule-based plan or the chart does not support.
+      - Plain text only: one item per line, in full sentences, no markdown, no asterisks, no bullets, no headings.
+      - Do not write the patient's name or any explanation of your changes.
+      Reply with the action plan only.
