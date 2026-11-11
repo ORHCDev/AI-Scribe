@@ -72,7 +72,8 @@ except Exception as e:
     logger.exception("Failed to load diarization pipeline, continuing without diarization")
     diarize_pipeline = None
 
-MODEL_LOCK = threading.Lock()
+MODEL_LOCK = threading.Lock() # Whisper
+DIARIZE_LOCK = threading.Lock() # pyannote
 
 def _overlap_duration(start: float, end: float, other_start: float, other_end: float) -> float:
     return max(0.0, min(end, other_end) - max(start, other_start))
@@ -82,6 +83,10 @@ def extract_turns(diarization) -> list[tuple[float, float, str]]:
     turns = [(turn.start, turn.end, label)
              for turn, _, label in annotation.itertracks(yield_label=True)]
     return sorted(turns)
+
+def _diarize(audio_path: str) -> list[tuple[float, float, str]]:
+    with DIARIZE_LOCK:
+        return extract_turns(diarize_pipeline(audio_path))
 
 def assign_speakers_to_segments(segments: list[dict], turns: list[tuple[float, float, str]]) -> list[dict]:
     # Label each Whisper segment with its most likely pyannote speaker
@@ -179,22 +184,38 @@ class RequestHandler(BaseHTTPRequestHandler):
                     try:
                         print("Starting transcription")
                         logger.info("Starting transcription")
-                        with MODEL_LOCK: # handles each request in its own thread
-                            start_time = time.time()
-                            result = model.transcribe(
-                                temp_file_path,
-                                word_timestamps=diarize_pipeline is not None,
-                            )
-                            if diarize_pipeline is not None:
-                                try:
-                                    diarization = diarize_pipeline(temp_file_path)
-                                    turns = extract_turns(diarization)
-                                    result['segments'] = assign_speakers_to_segments(
-                                        result['segments'], turns)
-                                except Exception as e:
-                                    print(f"Diarization failed, skipping speaker labels: {e}")
-                                    logger.exception("Diarization failed, skipping speaker labels")
-                            elapsed = time.time() - start_time
+                        start_time = time.time()
+
+                        diarization_thread = None
+                        diarization_turns: list[tuple[float, float, str]] | None = None
+
+                        def _run_diarization():
+                            nonlocal diarization_turns
+                            try:
+                                diarization_turns = _diarize(temp_file_path)
+                            except Exception as e:
+                                # Log here so the error is not lost if transcription also fails.
+                                print(f"Diarization failed, skipping speaker labels: {e}")
+                                logger.error("Diarization failed, skipping speaker labels", exc_info=e)
+
+                        if diarize_pipeline is not None:
+                            diarization_thread = threading.Thread(target=_run_diarization, daemon=True)
+                            diarization_thread.start()
+
+                        try:
+                            with MODEL_LOCK: # handles each request in its own thread
+                                result = model.transcribe(
+                                    temp_file_path,
+                                    word_timestamps=diarize_pipeline is not None,
+                                )
+                        finally:
+                            # Always wait for diarization before the temp file is removed
+                            if diarization_thread is not None:
+                                diarization_thread.join()
+
+                        if diarization_turns is not None:
+                            result['segments'] = assign_speakers_to_segments(result['segments'], diarization_turns)
+                        elapsed = time.time() - start_time
                         transcription = format_segments(result['segments'])
                         print(f"Transcription completed in {elapsed:.2f}s: {transcription}")
                         logger.info(
