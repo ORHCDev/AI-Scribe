@@ -11,16 +11,19 @@ from utils.referral_requisition import fill_prompt
 EBM_FORM_FID = 719
 EBM_FORM_NAME = "0.1EBMp"
 
-# Fields of the EBM form not sent to the LLM: identifiers, and the billing helper.
+# Fields of the EBM form not sent to the LLM: identifiers, the billing helper, and earlier plans (PLAN, MPLAN,
+# FPLAN and the saved action plan), which the LLM would otherwise copy into the new plan.
 CHART_SKIP = {"Name", "dob", "postal", "todate", "billsheet", "bills", "bills1", "bills3", "bills4", "bills6",
-               "consult", "dd", "subject", "actionplan", "searchbox"}
+              "consult", "dd", "subject", "searchbox", "actionplan", "history7", "history16", "history17"}
 
 # Loads the EBM form in a hidden frame of the main Oscar window (same site, so its fields can be read and its
 # scripts run), waits for its own onload (chart summaries, history keywords), then:
 #  - "run": clicks "Run EBM Algorithms" (TotalScore) and returns the rule action plan and the chart fields;
 #  - "save": runs TotalScore too (so the other values it fills are saved as they are by hand), replaces the
 #    action plan with arguments[2], and clicks Submit; resolves once the frame has loaded the saved page.
-# Errors thrown by the form's own scripts are caught and returned, as the form has a few.
+# The action plan box is emptied first: it opens with the patient's saved APLAN, which must not be taken as the
+# rules' plan when TotalScore stops before writing one. Errors thrown by the form's own scripts are caught and
+# returned, as the form has a few.
 EBM_FRAME_JS = """
 var url = arguments[0], mode = arguments[1], plan = arguments[2], skip = arguments[3];
 var done = arguments[arguments.length - 1];
@@ -38,9 +41,10 @@ frame.onload = function () {
     loads += 1;
     if (loads > 1) { return finish({saved: true}); }
     var w = frame.contentWindow, d = frame.contentDocument;
-    try { w.TotalScore(); } catch (e) { errors.push("TotalScore: " + e); }
     var ap = d.getElementById("actionplan");
     if (!ap) { return finish({missing: "actionplan"}); }
+    ap.value = "";
+    try { w.TotalScore(); } catch (e) { errors.push("TotalScore: " + e); }
     if (mode === "run") {
         var chart = [];
         d.querySelectorAll("input, textarea").forEach(function (el) {
@@ -101,8 +105,10 @@ def build_action_plan_prompt(rule_plan: str, chart: list, template: str | None =
 
 
 def clean_action_plan(text: str) -> str:
-    """The LLM's plan as plain text lines: no code fences, markdown marks, bullets or numbering, no blank runs."""
+    """The LLM's plan as plain text lines: no code fences, <br> tags (the EBM form writes some), markdown marks,
+    bullets or numbering, no blank runs."""
     text = re.sub(r"```\w*", "", text or "")
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
     lines = []
     for line in text.splitlines():
         line = line.replace("**", "").replace("__", "")

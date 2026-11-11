@@ -31,6 +31,10 @@ def test_identifiers_and_billing_are_not_sent():
     assert {"Name", "dob", "billsheet", "actionplan"} <= ebm.CHART_SKIP
 
 
+def test_earlier_plans_are_not_sent():
+    assert {"history7", "history16", "history17", "actionplan"} <= ebm.CHART_SKIP
+
+
 def test_clean_action_plan_removes_markdown_bullets_and_fences():
     raw = "```\n**Action plan**\n- Start Coversyl 4 mg daily.\n\n\n2. We will assess with an echo.\n```"
     assert ebm.clean_action_plan(raw) == "Action plan\nStart Coversyl 4 mg daily.\n\nWe will assess with an echo."
@@ -49,3 +53,8 @@ def test_latest_aplan_query_needs_a_number():
 def test_default_prompts_yaml_has_the_same_ebm_prompt():
     data = yaml.safe_load((Path(__file__).resolve().parents[1] / "prompts" / "default_prompts.yaml").read_text("utf-8"))
     assert data["EBM"]["Sections"]["Action Plan"].strip() == ebm.ACTION_PLAN_PROMPT.strip()
+
+
+def test_clean_action_plan_turns_br_tags_into_lines():
+    assert ebm.clean_action_plan("Repeat K+ in 3 months.<br><br>Echo in 1 year.<BR/>") == \
+        "Repeat K+ in 3 months.\n\nEcho in 1 year."
