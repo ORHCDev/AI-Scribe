@@ -791,9 +791,9 @@ Requisition_Generation:
 
 EBM:
   Sections:
-    Action Plan: |
-      You are a cardiologist reviewing the action plan the clinic's EBM rules produced for a patient,
-      using the patient's chart below.
+    Checks: |
+      You are a cardiologist checking the action plan the clinic's EBM rules produced for a patient against
+      the patient's chart. Do not rewrite the plan: it is kept as it is.
 
       RULE-BASED ACTION PLAN:
       {RULE_PLAN}
@@ -801,12 +801,25 @@ EBM:
       PATIENT CHART (fields of the EBM form; "Pertinent Negatives" lists what the patient does not have):
       {CHART}
 
-      Write the final action plan:
-      - Keep each item of the rule-based plan that the chart supports.
-      - Leave out an item the chart contradicts, e.g. a drug the patient is allergic to or already takes at that dose,
-        a test done recently, or a condition the patient does not have.
-      - Add an item only when the chart clearly calls for it and the rule-based plan missed it. Never give a drug dose
-        the rule-based plan or the chart does not support.
-      - Plain text only: one item per line, in full sentences, no markdown, no asterisks, no bullets, no headings.
-      - Do not write the patient's name or any explanation of your changes.
-      Reply with the action plan only.
+      List up to 5 points the doctor should check before saving the plan, most important first:
+      - a problem in the chart the plan does not address (e.g. a test that is due, an untreated condition);
+      - a safety concern with the plan or the current medications (e.g. a slow heart rate on a beta-blocker, an allergy
+        to a recommended drug, an abnormal lab value);
+      - items of the plan that conflict with or repeat each other;
+      - missing or old chart data that an item of the plan depends on.
+      Each point is one sentence that names the chart finding it is based on (a value, a date or a diagnosis). Never
+      write vague points such as "monitor ..." or "continue current medications". Do not write the patient's name.
+      Reply with one point per line and nothing else. If there is nothing to check, reply with NONE.
+    Shorten: |
+      Shorten this cardiology action plan to at most {MAX} characters in total (each line break counts
+      as 2 characters).
+      - Keep every item if you can and shorten its wording; common abbreviations (BP, LDL, f/u, mo, yr) are fine.
+      - Keep each drug name, dose and time exactly. Do not add any test, drug, dose or time.
+      - Keep how strong each item is: "Consider" stays "Consider", "Recommend" stays "Recommend".
+      - If it still does not fit, leave out the least important items.
+      - One item per line, plain text, no bullets, no "We will".
+
+      PLAN:
+      {PLAN}
+
+      Reply with the shortened plan only.

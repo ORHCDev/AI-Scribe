@@ -1,7 +1,8 @@
 """
-"EBM" prompt: the clinic's EBM eForm (rules written in JavaScript) is run in a hidden frame, an LLM reviews its
-action plan against the patient's chart, and Populate saves the result to the APLAN measurement by submitting the
-EBM eForm, the same way it is saved by hand. The EBM form never opens on screen.
+"EBM" prompt: the clinic's EBM eForm (rules written in JavaScript) is run in a hidden frame and its action plan is
+shown unchanged, with points for the doctor to check that an LLM finds by comparing it with the patient's chart.
+Populate saves the plan (without those points) to the APLAN measurement by submitting the EBM eForm, the same way
+it is saved by hand. The EBM form never opens on screen.
 """
 
 import re
@@ -67,8 +68,8 @@ frame.src = url;
 document.body.appendChild(frame);
 """
 
-ACTION_PLAN_PROMPT = """You are a cardiologist reviewing the action plan the clinic's EBM rules produced for a patient,
-using the patient's chart below.
+CHECKS_PROMPT = """You are a cardiologist checking the action plan the clinic's EBM rules produced for a patient against
+the patient's chart. Do not rewrite the plan: it is kept as it is.
 
 RULE-BASED ACTION PLAN:
 {RULE_PLAN}
@@ -76,21 +77,39 @@ RULE-BASED ACTION PLAN:
 PATIENT CHART (fields of the EBM form; "Pertinent Negatives" lists what the patient does not have):
 {CHART}
 
-Write the final action plan:
-- Keep each item of the rule-based plan that the chart supports.
-- Leave out an item the chart contradicts, e.g. a drug the patient is allergic to or already takes at that dose,
-  a test done recently, or a condition the patient does not have.
-- Add an item only when the chart clearly calls for it and the rule-based plan missed it. Never give a drug dose
-  the rule-based plan or the chart does not support.
-- Plain text only: one item per line, in full sentences, no markdown, no asterisks, no bullets, no headings.
-- Do not write the patient's name or any explanation of your changes.
-Reply with the action plan only."""
+List up to 5 points the doctor should check before saving the plan, most important first:
+- a problem in the chart the plan does not address (e.g. a test that is due, an untreated condition);
+- a safety concern with the plan or the current medications (e.g. a slow heart rate on a beta-blocker, an allergy
+  to a recommended drug, an abnormal lab value);
+- items of the plan that conflict with or repeat each other;
+- missing or old chart data that an item of the plan depends on.
+Each point is one sentence that names the chart finding it is based on (a value, a date or a diagnosis). Never
+write vague points such as "monitor ..." or "continue current medications". Do not write the patient's name.
+Reply with one point per line and nothing else. If there is nothing to check, reply with NONE."""
 
-# The editable prompt (Prompt window: EBM -> Action Plan); this is the default.
-PROMPT_SECTIONS = {"Action Plan": ACTION_PLAN_PROMPT}
+SHORTEN_PROMPT = """Shorten this cardiology action plan to at most {MAX} characters in total (each line break counts
+as 2 characters).
+- Keep every item if you can and shorten its wording; common abbreviations (BP, LDL, f/u, mo, yr) are fine.
+- Keep each drug name, dose and time exactly. Do not add any test, drug, dose or time.
+- Keep how strong each item is: "Consider" stays "Consider", "Recommend" stays "Recommend".
+- If it still does not fit, leave out the least important items.
+- One item per line, plain text, no bullets, no "We will".
 
-# First line(s) of the result box written by AI-Scribe itself, not part of the plan.
+PLAN:
+{PLAN}
+
+Reply with the shortened plan only."""
+
+# The editable prompts (Prompt window: EBM -> Checks / Shorten); these are the defaults.
+PROMPT_SECTIONS = {"Checks": CHECKS_PROMPT, "Shorten": SHORTEN_PROMPT}
+
+# Lines of the result box written by AI-Scribe itself (status and checks for the doctor), never saved to APLAN.
 STATUS_PREFIX = "[EBM]"
+CHECK_PREFIX = f"{STATUS_PREFIX} Check:"
+MAX_CHECKS = 5
+RULES_STOPPED_CHECK = (f"{CHECK_PREFIX} The EBM rules stopped early because of an error in the EBM form; "
+                       "some items may be missing.")
+NO_RULE_PLAN_CHECK = f"{CHECK_PREFIX} The EBM rules gave no action plan."
 
 
 def chart_text(chart: list) -> str:
@@ -98,8 +117,8 @@ def chart_text(chart: list) -> str:
     return "\n".join(f"{label.rstrip(':')}: {' '.join(str(value).split())}" for label, value in chart)
 
 
-def build_action_plan_prompt(rule_plan: str, chart: list, template: str | None = None) -> str:
-    return fill_prompt(template or ACTION_PLAN_PROMPT,
+def build_checks_prompt(rule_plan: str, chart: list, template: str | None = None) -> str:
+    return fill_prompt(template or CHECKS_PROMPT,
                        RULE_PLAN=(rule_plan or "").strip() or "(the rules gave no action plan)",
                        CHART=chart_text(chart) or "(no chart data)")
 
@@ -118,11 +137,104 @@ def clean_action_plan(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+# Oscar keeps at most 255 characters of a measurement; the textarea sends each line break as \r\n.
+APLAN_MAX_CHARS = 255
+_WE_OPENINGS = ((r"^we (?:will )?(?:also )?recommend(?:ed)?\b\s*", "Recommend "),
+                (r"^we (?:also )?discussed\b\s*", "Discussed "),
+                (r"^we will (?:also )?", ""))
+
+
+def concise_line(line: str) -> str:
+    """A plan item without its "We will ..." opening: "We will consider switching ..." -> "Consider switching ...",
+    "We recommend ..." -> "Recommend ...". The rest of the item is not changed."""
+    for pattern, replacement in _WE_OPENINGS:
+        new = re.sub(pattern, replacement, line, count=1, flags=re.IGNORECASE)
+        if new != line:
+            return new[:1].upper() + new[1:]
+    return line
+
+
+def saved_length(plan: str) -> int:
+    """How many characters of APLAN the plan takes once saved."""
+    return len((plan or "").replace("\r\n", "\n").replace("\n", "\r\n"))
+
+
+def fits(lines: list) -> bool:
+    return saved_length("\n".join(lines)) <= APLAN_MAX_CHARS
+
+
+def build_shorten_prompt(lines: list, template: str | None = None) -> str:
+    return fill_prompt(template or SHORTEN_PROMPT, MAX=str(APLAN_MAX_CHARS), PLAN="\n".join(lines))
+
+
+def _numbers(text: str) -> set:
+    return set(re.findall(r"\d+(?:\.\d+)?", text or ""))
+
+
+def fit_by_dropping(lines: list) -> tuple[list, list]:
+    """(kept, left out): the items in order while they fit in APLAN; a single first item too long on its own is
+    cut at a word."""
+    kept = []
+    for i, line in enumerate(lines):
+        if fits(kept + [line]):
+            kept.append(line)
+        elif not kept:
+            room = APLAN_MAX_CHARS - 1
+            kept.append(line[:room].rsplit(" ", 1)[0] + "\u2026")
+        else:
+            return kept, lines[i:]
+    return kept, []
+
+
+def fit_plan(lines: list, shortened_reply: str | None) -> tuple[list, list]:
+    """(plan lines that fit in APLAN, notes for the doctor). The LLM's shortened plan is used when it fits and has
+    no number (dose, time) the plan did not have; otherwise the last items are left out until the plan fits."""
+    if fits(lines):
+        return lines, []
+    before = saved_length("\n".join(lines))
+    short = [concise_line(" ".join(line.split()))
+             for line in clean_action_plan(shortened_reply or "").splitlines() if line.strip()]
+    if short and fits(short) and _numbers("\n".join(short)) <= _numbers("\n".join(lines)):
+        after = saved_length("\n".join(short))
+        return short, [f"{CHECK_PREFIX} Shortened from {before} to {after} characters to fit Oscar's "
+                       f"{APLAN_MAX_CHARS}-character limit; the full plan is below this line."] + \
+            [f"{CHECK_PREFIX} Full: {line}" for line in lines]
+    kept, dropped = fit_by_dropping(lines)
+    return kept, [f"{CHECK_PREFIX} Left out to fit Oscar's {APLAN_MAX_CHARS}-character limit: {line}"
+                  for line in dropped]
+
+
+def rule_plan_lines(rule_plan: str) -> list:
+    """The rules' action plan one item per line, without "We will" openings, <br> tags, blank lines or repeats."""
+    lines, seen = [], set()
+    for line in re.sub(r"<br\s*/?>", "\n", rule_plan or "", flags=re.IGNORECASE).splitlines():
+        line = concise_line(" ".join(line.split()))
+        if line and line.lower() not in seen:
+            seen.add(line.lower())
+            lines.append(line)
+    return lines
+
+
+def checks_from_reply(text: str) -> list:
+    """The LLM's points (at most MAX_CHECKS) as CHECK_PREFIX lines; none when it replied NONE."""
+    checks = []
+    for line in clean_action_plan(text).splitlines():
+        line = re.sub(r"^\s*(\[EBM\]\s*)?check:\s*", "", line, flags=re.IGNORECASE).strip()
+        if line and line.strip(".").upper() != "NONE":
+            checks.append(f"{CHECK_PREFIX} {line}")
+    return checks[:MAX_CHECKS]
+
+
+def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = ()) -> str:
+    """The result box: the checks and notes for the doctor first, then the plan that Populate saves."""
+    top = (([RULES_STOPPED_CHECK] if rules_stopped else []) + list(checks) + list(notes)
+           + ([] if plan else [NO_RULE_PLAN_CHECK]))
+    return "\n".join(top + ([""] if top and plan else []) + plan)
+
+
 def plan_from_result_box(text: str) -> str:
-    """The plan in the result box, without AI-Scribe's own status lines."""
-    lines = (text or "").strip().splitlines()
-    while lines and (lines[0].startswith(STATUS_PREFIX) or not lines[0].strip()):
-        lines.pop(0)
+    """The plan in the result box: every line AI-Scribe wrote itself (status, checks) is left out."""
+    lines = [line for line in (text or "").splitlines() if not line.startswith(STATUS_PREFIX)]
     return "\n".join(lines).strip()
 
 
