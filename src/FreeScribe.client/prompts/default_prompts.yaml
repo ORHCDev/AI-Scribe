@@ -772,11 +772,14 @@ Referral_Requisition:
 
 
 Requisition_Generation:
+  # Hashes of earlier defaults: a saved section still equal to one of them is updated to the new default.
+  Previous:
+    Requisition Rules: ["b18f9d6ff6ad802da6a0c0692fe506d8"]
   Sections:
     Requisition Rules: |
       "requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic visit. For example, if the plan states "I'm gonna bring the patient back in 1 year for an echocardiogram", then "requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations or diagnostics are required, then simply have "period" be null.
-      If the plan gives a calendar date for the next visit or for these tests (e.g. "see in clinic on January 27, 2027"), set "date" to that date as "YYYY-MM-DD"; otherwise "date" is null. A date of a past test or visit is not a "date".
-      The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
+      If the plan gives a date or a month for the next visit or for these tests, copy it into "date" as the plan writes it (e.g. "January 27, 2027", "next August", "in August 2027"); otherwise "date" is null. A date of a past test or visit is not a "date".
+      When the plan gives no time at all, the period is usually 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
       Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, or to be done at/before the next visit). Tests that were done today or before this visit, results that are reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. "I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to arrange a stress test").
       "consult" refers to a cardiology consultation, and should be true if and only if one is desired for our clinic, not a referral elsewhere to a different doctor. If the PLAN indicates a desire for a consultation, but said consultation is not explicitly stated to be with a cardiologist, then "consult" MUST be false.
       "ecg" refers to an electrocardiogram, and should be true if and only if one is desired.
@@ -787,7 +790,6 @@ Requisition_Generation:
       "est" refers to an exercise stress test, and should be true if and only if one is desired.
       "holter" refers to a holter monitor, and should refer to the desired monitoring period if and only if one is desired. The value for holter MUST be one of "24h", "48h", "72h", "2w" or null. It must NOT be a boolean value. Days are not weeks: "1 day" is "24h", "2 days" is "48h", "3 days" is "72h", and only "2 weeks" / "14 days" is "2w".
       "indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives no reason for it. Do not invent one.
-
 
 EBM:
   Sections:
