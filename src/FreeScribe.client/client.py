@@ -1950,7 +1950,7 @@ _ebm_patient = {"demo_no": None}
 
 
 def _ebm_prompt(section="Checks"):
-    """An EBM prompt edited in the Prompt window ("Checks" or "Shorten"); None (the default) when missing or empty."""
+    """An EBM prompt edited in the Prompt window ("Checks" or "Format"); None (the default) when missing or empty."""
     return ai_prompts.get_group_section(EBM_PROMPT, section).strip() or None
 
 
@@ -2005,14 +2005,15 @@ def generate_ebm_action_plan():
                 ebm.build_checks_prompt(rule_plan, chart, _ebm_prompt())))
             rules_stopped = any(str(e).startswith("TotalScore") for e in result.get("errors") or [])
             lines = ebm.rule_plan_lines(rule_plan)
-            shortened = None
-            if not ebm.fits(lines):
-                # Oscar keeps only 255 characters of APLAN: the LLM shortens the plan, checked in ebm.fit_plan
+            formatted = None
+            if lines:
+                # The LLM rewords the plan in the clinic's style (prompt: EBM -> Format); ebm.format_plan checks its
+                # reply and falls back to the rules' wording
                 try:
-                    shortened = send_text_to_chatgpt(ebm.build_shorten_prompt(lines, _ebm_prompt("Shorten")))
+                    formatted = send_text_to_chatgpt(ebm.build_format_prompt(lines, _ebm_prompt("Format")))
                 except Exception as e:
-                    print(f"[{EBM_PROMPT}] shortening failed ({type(e).__name__}); leaving out the last items")
-            plan, notes = ebm.fit_plan(lines, shortened)
+                    print(f"[{EBM_PROMPT}] rewording failed ({type(e).__name__}); using the rules' wording")
+            plan, notes = ebm.format_plan(lines, formatted)
             _ebm_patient["demo_no"] = str(demo_no)
             print(f"[{EBM_PROMPT}] {len(checks)} checks, plan {ebm.saved_length(chr(10).join(plan))} characters; "
                   "Populate saves the plan to APLAN without the [EBM] lines")
@@ -2033,9 +2034,6 @@ def save_ebm_action_plan():
     if not plan:
         messagebox.showwarning(EBM_PROMPT, "No action plan to save (lines starting with [EBM] are not saved).")
         return
-    # Oscar would cut it at 255 characters mid-sentence: leave out whole items instead (only after edits here)
-    plan_lines, left_out = ebm.fit_by_dropping(plan.splitlines())
-    plan = "\n".join(plan_lines)
     checked = _ebm_checks()
     if checked is None:
         return
@@ -2056,12 +2054,13 @@ def save_ebm_action_plan():
                 reason = f"the EBM form has no \"{result['missing']}\"" if result.get("missing") \
                     else "the EBM form did not finish saving"
                 return root.after(0, finish, f"{ebm.STATUS_PREFIX} Not saved: {reason}.\n\n{plan}")
+            too_long = ebm.saved_length(plan) > ebm.APLAN_MAX_CHARS
             status = "Action plan saved to APLAN." + (
-                f" {len(left_out)} item(s) left out to fit Oscar's {ebm.APLAN_MAX_CHARS} characters." if left_out else "")
+                f" It is longer than {ebm.APLAN_MAX_CHARS} characters, so Oscar kept only the start." if too_long else "")
             try:
                 rows = eform_selection_panel.db_conn.query_database(ebm.latest_aplan_query(demo_no))
                 saved = " ".join(str((rows or [{}])[0].get("dataField") or "").split())
-                if saved != " ".join(plan.split()):
+                if not saved or (saved != " ".join(plan.split()) and not (too_long and " ".join(plan.split()).startswith(saved))):
                     status += " The newest APLAN in the database does not match it yet; check the chart."
             except Exception as e:
                 status += f" (Could not check the database: {type(e).__name__}.)"

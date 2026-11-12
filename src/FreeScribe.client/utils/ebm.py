@@ -87,21 +87,25 @@ Each point is one sentence that names the chart finding it is based on (a value,
 write vague points such as "monitor ..." or "continue current medications". Do not write the patient's name.
 Reply with one point per line and nothing else. If there is nothing to check, reply with NONE."""
 
-SHORTEN_PROMPT = """Shorten this cardiology action plan to at most {MAX} characters in total (each line break counts
-as 2 characters).
-- Keep every item if you can and shorten its wording; common abbreviations (BP, LDL, f/u, mo, yr) are fine.
-- Keep each drug name, dose and time exactly. Do not add any test, drug, dose or time.
+FORMAT_PROMPT = """Rewrite this cardiology action plan in the clinic's style. Getting the content right comes first:
+every item of the plan must still be there with the same meaning, nothing wrong and nothing left out.
+- Keep every item. Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
 - Keep how strong each item is: "Consider" stays "Consider", "Recommend" stays "Recommend".
-- If it still does not fit, leave out the least important items.
-- One item per line, plain text, no bullets, no "We will".
+- Write the purpose of a test and the test as one item, joined with "with": "Assess <purpose> with <test> <time>",
+  e.g. "Assess exertional chest tightness with an echo at the next opportunity". Never split them with ";" or
+  write the test as a separate item.
+- One item per line, plain text, no bullets. Start each item with a verb such as "Assess", "Check", "Consider",
+  "Recommend" or "Start", never with "We will".
+- Use concise wording (BP, LDL, f/u, mo, yr are fine) and try to stay within {MAX} characters in total, but never
+  leave out an item or change its meaning to fit.
 
 PLAN:
 {PLAN}
 
-Reply with the shortened plan only."""
+Reply with the rewritten plan only."""
 
-# The editable prompts (Prompt window: EBM -> Checks / Shorten); these are the defaults.
-PROMPT_SECTIONS = {"Checks": CHECKS_PROMPT, "Shorten": SHORTEN_PROMPT}
+# The editable prompts (Prompt window: EBM -> Checks / Format); these are the defaults.
+PROMPT_SECTIONS = {"Checks": CHECKS_PROMPT, "Format": FORMAT_PROMPT}
 
 # Lines of the result box written by AI-Scribe itself (status and checks for the doctor), never saved to APLAN.
 STATUS_PREFIX = "[EBM]"
@@ -163,45 +167,38 @@ def fits(lines: list) -> bool:
     return saved_length("\n".join(lines)) <= APLAN_MAX_CHARS
 
 
-def build_shorten_prompt(lines: list, template: str | None = None) -> str:
-    return fill_prompt(template or SHORTEN_PROMPT, MAX=str(APLAN_MAX_CHARS), PLAN="\n".join(lines))
+def build_format_prompt(lines: list, template: str | None = None) -> str:
+    return fill_prompt(template or FORMAT_PROMPT, MAX=str(APLAN_MAX_CHARS), PLAN="\n".join(lines))
 
 
 def _numbers(text: str) -> set:
     return set(re.findall(r"\d+(?:\.\d+)?", text or ""))
 
 
-def fit_by_dropping(lines: list) -> tuple[list, list]:
-    """(kept, left out): the items in order while they fit in APLAN; a single first item too long on its own is
-    cut at a word."""
-    kept = []
-    for i, line in enumerate(lines):
-        if fits(kept + [line]):
-            kept.append(line)
-        elif not kept:
-            room = APLAN_MAX_CHARS - 1
-            kept.append(line[:room].rsplit(" ", 1)[0] + "\u2026")
-        else:
-            return kept, lines[i:]
-    return kept, []
+def length_note(plan_lines: list) -> list:
+    """A note for the doctor when the plan is longer than the 255 characters Oscar keeps of APLAN."""
+    length = saved_length("\n".join(plan_lines))
+    if length <= APLAN_MAX_CHARS:
+        return []
+    return [f"{CHECK_PREFIX} The plan is {length} characters; Oscar keeps only the first {APLAN_MAX_CHARS} of APLAN."]
 
 
-def fit_plan(lines: list, shortened_reply: str | None) -> tuple[list, list]:
-    """(plan lines that fit in APLAN, notes for the doctor). The LLM's shortened plan is used when it fits and has
-    no number (dose, time) the plan did not have; otherwise the last items are left out until the plan fits."""
-    if fits(lines):
-        return lines, []
-    before = saved_length("\n".join(lines))
-    short = [concise_line(" ".join(line.split()))
-             for line in clean_action_plan(shortened_reply or "").splitlines() if line.strip()]
-    if short and fits(short) and _numbers("\n".join(short)) <= _numbers("\n".join(lines)):
-        after = saved_length("\n".join(short))
-        return short, [f"{CHECK_PREFIX} Shortened from {before} to {after} characters to fit Oscar's "
-                       f"{APLAN_MAX_CHARS}-character limit; the full plan is below this line."] + \
-            [f"{CHECK_PREFIX} Full: {line}" for line in lines]
-    kept, dropped = fit_by_dropping(lines)
-    return kept, [f"{CHECK_PREFIX} Left out to fit Oscar's {APLAN_MAX_CHARS}-character limit: {line}"
-                  for line in dropped]
+def format_plan(lines: list, formatted_reply: str | None) -> tuple[list, list]:
+    """(plan lines, notes for the doctor). The LLM's rewording (FORMAT_PROMPT) is used when it has the same numbers
+    (doses, times) as the rules' plan, none new and none lost, with the rules' wording shown as notes; otherwise
+    the rules' wording is used. A note says when the plan is longer than Oscar keeps; nothing is left out."""
+    if not lines:
+        return [], []
+    formatted = [concise_line(" ".join(line.split()))
+                 for line in clean_action_plan(formatted_reply or "").splitlines() if line.strip()]
+    if formatted and _numbers("\n".join(formatted)) == _numbers("\n".join(lines)):
+        if formatted == lines:
+            return formatted, length_note(formatted)
+        return formatted, length_note(formatted) + [f"{CHECK_PREFIX} Reworded by the LLM; the rules' plan was:"] + \
+            [f"{CHECK_PREFIX} Rules: {line}" for line in lines]
+    notes = [f"{CHECK_PREFIX} The LLM's rewording changed a dose or time, so the rules' wording is shown."] \
+        if formatted else []
+    return lines, length_note(lines) + notes
 
 
 def rule_plan_lines(rule_plan: str) -> list:

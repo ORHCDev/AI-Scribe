@@ -812,16 +812,20 @@ EBM:
       Each point is one sentence that names the chart finding it is based on (a value, a date or a diagnosis). Never
       write vague points such as "monitor ..." or "continue current medications". Do not write the patient's name.
       Reply with one point per line and nothing else. If there is nothing to check, reply with NONE.
-    Shorten: |
-      Shorten this cardiology action plan to at most {MAX} characters in total (each line break counts
-      as 2 characters).
-      - Keep every item if you can and shorten its wording; common abbreviations (BP, LDL, f/u, mo, yr) are fine.
-      - Keep each drug name, dose and time exactly. Do not add any test, drug, dose or time.
+    Format: |
+      Rewrite this cardiology action plan in the clinic's style. Getting the content right comes first:
+      every item of the plan must still be there with the same meaning, nothing wrong and nothing left out.
+      - Keep every item. Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
       - Keep how strong each item is: "Consider" stays "Consider", "Recommend" stays "Recommend".
-      - If it still does not fit, leave out the least important items.
-      - One item per line, plain text, no bullets, no "We will".
+      - Write the purpose of a test and the test as one item, joined with "with": "Assess <purpose> with <test> <time>",
+        e.g. "Assess exertional chest tightness with an echo at the next opportunity". Never split them with ";" or
+        write the test as a separate item.
+      - One item per line, plain text, no bullets. Start each item with a verb such as "Assess", "Check", "Consider",
+        "Recommend" or "Start", never with "We will".
+      - Use concise wording (BP, LDL, f/u, mo, yr are fine) and try to stay within {MAX} characters in total, but never
+        leave out an item or change its meaning to fit.
 
       PLAN:
       {PLAN}
 
-      Reply with the shortened plan only.
+      Reply with the rewritten plan only.

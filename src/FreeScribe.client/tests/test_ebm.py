@@ -120,31 +120,28 @@ def test_saved_length_counts_line_breaks_as_two_characters():
 LONG = [f"Consider item number {i} of the plan, to be done in {i} months for the reasons in the chart." for i in range(1, 6)]
 
 
-def test_a_plan_that_fits_is_not_changed():
-    assert ebm.fit_plan(["Echo in 24 months."], "anything") == (["Echo in 24 months."], [])
+def test_a_long_plan_keeps_every_item_and_gets_a_note():
+    plan, notes = ebm.format_plan(LONG, None)
+    assert plan == LONG
+    assert notes == [f"{ebm.CHECK_PREFIX} The plan is {ebm.saved_length(chr(10).join(LONG))} characters; Oscar keeps "
+                     f"only the first {ebm.APLAN_MAX_CHARS} of APLAN."]
 
 
-def test_a_shortened_plan_that_fits_and_keeps_the_numbers_is_used():
-    short = "\n".join(f"Consider item {i} in {i} mo." for i in range(1, 6))
-    plan, notes = ebm.fit_plan(LONG, short)
-    assert plan == [f"Consider item {i} in {i} mo." for i in range(1, 6)] and ebm.fits(plan)
-    assert notes[0].startswith(f"{ebm.CHECK_PREFIX} Shortened from") and len(notes) == 1 + len(LONG)
+def test_a_rewording_with_the_same_numbers_is_used_even_if_long():
+    reworded = [line.replace("Consider item number", "Consider item no.") for line in LONG]
+    plan, notes = ebm.format_plan(LONG, "\n".join(reworded))
+    assert plan == reworded and notes[0].startswith(f"{ebm.CHECK_PREFIX} The plan is")
 
 
-@pytest.mark.parametrize("short", [
-    None, "", "Consider item 1 in 1 mo.\nStart Crestor 40 mg.",  # a dose the plan did not have
-    "\n".join(LONG)])  # still too long
-def test_otherwise_the_last_items_are_left_out(short):
-    plan, notes = ebm.fit_plan(LONG, short)
-    assert plan == LONG[:len(plan)] and ebm.fits(plan) and plan
-    assert [n.split("limit: ", 1)[1] for n in notes] == LONG[len(plan):]
+@pytest.mark.parametrize("reply", [
+    "Consider item 1 in 1 mo.\nStart Crestor 40 mg.",  # a new dose
+    "Consider item 1 in 1 mo.\nConsider item 2 in 2 mo."])  # items with their times left out
+def test_a_rewording_that_changes_numbers_is_not_used(reply):
+    plan, notes = ebm.format_plan(LONG, reply)
+    assert plan == LONG and any("changed a dose or time" in n for n in notes)
 
 
-def test_a_single_item_too_long_on_its_own_is_cut_at_a_word():
-    plan, dropped = ebm.fit_by_dropping(["word " * 80])
-    assert ebm.fits(plan) and plan[0].endswith("\u2026") and dropped == []
-
-
-def test_the_shorten_prompt_has_the_limit_and_the_plan():
-    prompt = ebm.build_shorten_prompt(["Echo in 24 months."])
-    assert "at most 255 characters" in prompt and "Echo in 24 months." in prompt
+def test_the_format_prompt_puts_content_first_and_has_the_with_rule():
+    prompt = ebm.build_format_prompt(["Echo in 24 months."])
+    assert "Getting the content right comes first" in prompt and "never" in prompt
+    assert '"Assess <purpose> with <test> <time>"' in prompt and "Echo in 24 months." in prompt
