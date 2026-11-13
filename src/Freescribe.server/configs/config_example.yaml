@@ -8,6 +8,12 @@ WHISPER_DEVICE: auto
 # to pyannote/speaker-diarization-community-1 accepted (needs pyannote.audio 4.x).
 WHISPER_DIARIZATION_MODEL: pyannote/speaker-diarization-community-1
 WHISPER_HF_TOKEN: hf_token
+# Optional speaker-count hints. min/max amounts also available below. Leave all unset
+# to let pyannote estimate the count automatically.
+DIARIZATION_NUM_SPEAKERS: 2
+# DIARIZATION_MIN_SPEAKERS: 1
+# DIARIZATION_MAX_SPEAKERS: 2
+
 # Windows only: directory containing the FFmpeg shared DLLs (avcodec-*.dll, ...)
 # required by torchcodec/pyannote. Python 3.8+ does not search PATH for these.
 FFMPEG_DLL_DIR: 'C:\path\to\ffmpeg\bin'

@@ -36,6 +36,9 @@ WHISPER_MODEL = config.get("WHISPER_MODEL", "medium")
 WHISPER_DEVICE = config.get("WHISPER_DEVICE", "auto")
 WHISPER_HF_TOKEN = config.get("WHISPER_HF_TOKEN")
 DIARIZATION_MODEL = config.get("WHISPER_DIARIZATION_MODEL", DEFAULT_DIARIZATION_MODEL)
+DIARIZATION_NUM_SPEAKERS = config.get("DIARIZATION_NUM_SPEAKERS")
+DIARIZATION_MIN_SPEAKERS = config.get("DIARIZATION_MIN_SPEAKERS")
+DIARIZATION_MAX_SPEAKERS = config.get("DIARIZATION_MAX_SPEAKERS")
 
 # Initialize Whisper model
 print(f"Loading Whisper model '{WHISPER_MODEL}' on device '{WHISPER_DEVICE}'...")
@@ -84,9 +87,33 @@ def extract_turns(diarization) -> list[tuple[float, float, str]]:
              for turn, _, label in annotation.itertracks(yield_label=True)]
     return sorted(turns)
 
+def _diarization_hints() -> dict[str, int]:
+    try:
+        if DIARIZATION_NUM_SPEAKERS is not None:
+            return {"num_speakers": int(DIARIZATION_NUM_SPEAKERS)}
+        hints: dict[str, int] = {}
+        if DIARIZATION_MIN_SPEAKERS is not None:
+            hints["min_speakers"] = int(DIARIZATION_MIN_SPEAKERS)
+        if DIARIZATION_MAX_SPEAKERS is not None:
+            hints["max_speakers"] = int(DIARIZATION_MAX_SPEAKERS)
+        return hints
+    except (TypeError, ValueError):
+        logger.warning(
+            "Ignoring invalid diarization speaker-count config "
+            "(DIARIZATION_NUM_SPEAKERS=%r, DIARIZATION_MIN_SPEAKERS=%r, DIARIZATION_MAX_SPEAKERS=%r)",
+            DIARIZATION_NUM_SPEAKERS, DIARIZATION_MIN_SPEAKERS, DIARIZATION_MAX_SPEAKERS)
+        return {}
+
 def _diarize(audio_path: str) -> list[tuple[float, float, str]]:
+    hints = _diarization_hints()
     with DIARIZE_LOCK:
-        return extract_turns(diarize_pipeline(audio_path))
+        try:
+            return extract_turns(diarize_pipeline(audio_path, **hints))
+        except TypeError:
+            if not hints:
+                raise
+            logger.warning("Diarization pipeline rejected speaker-count hints %s; retrying without them", hints)
+            return extract_turns(diarize_pipeline(audio_path))
 
 def assign_speakers_to_segments(segments: list[dict], turns: list[tuple[float, float, str]]) -> list[dict]:
     # Label each Whisper segment with its most likely pyannote speaker
