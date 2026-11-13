@@ -761,3 +761,27 @@ def test_edited_requisition_rules_reach_the_llm(fake_llm):
         return json.dumps({"medication": [], "labs": {"required": False}})
     med_eform.analyze_plan_for_eforms("Echo in 1 year.", llm, requisition_rules="MY RULES")
     assert "MY RULES" in seen[0]
+
+
+# --- requisition: month-only dates, tests now, reasons from the ASSESSMENT ------------------------
+
+@pytest.mark.parametrize("value,expected", [
+    ("next August", date(2027, 8, 1)), ("in August", date(2027, 8, 1)), ("August 2027", date(2027, 8, 1)),
+    ("Aug.", date(2027, 8, 1)), ("next March", date(2027, 3, 1)), ("December", date(2026, 12, 1)),
+    ("November", date(2026, 11, 12)), ("2026-11-12", date(2026, 11, 12)), ("next August 15", date(2027, 8, 15))])
+def test_month_only_and_today_dates(value, expected):
+    assert med_eform.normalize_requisition_date(value, today=date(2026, 11, 12)) == expected
+
+
+def test_zero_period_means_now():
+    assert med_eform.normalize_period("0d") == "0d"
+    assert req({"period": "0d", "holter": "48h"}, "I ordered a Holter monitor today.")["requisition_period"] == "0d"
+
+
+@pytest.mark.parametrize("plan,expected", [
+    ("Follow up with repeat echocardiogram next August to monitor aortic root dilation.", date(2027, 8, 1)),
+    ("We will bring him back in August 2027 for an echo.", date(2027, 8, 1)),
+    ("Chest pain in July has resolved. No further testing.", None),
+    ("Continue weight loss.", None)])
+def test_plan_month_is_used_when_the_model_gives_no_date(plan, expected):
+    assert med_eform.plan_month_date(plan, today=date(2026, 11, 12)) == expected

@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import os
 import shutil
 import yaml
@@ -198,21 +199,29 @@ class PromptsWindow():
         self.save_yaml()
 
 
-    def _read_default_group(self, group):
-        """Returns the Sections of the given section group from the default yaml file, if available."""
+    def _read_default_group(self, group, part="Sections"):
+        """Returns the Sections (or the Previous default hashes) of a section group from the default yaml file."""
         if not os.path.exists(self.default_path):
             return {}
         try:
             with open(self.default_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-            return (data.get(SECTION_GROUPS[group]) or {}).get("Sections") or {}
+            return (data.get(SECTION_GROUPS[group]) or {}).get(part) or {}
         except Exception as e:
             print(f"Unable to read default {group} prompts: {e}")
             return {}
 
 
+    @staticmethod
+    def _hash(text):
+        return hashlib.md5(str(text or "").strip().encode("utf-8")).hexdigest()
+
+
     def _load_section_groups(self):
-        """Loads each section group, filling in any section that is missing from the defaults."""
+        """Loads each section group, filling in any section that is missing from the defaults. A section still
+        holding an earlier default (never edited: its text matches the default it was given, kept in
+        "DefaultHashes", or one listed under "Previous" in the default yaml) is updated to the new default;
+        an edited section is kept as it is."""
         changed = False
         for group, key in SECTION_GROUPS.items():
             current = self.data.get(key)
@@ -220,9 +229,17 @@ class PromptsWindow():
                 current = {"Sections": {}}
                 self.data[key] = current
                 changed = True
+            given = current.setdefault("DefaultHashes", {})
+            previous = self._read_default_group(group, "Previous")
             for name, text in self._read_default_group(group).items():
-                if name not in current["Sections"]:
+                saved = current["Sections"].get(name)
+                unedited = saved is not None and (self._hash(saved) == given.get(name)
+                                                  or self._hash(saved) in (previous.get(name) or []))
+                if saved is None or (unedited and self._hash(saved) != self._hash(text)):
                     current["Sections"][name] = text
+                    changed = True
+                if self._hash(current["Sections"][name]) == self._hash(text) and given.get(name) != self._hash(text):
+                    given[name] = self._hash(text)
                     changed = True
             self.section_groups[group] = current
         if changed:
@@ -255,6 +272,7 @@ class PromptsWindow():
         defaults = self._read_default_group(group)
         if section in defaults:
             self.cache_group_section(group, section, defaults[section])
+            self.section_groups[group].setdefault("DefaultHashes", {})[section] = self._hash(defaults[section])
             self.save_group(group)
         else:
             print(f"{section} is not in default {group} prompts")
@@ -265,7 +283,8 @@ class PromptsWindow():
         for group, key in SECTION_GROUPS.items():
             defaults = self._read_default_group(group)
             if defaults:
-                self.section_groups[group] = {"Sections": copy.deepcopy(defaults)}
+                self.section_groups[group] = {"Sections": copy.deepcopy(defaults),
+                                              "DefaultHashes": {n: self._hash(t) for n, t in defaults.items()}}
                 self.data[key] = self.section_groups[group]
         self.save_yaml()
 

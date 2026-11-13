@@ -143,8 +143,8 @@ def clean_med_changes(raw) -> list[dict]:
 # The requisition part of build_med_prompt, editable in the Prompt window (prompts/default_prompts.yaml,
 # Requisition_Generation). This is the default, used when it is missing or empty there.
 REQUISITION_RULES_PROMPT = """"requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic visit. For example, if the plan states "I'm gonna bring the patient back in 1 year for an echocardiogram", then "requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations or diagnostics are required, then simply have "period" be null.
-If the plan gives a calendar date for the next visit or for these tests (e.g. "see in clinic on January 27, 2027"), set "date" to that date as "YYYY-MM-DD"; otherwise "date" is null. A date of a past test or visit is not a "date".
-The period will usually be 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
+If the plan gives a date or a month for the next visit or for these tests, copy it into "date" as the plan writes it (e.g. "January 27, 2027", "next August", "in August 2027"); otherwise "date" is null. A date of a past test or visit is not a "date".
+When the plan gives no time at all, the period is usually 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
 Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, or to be done at/before the next visit). Tests that were done today or before this visit, results that are reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. "I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to arrange a stress test").
 "consult" refers to a cardiology consultation, and should be true if and only if one is desired for our clinic, not a referral elsewhere to a different doctor. If the PLAN indicates a desire for a consultation, but said consultation is not explicitly stated to be with a cardiologist, then "consult" MUST be false.
 "ecg" refers to an electrocardiogram, and should be true if and only if one is desired.
@@ -347,7 +347,7 @@ def plan_holter_period(plan: str | None) -> str | None:
 
 
 _PERIOD_UNITS = (("d", r"days?|d"), ("w", r"weeks?|wks?|w"), ("m", r"months?|mos?|m"), ("y", r"years?|yrs?|y"))
-_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+_NUMBER_WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
                  "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "a": 1, "an": 1}
 
 
@@ -360,20 +360,66 @@ def normalize_period(value) -> str | None:
         return None
     amount = int(match.group(1)) if match.group(1).isdigit() else _NUMBER_WORDS.get(match.group(1))
     unit = next((u for u, pattern in _PERIOD_UNITS if re.fullmatch(pattern, match.group(2))), None)
-    return f"{amount}{unit}" if amount and unit else None
+    return f"{amount}{unit}" if amount is not None and unit else None
+
+
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
+           "november", "december")
+_MONTH_PATTERN = r"\b(" + "|".join(m[:3] + r"(?:" + m[3:] + r")?" for m in _MONTHS) + r")\.?\b"
+
+
+def _month_only_date(text: str, today: date) -> date | None:
+    """"next August" / "in August" / "August 2027" (a month, no day) as the 1st of that month: in the year given,
+    else its next occurrence (this month is today)."""
+    match = re.search(_MONTH_PATTERN, text, re.IGNORECASE)
+    if not match or re.search(r"\b\d{1,2}(st|nd|rd|th)?\b", text):
+        return None
+    month = next(i for i, m in enumerate(_MONTHS, 1) if m.startswith(match.group(1).lower()[:3]))
+    year = re.search(r"\b(20\d{2})\b", text)
+    if year:
+        return date(int(year.group(1)), month, 1)
+    if month == today.month:
+        return today
+    return date(today.year + (month < today.month), month, 1)
+
+
+def plan_month_date(plan: str | None, today: date | None = None) -> date | None:
+    """A month the PLAN books the next visit / tests for ("next August", "in August 2027"), when the model gave no
+    usable date: the first such month in a sentence about a follow-up or a test, as in _month_only_date."""
+    today = today or date.today()
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n+", str(plan or "")):
+        if not re.search(r"\b(back|follow\w*|f/u|see|book\w*|repeat\w*|recheck|echo\w*|ecg|holter|stress|test\w*|"
+                         r"visit|appointment)\b", sentence, re.IGNORECASE):
+            continue
+        for match in re.finditer(r"\b(?:next|in|by|this coming)\s+" + _MONTH_PATTERN + r"(?:\s+(20\d{2}))?",
+                                 sentence, re.IGNORECASE):
+            found = _month_only_date(match.group(0), today)
+            if found and found >= today:
+                return found
+    return None
 
 
 def normalize_requisition_date(value, today: date | None = None) -> date | None:
-    """The model's "date" as a date after today ("2027-01-27", "January 27, 2027"), None otherwise."""
+    """The model's "date" as a date from today on ("2027-01-27", "January 27, 2027", "next August"), None otherwise."""
     if not value or not str(value).strip():
         return None
-    try:
-        parsed = date_parser.parse(str(value).strip()).date()
-    except (ValueError, OverflowError):
-        print(f'[requisition eForm] date "{value}" could not be read; using the period instead')
-        return None
-    if parsed <= (today or date.today()):
-        print(f"[requisition eForm] date {parsed} is not in the future; using the period instead")
+    today = today or date.today()
+    text = str(value).strip()
+    parsed = _month_only_date(text, today)
+    if parsed is None:
+        try:
+            parsed = date_parser.parse(re.sub(r"^(next|in|on|by)\s+", "", text, flags=re.IGNORECASE)).date()
+        except (ValueError, OverflowError):
+            print(f'[requisition eForm] date "{value}" could not be read; using the period instead')
+            return None
+    if parsed < today and not re.search(r"\b\d{4}\b", text):
+        # "August 15" with no year is the next August 15
+        try:
+            parsed = parsed.replace(year=parsed.year + 1)
+        except ValueError:
+            parsed = parsed.replace(year=parsed.year + 1, day=28)
+    if parsed < today:
+        print(f"[requisition eForm] date {parsed} is in the past; using the period instead")
         return None
     return parsed
 
@@ -463,7 +509,7 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     return {
         "requisition": bool(diagnostics),
         "requisition_period": period,
-        "requisition_date": normalize_requisition_date(raw.get("date")),
+        "requisition_date": normalize_requisition_date(raw.get("date")) or plan_month_date(plan),
         "requisition_period_reason": strip_time_text(raw.get("period_reason")),
         "requisition_diagnostics": diagnostics,
         "requisition_indications": indications,
