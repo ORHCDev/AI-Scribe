@@ -792,6 +792,10 @@ Requisition_Generation:
       "indications" gives, for each test set to true above (ecg, echo, stecho, est, holter), a brief clinical reason for that test taken from the plan (e.g. "reassess LV function after MI", "palpitations"). Use only what the plan says, without any time, period or date; leave a test out of "indications" if the plan gives no reason for it. Do not invent one.
 
 EBM:
+  # Hashes of earlier defaults: a saved section still equal to one of them is updated to the new default.
+  Previous:
+    Checks: ["4d82b1902cf63cd5169f6887a33cc4cc"]
+    Format: ["6daa8f515e315547ed57342882e684b0"]
   Sections:
     Checks: |
       You are a cardiologist checking the action plan the clinic's EBM rules produced for a patient against
@@ -803,25 +807,34 @@ EBM:
       PATIENT CHART (fields of the EBM form; "Pertinent Negatives" lists what the patient does not have):
       {CHART}
 
-      List up to 5 points the doctor should check before saving the plan, most important first:
-      - a problem in the chart the plan does not address (e.g. a test that is due, an untreated condition);
+      List at most 3 points, and only points that would change what the doctor does, most important first:
+      - a problem in the chart the plan does not address (e.g. atrial fibrillation with no anticoagulant in the
+        medications, a test that is due, an untreated condition);
       - a safety concern with the plan or the current medications (e.g. a slow heart rate on a beta-blocker, an allergy
         to a recommended drug, an abnormal lab value);
-      - items of the plan that conflict with or repeat each other;
       - missing or old chart data that an item of the plan depends on.
-      Each point is one sentence that names the chart finding it is based on (a value, a date or a diagnosis). Never
-      write vague points such as "monitor ..." or "continue current medications". Do not write the patient's name.
-      Reply with one point per line and nothing else. If there is nothing to check, reply with NONE.
+      Items of the plan that repeat or conflict with each other are handled when the plan is written: do not list them.
+      Each point is one sentence that names where in the chart it comes from: the field and its value or date, e.g.
+      "Atrial fibrillation on the last Holter (2025-03-14), but no anticoagulant in Current Medications". Only flag a
+      value as abnormal if it is outside the normal range. Fewer points are better than doubtful ones: leave out anything
+      you are not sure of. Never write vague points such as "monitor ..." or "continue current medications". Do not write
+      the patient's name.
+      Reply with one point per line and nothing else. If there is nothing worth checking, reply with NONE.
     Format: |
       Rewrite this cardiology action plan in the clinic's style. Getting the content right comes first:
       every item of the plan must still be there with the same meaning, nothing wrong and nothing left out.
-      - Keep every item. Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
+      - Keep every item, except that two items asking for the same thing become one, and of two items that conflict
+        (e.g. two different ischemia tests) keep the one that fits better. Leave out nothing else.
+      - Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
+      - Keep the name of every test: "s echo" means stress echo, so write "stress echo". Never turn one test into
+        another (e.g. a stress echo into an echo, or a stress test into a stress echo).
       - Keep how strong each item is: "Consider" stays "Consider", "Recommend" stays "Recommend".
       - Write the purpose of a test and the test as one item, joined with "with": "Assess <purpose> with <test> <time>",
         e.g. "Assess exertional chest tightness with an echo at the next opportunity". Never split them with ";" or
         write the test as a separate item.
-      - One item per line, plain text, no bullets. Start each item with a verb such as "Assess", "Check", "Consider",
-        "Recommend" or "Start", never with "We will".
+      - One item per line, plain text, no bullets. Start each item that asks for something with a verb such as "Assess",
+        "Check", "Consider", "Recommend" or "Start", never with "We will". An item that states a finding or a risk
+        (e.g. "High risk of heart failure with preserved ejection fraction") stays a statement; do not add "Assess".
       - Use concise wording (BP, LDL, f/u, mo, yr are fine) and try to stay within {MAX} characters in total, but never
         leave out an item or change its meaning to fit.
 

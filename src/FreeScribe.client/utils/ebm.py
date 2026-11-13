@@ -77,25 +77,34 @@ RULE-BASED ACTION PLAN:
 PATIENT CHART (fields of the EBM form; "Pertinent Negatives" lists what the patient does not have):
 {CHART}
 
-List up to 5 points the doctor should check before saving the plan, most important first:
-- a problem in the chart the plan does not address (e.g. a test that is due, an untreated condition);
+List at most 3 points, and only points that would change what the doctor does, most important first:
+- a problem in the chart the plan does not address (e.g. atrial fibrillation with no anticoagulant in the
+  medications, a test that is due, an untreated condition);
 - a safety concern with the plan or the current medications (e.g. a slow heart rate on a beta-blocker, an allergy
   to a recommended drug, an abnormal lab value);
-- items of the plan that conflict with or repeat each other;
 - missing or old chart data that an item of the plan depends on.
-Each point is one sentence that names the chart finding it is based on (a value, a date or a diagnosis). Never
-write vague points such as "monitor ..." or "continue current medications". Do not write the patient's name.
-Reply with one point per line and nothing else. If there is nothing to check, reply with NONE."""
+Items of the plan that repeat or conflict with each other are handled when the plan is written: do not list them.
+Each point is one sentence that names where in the chart it comes from: the field and its value or date, e.g.
+"Atrial fibrillation on the last Holter (2025-03-14), but no anticoagulant in Current Medications". Only flag a
+value as abnormal if it is outside the normal range. Fewer points are better than doubtful ones: leave out anything
+you are not sure of. Never write vague points such as "monitor ..." or "continue current medications". Do not write
+the patient's name.
+Reply with one point per line and nothing else. If there is nothing worth checking, reply with NONE."""
 
 FORMAT_PROMPT = """Rewrite this cardiology action plan in the clinic's style. Getting the content right comes first:
 every item of the plan must still be there with the same meaning, nothing wrong and nothing left out.
-- Keep every item. Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
+- Keep every item, except that two items asking for the same thing become one, and of two items that conflict
+  (e.g. two different ischemia tests) keep the one that fits better. Leave out nothing else.
+- Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
+- Keep the name of every test: "s echo" means stress echo, so write "stress echo". Never turn one test into
+  another (e.g. a stress echo into an echo, or a stress test into a stress echo).
 - Keep how strong each item is: "Consider" stays "Consider", "Recommend" stays "Recommend".
 - Write the purpose of a test and the test as one item, joined with "with": "Assess <purpose> with <test> <time>",
   e.g. "Assess exertional chest tightness with an echo at the next opportunity". Never split them with ";" or
   write the test as a separate item.
-- One item per line, plain text, no bullets. Start each item with a verb such as "Assess", "Check", "Consider",
-  "Recommend" or "Start", never with "We will".
+- One item per line, plain text, no bullets. Start each item that asks for something with a verb such as "Assess",
+  "Check", "Consider", "Recommend" or "Start", never with "We will". An item that states a finding or a risk
+  (e.g. "High risk of heart failure with preserved ejection fraction") stays a statement; do not add "Assess".
 - Use concise wording (BP, LDL, f/u, mo, yr are fine) and try to stay within {MAX} characters in total, but never
   leave out an item or change its meaning to fit.
 
@@ -110,7 +119,7 @@ PROMPT_SECTIONS = {"Checks": CHECKS_PROMPT, "Format": FORMAT_PROMPT}
 # Lines of the result box written by AI-Scribe itself (status and checks for the doctor), never saved to APLAN.
 STATUS_PREFIX = "[EBM]"
 CHECK_PREFIX = f"{STATUS_PREFIX} Check:"
-MAX_CHECKS = 5
+MAX_CHECKS = 3
 RULES_STOPPED_CHECK = (f"{CHECK_PREFIX} The EBM rules stopped early because of an error in the EBM form; "
                        "some items may be missing.")
 NO_RULE_PLAN_CHECK = f"{CHECK_PREFIX} The EBM rules gave no action plan."
@@ -175,6 +184,23 @@ def _numbers(text: str) -> set:
     return set(re.findall(r"\d+(?:\.\d+)?", text or ""))
 
 
+# Tests named in a plan, so a rewording that turns one test into another (e.g. "s echo" into "echo") is caught.
+# Stress echo is matched (and removed) first, so its "echo" and "stress" are not counted again.
+_STRESS_ECHO = r"\b(?:s\.?\s?echo\w*|stress[\s-]*echo\w*)"
+_TESTS = {"echo": r"\b(?:echo\w*|tte)\b", "ecg": r"\b(?:ecg|ekg|electrocardiog\w*)\b", "holter": r"\bholter\b",
+          "stress test": r"\b(?:stress[\s-]*test\w*|treadmill|exercise[\s-]*test\w*|est)\b",
+          "mibi": r"\b(?:mibi|sestamibi|persantine|nuclear|myocardial perfusion)\b",
+          "ct": r"\b(?:ct|cta|calcium scor\w*)\b", "mri": r"\b(?:mri|cmr|cardiac magnetic)\b",
+          "pyrophosphate": r"\bpyrophosphate\b"}
+
+
+def _tests(text: str) -> set:
+    text = (text or "").lower()
+    found = {"stress echo"} if re.search(_STRESS_ECHO, text) else set()
+    text = re.sub(_STRESS_ECHO, " ", text)
+    return found | {test for test, pattern in _TESTS.items() if re.search(pattern, text)}
+
+
 def length_note(plan_lines: list) -> list:
     """A note for the doctor when the plan is longer than the 255 characters Oscar keeps of APLAN."""
     length = saved_length("\n".join(plan_lines))
@@ -184,21 +210,19 @@ def length_note(plan_lines: list) -> list:
 
 
 def format_plan(lines: list, formatted_reply: str | None) -> tuple[list, list]:
-    """(plan lines, notes for the doctor). The LLM's rewording (FORMAT_PROMPT) is used when it has the same numbers
-    (doses, times) as the rules' plan, none new and none lost, with the rules' wording shown as notes; otherwise
-    the rules' wording is used. A note says when the plan is longer than Oscar keeps; nothing is left out."""
+    """(plan lines, notes for the doctor). The LLM's rewording (FORMAT_PROMPT) is used when it has no number (dose,
+    time) and no test the rules' plan did not have (it may drop a repeated or conflicting item); otherwise the rules'
+    wording is used. The only note is one saying the plan is longer than Oscar keeps."""
     if not lines:
         return [], []
     formatted = [concise_line(" ".join(line.split()))
                  for line in clean_action_plan(formatted_reply or "").splitlines() if line.strip()]
-    if formatted and _numbers("\n".join(formatted)) == _numbers("\n".join(lines)):
-        if formatted == lines:
-            return formatted, length_note(formatted)
-        return formatted, length_note(formatted) + [f"{CHECK_PREFIX} Reworded by the LLM; the rules' plan was:"] + \
-            [f"{CHECK_PREFIX} Rules: {line}" for line in lines]
-    notes = [f"{CHECK_PREFIX} The LLM's rewording changed a dose or time, so the rules' wording is shown."] \
-        if formatted else []
-    return lines, length_note(lines) + notes
+    new, old = "\n".join(formatted), "\n".join(lines)
+    if formatted and _numbers(new) <= _numbers(old) and _tests(new) <= _tests(old):
+        return formatted, length_note(formatted)
+    if formatted:
+        print("[EBM] the LLM's rewording added a dose, time or test; using the rules' wording")
+    return lines, length_note(lines)
 
 
 def rule_plan_lines(rule_plan: str) -> list:
@@ -222,11 +246,16 @@ def checks_from_reply(text: str) -> list:
     return checks[:MAX_CHECKS]
 
 
-def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = ()) -> str:
-    """The result box: the checks and notes for the doctor first, then the plan that Populate saves."""
+ORIGINAL_HEADER = f"{STATUS_PREFIX} ───── Rules' original wording (for comparison, not saved) ─────"
+
+
+def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = (), original: list = ()) -> str:
+    """The result box: the checks and notes for the doctor first, then the plan that Populate saves, then the rules'
+    original wording when the LLM reworded it (every [EBM] line is left out by Populate)."""
     top = (([RULES_STOPPED_CHECK] if rules_stopped else []) + list(checks) + list(notes)
            + ([] if plan else [NO_RULE_PLAN_CHECK]))
-    return "\n".join(top + ([""] if top and plan else []) + plan)
+    bottom = [ORIGINAL_HEADER] + [f"{STATUS_PREFIX}   {line}" for line in original] if original and plan != list(original) else []
+    return "\n".join(top + ([""] if top and plan else []) + plan + ([""] if bottom else []) + bottom)
 
 
 def plan_from_result_box(text: str) -> str:

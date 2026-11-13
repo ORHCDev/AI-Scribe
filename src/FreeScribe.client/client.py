@@ -2017,7 +2017,8 @@ def generate_ebm_action_plan():
             _ebm_patient["demo_no"] = str(demo_no)
             print(f"[{EBM_PROMPT}] {len(checks)} checks, plan {ebm.saved_length(chr(10).join(plan))} characters; "
                   "Populate saves the plan to APLAN without the [EBM] lines")
-            root.after(0, display_text, ebm.result_text(plan, checks, rules_stopped, notes))
+            # The rules' own wording goes below the plan, for comparison, when the LLM reworded it
+            root.after(0, display_text, ebm.result_text(plan, checks, rules_stopped, notes, original=lines))
         except Exception as e:
             root.after(0, finish, f"{ebm.STATUS_PREFIX} Action plan failed ({type(e).__name__}): {e}")
 

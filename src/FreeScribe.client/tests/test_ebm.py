@@ -135,13 +135,69 @@ def test_a_rewording_with_the_same_numbers_is_used_even_if_long():
 
 @pytest.mark.parametrize("reply", [
     "Consider item 1 in 1 mo.\nStart Crestor 40 mg.",  # a new dose
-    "Consider item 1 in 1 mo.\nConsider item 2 in 2 mo."])  # items with their times left out
-def test_a_rewording_that_changes_numbers_is_not_used(reply):
+    "Consider item 1 in 1 mo with an echo."])  # a new test
+def test_a_rewording_that_adds_a_number_or_a_test_is_not_used(reply):
     plan, notes = ebm.format_plan(LONG, reply)
-    assert plan == LONG and any("changed a dose or time" in n for n in notes)
+    assert plan == LONG and len(notes) == 1 and notes[0].startswith(f"{ebm.CHECK_PREFIX} The plan is")
 
 
 def test_the_format_prompt_puts_content_first_and_has_the_with_rule():
     prompt = ebm.build_format_prompt(["Echo in 24 months."])
     assert "Getting the content right comes first" in prompt and "never" in prompt
     assert '"Assess <purpose> with <test> <time>"' in prompt and "Echo in 24 months." in prompt
+
+
+def test_a_reworded_plan_is_used_without_extra_notes():
+    plan, notes = ebm.format_plan(["Assess exertional chest tightness; do an echo at the next opportunity."],
+                                  "Assess exertional chest tightness with an echo at the next opportunity.")
+    assert plan == ["Assess exertional chest tightness with an echo at the next opportunity."] and notes == []
+
+
+def test_checks_are_capped_at_three():
+    assert ebm.MAX_CHECKS == 3 and "at most 3 points" in ebm.CHECKS_PROMPT
+
+
+def test_the_rules_wording_goes_below_the_plan_only_when_reworded():
+    text = ebm.result_text(["Assess chest tightness with an echo."], [f"{ebm.CHECK_PREFIX} HR 51."], False,
+                           original=["We will assess chest tightness; do an echo."])
+    lines = text.splitlines()
+    assert lines[:3] == [f"{ebm.CHECK_PREFIX} HR 51.", "", "Assess chest tightness with an echo."]
+    assert lines[4:] == [ebm.ORIGINAL_HEADER, f"{ebm.STATUS_PREFIX}   We will assess chest tightness; do an echo."]
+    assert ebm.plan_from_result_box(text) == "Assess chest tightness with an echo."
+    same = ebm.result_text(["Echo in 24 months."], [], False, original=["Echo in 24 months."])
+    assert ebm.ORIGINAL_HEADER not in same
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("assess ASCVD risk - s echo in the coming months.", {"stress echo"}),
+    ("Assess ASCVD risk with a stress echo in the coming months.", {"stress echo"}),
+    ("Assess AS with an echo and a 72 hour Holter study.", {"echo", "holter"}),
+    ("Assess with persantine sestamibi scan; stress test in 24 months.", {"mibi", "stress test"}),
+    ("Check blood work for renal function.", set())])
+def test_tests_named_in_a_plan(text, expected):
+    assert ebm._tests(text) == expected
+
+
+def test_a_rewording_that_turns_a_stress_echo_into_an_echo_is_not_used():
+    lines = ["assess ASCVD risk - s echo in the coming months."]
+    plan, _ = ebm.format_plan(lines, "Assess ASCVD risk with an echo in the coming months.")
+    assert plan == lines
+    plan, _ = ebm.format_plan(lines, "Assess ASCVD risk with a stress echo in the coming months.")
+    assert plan == ["Assess ASCVD risk with a stress echo in the coming months."]
+
+
+def test_the_format_prompt_keeps_test_names_and_statements():
+    assert '"s echo" means stress echo' in ebm.FORMAT_PROMPT and "stays a statement" in ebm.FORMAT_PROMPT
+
+
+def test_checks_name_their_chart_source_and_leave_repeats_to_the_plan():
+    assert "a problem in the chart the plan does not address" in ebm.CHECKS_PROMPT
+    assert "names where in the chart it comes from" in ebm.CHECKS_PROMPT
+    assert "repeat or conflict with each other are handled when the plan is written" in ebm.CHECKS_PROMPT
+    assert "two items asking for the same thing become one" in ebm.FORMAT_PROMPT
+
+
+def test_a_rewording_may_drop_a_repeated_test():
+    lines = ["Assess with a stress test in 24 months.", "Assess with a persantine sestamibi scan in 24 months."]
+    plan, _ = ebm.format_plan(lines, "Assess with a persantine sestamibi scan in 24 months.")
+    assert plan == ["Assess with a persantine sestamibi scan in 24 months."]
