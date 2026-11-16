@@ -83,6 +83,12 @@ List at most 3 points, and only points that would change what the doctor does, m
 - a safety concern with the plan or the current medications (e.g. a slow heart rate on a beta-blocker, an allergy
   to a recommended drug, an abnormal lab value);
 - missing or old chart data that an item of the plan depends on.
+Each point must say what is missing or wrong, so the doctor knows what to do, e.g. "Lp(a) 296 and premature CAD in
+the family, but no lipid-lowering treatment in the plan or the medications". A point that only describes the chart
+is not a point.
+Do not list normal results, or a test or treatment the plan already asks for.
+Write one point per problem: two findings about the same problem (e.g. a positive stress test and ischemia on a stress
+echo) are one point.
 Items of the plan that repeat or conflict with each other are handled when the plan is written: do not list them.
 Start each point with the names of the chart fields it comes from in square brackets, separated by ";" and
 written exactly as they appear before the ":" in the chart, then one sentence that gives their value or date, e.g.

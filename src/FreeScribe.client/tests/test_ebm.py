@@ -217,3 +217,9 @@ def test_a_rewording_may_drop_a_repeated_test():
 
 def test_format_prompt_does_not_add_a_missing_purpose():
     assert "If an item gives no purpose, do not add one" in ebm.FORMAT_PROMPT
+
+
+def test_checks_prompt_asks_for_actionable_single_points():
+    assert "Each point must say what is missing or wrong" in ebm.CHECKS_PROMPT
+    assert "Do not list normal results, or a test or treatment the plan already asks for" in ebm.CHECKS_PROMPT
+    assert "Write one point per problem" in ebm.CHECKS_PROMPT
