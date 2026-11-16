@@ -9,7 +9,7 @@ import re
 
 from utils.referral_requisition import fill_prompt
 
-EBM_FORM_FID = 719
+EBM_FORM_FID = 757
 EBM_FORM_NAME = "0.1EBMp"
 
 # Fields of the EBM form not sent to the LLM: identifiers, the billing helper, and earlier plans (PLAN, MPLAN,
@@ -84,8 +84,10 @@ List at most 3 points, and only points that would change what the doctor does, m
   to a recommended drug, an abnormal lab value);
 - missing or old chart data that an item of the plan depends on.
 Items of the plan that repeat or conflict with each other are handled when the plan is written: do not list them.
-Each point is one sentence that names where in the chart it comes from: the field and its value or date, e.g.
-"Atrial fibrillation on the last Holter (2025-03-14), but no anticoagulant in Current Medications". Only flag a
+Start each point with the names of the chart fields it comes from in square brackets, separated by ";" and
+written exactly as they appear before the ":" in the chart, then one sentence that gives their value or date, e.g.
+"[Last Holter; Current Medications] Atrial fibrillation on the last Holter (2025-03-14), but no anticoagulant in
+the medications". Only flag a
 value as abnormal if it is outside the normal range. Fewer points are better than doubtful ones: leave out anything
 you are not sure of. Never write vague points such as "monitor ..." or "continue current medications". Do not write
 the patient's name.
@@ -99,9 +101,11 @@ every item of the plan must still be there with the same meaning, nothing wrong 
 - Keep the name of every test: "s echo" means stress echo, so write "stress echo". Never turn one test into
   another (e.g. a stress echo into an echo, or a stress test into a stress echo).
 - Keep how strong each item is: "Consider" stays "Consider", "Recommend" stays "Recommend".
-- Write the purpose of a test and the test as one item, joined with "with": "Assess <purpose> with <test> <time>",
-  e.g. "Assess exertional chest tightness with an echo at the next opportunity". Never split them with ";" or
-  write the test as a separate item.
+- When an item gives the purpose of a test, write the purpose and the test as one item, joined with "with":
+  "Assess <purpose> with <test> <time>", e.g. "Assess exertional chest tightness with an echo at the next
+  opportunity". Never split them with ";" or write the test as a separate item.
+- If an item gives no purpose, do not add one: "Assess with an echo in 12 mo" stays as it is. Never add a reason,
+  diagnosis or finding that the plan does not state.
 - One item per line, plain text, no bullets. Start each item that asks for something with a verb such as "Assess",
   "Check", "Consider", "Recommend" or "Start", never with "We will". An item that states a finding or a risk
   (e.g. "High risk of heart failure with preserved ejection fraction") stays a statement; do not add "Assess".
@@ -236,13 +240,36 @@ def rule_plan_lines(rule_plan: str) -> list:
     return lines
 
 
-def checks_from_reply(text: str) -> list:
-    """The LLM's points (at most MAX_CHECKS) as CHECK_PREFIX lines; none when it replied NONE."""
+def _field_key(name: str) -> str:
+    return " ".join(str(name).rstrip(":").split()).lower()
+
+
+def check_fields(line: str, chart: list | None) -> tuple:
+    """A point's "[Field; Field] sentence" split into the sentence and the named fields that are in the chart,
+    written as the chart writes them. Without a chart every named field is kept."""
+    match = re.match(r"^\[([^\]]*)\]\s*", line)
+    if not match:
+        return line, []
+    names = [n.strip() for n in match.group(1).split(";") if n.strip()]
+    if chart is not None:
+        labels = {_field_key(label): str(label).rstrip(":").strip() for label, *_ in chart}
+        names = [labels[_field_key(n)] for n in names if _field_key(n) in labels]
+    return line[match.end():].strip(), list(dict.fromkeys(names))
+
+
+def checks_from_reply(text: str, chart: list | None = None) -> list:
+    """The LLM's points (at most MAX_CHECKS) as CHECK_PREFIX lines, each ending with the chart fields it comes
+    from, or a note when it names none that are in the chart; none when it replied NONE."""
     checks = []
     for line in clean_action_plan(text).splitlines():
         line = re.sub(r"^\s*(\[EBM\]\s*)?check:\s*", "", line, flags=re.IGNORECASE).strip()
-        if line and line.strip(".").upper() != "NONE":
-            checks.append(f"{CHECK_PREFIX} {line}")
+        if not line or line.strip(".").upper() == "NONE":
+            continue
+        sentence, fields = check_fields(line, chart)
+        if not sentence:
+            continue
+        source = f"(from: {'; '.join(fields)})" if fields else "(from: no chart field named)"
+        checks.append(f"{CHECK_PREFIX} {sentence} {source}")
     return checks[:MAX_CHECKS]
 
 

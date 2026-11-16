@@ -1967,7 +1967,7 @@ def _run_ebm_frame(demo_no, fid, mode, plan=""):
 
 
 def _ebm_checks():
-    """(demo_no, fid) of the open patient and the EBM form (0.1EBMp), or None after telling the user what is missing."""
+    """(demo_no, fid) of the open patient and the EBM form (ebm.EBM_FORM_FID), or None after telling the user what is missing."""
     if oscar is None or oscar.driver is None:
         messagebox.showwarning(EBM_PROMPT, "Oscar is not connected. Click \"Open Oscar\" first.")
         return None
@@ -2002,7 +2002,7 @@ def generate_ebm_action_plan():
             # The rules' plan is kept as it is; the LLM only lists points for the doctor to check, which are
             # shown above the plan and never saved.
             checks = ebm.checks_from_reply(send_text_to_chatgpt(
-                ebm.build_checks_prompt(rule_plan, chart, _ebm_prompt())))
+                ebm.build_checks_prompt(rule_plan, chart, _ebm_prompt())), chart)
             rules_stopped = any(str(e).startswith("TotalScore") for e in result.get("errors") or [])
             lines = ebm.rule_plan_lines(rule_plan)
             formatted = None

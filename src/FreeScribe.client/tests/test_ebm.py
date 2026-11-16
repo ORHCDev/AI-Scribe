@@ -79,8 +79,20 @@ def test_rule_plan_is_kept_without_br_blanks_repeats_or_we_will():
 def test_checks_from_reply_are_prefixed_and_capped():
     reply = "1. HR 51 on bisoprolol.\n- Check: Holter due.\n" + "\n".join(f"point {i}" for i in range(10))
     checks = ebm.checks_from_reply(reply)
-    assert checks[:2] == [f"{ebm.CHECK_PREFIX} HR 51 on bisoprolol.", f"{ebm.CHECK_PREFIX} Holter due."]
+    assert checks[:2] == [f"{ebm.CHECK_PREFIX} HR 51 on bisoprolol. (from: no chart field named)",
+                          f"{ebm.CHECK_PREFIX} Holter due. (from: no chart field named)"]
     assert len(checks) == ebm.MAX_CHECKS
+
+
+def test_checks_end_with_the_chart_fields_they_come_from():
+    reply = "[chief complaint; Patient Age] AF at 71 with no anticoagulant.\n[Last Holter] Pauses on the Holter."
+    assert ebm.checks_from_reply(reply, CHART) == [
+        f"{ebm.CHECK_PREFIX} AF at 71 with no anticoagulant. (from: Chief complaint; Patient Age)",
+        f"{ebm.CHECK_PREFIX} Pauses on the Holter. (from: no chart field named)"]
+
+
+def test_check_without_a_sentence_is_dropped():
+    assert ebm.checks_from_reply("[Patient Age]", CHART) == []
 
 
 def test_none_reply_gives_no_checks():
@@ -192,7 +204,7 @@ def test_the_format_prompt_keeps_test_names_and_statements():
 
 def test_checks_name_their_chart_source_and_leave_repeats_to_the_plan():
     assert "a problem in the chart the plan does not address" in ebm.CHECKS_PROMPT
-    assert "names where in the chart it comes from" in ebm.CHECKS_PROMPT
+    assert "names of the chart fields it comes from in square brackets" in ebm.CHECKS_PROMPT
     assert "repeat or conflict with each other are handled when the plan is written" in ebm.CHECKS_PROMPT
     assert "two items asking for the same thing become one" in ebm.FORMAT_PROMPT
 
@@ -201,3 +213,7 @@ def test_a_rewording_may_drop_a_repeated_test():
     lines = ["Assess with a stress test in 24 months.", "Assess with a persantine sestamibi scan in 24 months."]
     plan, _ = ebm.format_plan(lines, "Assess with a persantine sestamibi scan in 24 months.")
     assert plan == ["Assess with a persantine sestamibi scan in 24 months."]
+
+
+def test_format_prompt_does_not_add_a_missing_purpose():
+    assert "If an item gives no purpose, do not add one" in ebm.FORMAT_PROMPT
