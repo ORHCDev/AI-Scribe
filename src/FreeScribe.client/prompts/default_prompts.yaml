@@ -714,6 +714,7 @@ Consult_Complete:
       Do NOT write confusing output that makes it unclear whether a medication has been prescribed or simply recommended.
       Ensure to write everything in full sentences or paragraphs, rather than bullet points.
       For example, do NOT output anything like "I recommended to try increasing the dose of Aspirin. The patient agreed to do so."
+      For every test, monitor or follow-up that was ordered, keep exactly what the doctor said about its duration (e.g. "48-hour Holter", "2-week monitor") and its timing (e.g. "today", "now", "next available", "return it on Friday", "in 2 months", "in March"). Never drop or change these details.
 
 
 Referral_Requisition:
@@ -774,11 +775,11 @@ Referral_Requisition:
 Requisition_Generation:
   # Hashes of earlier defaults: a saved section still equal to one of them is updated to the new default.
   Previous:
-    Requisition Rules: ["b18f9d6ff6ad802da6a0c0692fe506d8"]
+    Requisition Rules: ["b18f9d6ff6ad802da6a0c0692fe506d8", "d10f87caeebdc199f81129bf14a26afd"]
   Sections:
     Requisition Rules: |
       "requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic visit. For example, if the plan states "I'm gonna bring the patient back in 1 year for an echocardiogram", then "requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations or diagnostics are required, then simply have "period" be null.
-      If the plan gives a date or a month for the next visit or for these tests, copy it into "date" as the plan writes it (e.g. "January 27, 2027", "next August", "in August 2027"); otherwise "date" is null. A date of a past test or visit is not a "date".
+      If the plan gives a date or a month for the next visit or for these tests, copy it into "date" as the plan writes it (e.g. "January 27, 2027", "next August", "in August 2027"); otherwise "date" is null. A date of a past test or visit is not a "date". If the plan says a test is to be done now, today, as soon as possible or at the next available time, "date" is "today".
       When the plan gives no time at all, the period is usually 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
       Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, or to be done at/before the next visit). Tests that were done today or before this visit, results that are reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. "I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to arrange a stress test").
       "consult" refers to a cardiology consultation, and should be true if and only if one is desired for our clinic, not a referral elsewhere to a different doctor. If the PLAN indicates a desire for a consultation, but said consultation is not explicitly stated to be with a cardiologist, then "consult" MUST be false.

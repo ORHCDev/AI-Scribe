@@ -785,3 +785,72 @@ def test_zero_period_means_now():
     ("Continue weight loss.", None)])
 def test_plan_month_is_used_when_the_model_gives_no_date(plan, expected):
     assert med_eform.plan_month_date(plan, today=date(2026, 11, 12)) == expected
+
+
+@pytest.mark.parametrize("value", ["today", "Today", "now", "ASAP", "as soon as possible", "next available",
+                                   "the next available appointment", "urgent", "this week"])
+def test_now_words_book_for_today(value):
+    assert med_eform.normalize_requisition_date(value, today=date(2026, 11, 19)) == date(2026, 11, 19)
+
+
+def test_tomorrow_books_for_tomorrow():
+    assert med_eform.normalize_requisition_date("tomorrow", today=date(2026, 11, 19)) == date(2026, 11, 20)
+
+
+@pytest.mark.parametrize("plan, expected", [
+    ("Arrange a 48 hour Holter now to look for atrial fibrillation.", date(2026, 11, 19)),
+    ("I will book an echocardiogram at the next available time.", date(2026, 11, 19)),
+    ("Holter today showed atrial fibrillation; I will start apixaban.", None),
+    ("ECG today shows sinus rhythm. Follow up in 1 year.", None),
+    ("He is now on bisoprolol. Repeat echo in 1 year.", None),
+])
+def test_plan_now_date(plan, expected):
+    assert med_eform.plan_now_date(plan, today=date(2026, 11, 19)) == expected
+
+
+LAB_JANUARY_PLAN = ("I will email a prescription for potassium tablets to the family doctor. I will also send a "
+                    "requisition for electrolytes to the family doctor to check the potassium level, potentially in "
+                    "January. I will see him again in four months for an echocardiogram.")
+
+
+def test_lab_month_in_plan_sets_lab_date():
+    resp = json.dumps({"medication": [], "labs": {"required": True, "period": None}, "requisition": None})
+    parsed = med_eform.parse_med_response(resp, LAB_JANUARY_PLAN)
+    assert parsed["lab_date"] == med_eform.plan_month_date("in January", words=r".")
+    assert parsed["lab_date"].month == 1
+
+
+@pytest.mark.parametrize("labs, expected_period, has_date", [
+    ({"required": True, "period": "2 months", "date": None}, "2m", False),
+    ({"required": True, "period": "2m", "date": "today"}, "2m", True),
+    ({"required": False, "period": "2m", "date": "January"}, None, False),
+])
+def test_lab_period_and_date_are_normalized(labs, expected_period, has_date):
+    resp = json.dumps({"medication": [], "labs": labs, "requisition": None})
+    parsed = med_eform.parse_med_response(resp, "Repeat bloodwork.")
+    assert parsed["lab_period"] == expected_period
+    assert (parsed["lab_date"] is not None) == has_date
+
+
+def test_lab_month_does_not_set_the_requisition_date():
+    plan = "Repeat bloodwork in January. Repeat echo in 1 year."
+    assert med_eform.plan_month_date(plan, today=date(2026, 11, 19)) is None
+    assert med_eform.plan_month_date(plan, today=date(2026, 11, 19), words=med_eform._LAB_WORDS) == date(2027, 1, 1)
+
+
+def test_lab_now_date():
+    assert med_eform.plan_now_date("Please repeat bloodwork now to check potassium.", today=date(2026, 11, 19),
+                                   words=med_eform._LAB_WORDS) == date(2026, 11, 19)
+
+
+@pytest.mark.parametrize("plan, lab_month", [
+    ("Repeat echo in March. Repeat bloodwork.", None),
+    ("Book echo in March; check potassium.", None),
+    ("Start potassium chloride 20 mEq daily and I will see him back in March with an echo.", None),
+    ("Start potassium tablets and see him in March.", None),
+    ("Repeat echo and bloodwork in March.", 3),
+    ("Check potassium in March.", 3),
+])
+def test_requisition_sentences_do_not_date_the_labs(plan, lab_month):
+    found = med_eform.plan_month_date(plan, today=date(2026, 11, 19), words=med_eform._LAB_WORDS)
+    assert (found.month if found else None) == lab_month

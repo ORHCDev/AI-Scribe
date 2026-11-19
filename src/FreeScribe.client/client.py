@@ -1815,9 +1815,9 @@ def _open_relevant_eforms(consult_text: str = ""):
     else: print("No medication change detected in the plan; skipping medication eForm")
 
     # Open the labs eform, if necessary
-    if decisions["labs"] and decisions["lab_period"]: 
-        labs_window = _open_labs_eform(decisions["lab_checkboxes"], decisions["lab_period"])
-    elif decisions["labs"]: labs_window = _open_labs_eform(decisions["lab_checkboxes"])
+    if decisions["labs"]:
+        labs_window = _open_labs_eform(decisions["lab_checkboxes"], decisions["lab_period"] or "2w",
+                                       decisions.get("lab_date"))
     else: print("No labwork requirement detected in the plan; skipping labs eForm")
         
     # Open the requisition eform, if necessary
@@ -2302,7 +2302,7 @@ def _open_medication_eform(changes: list[dict] | None = None):
         return med_window
 
 
-def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
+def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w", lab_date: date | None = None):
     LABS_FORM_FID = 659
     # None when no checkbox analysis ran (LLM failed / keyword mode) or it found nothing to tick;
     # the form still opens, just without pre-selected checkboxes.
@@ -2347,15 +2347,25 @@ def _open_labs_eform(checkbox_strings: set | None, labwork_period: str = "2w"):
             labs_window = next(h for h in driver.window_handles if h not in before)
             driver.switch_to.window(labs_window)
 
-            test_date = _offset_from_today(labwork_period).strftime("%Y-%m-%d")
+            # A date / month written in the PLAN wins over a period, as on the requisition eForm.
+            if lab_date:
+                test_date = lab_date.strftime("%Y-%m-%d")
+                if lab_date == date.today():
+                    subject = "Do today."
+                elif lab_date.day == 1:
+                    subject = f"Do in {lab_date.strftime('%B %Y')}."
+                else:
+                    subject = f"Do on {lab_date.strftime('%B')} {lab_date.day}, {lab_date.year}."
+            else:
+                test_date = _offset_from_today(labwork_period).strftime("%Y-%m-%d")
+                subject = f"Do in {_translate_period(labwork_period)}."
             posttestd = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "Posttestd")))
             posttestd.clear()
             posttestd.send_keys(test_date)
 
-            relative_test_date = _translate_period(labwork_period)
             subject_textbox = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "subject")))
             subject_textbox.clear()
-            subject_textbox.send_keys(f"Do in {relative_test_date}.")
+            subject_textbox.send_keys(subject)
 
             print(f"Updated labwork completion date to {test_date}")
         except Exception as e:

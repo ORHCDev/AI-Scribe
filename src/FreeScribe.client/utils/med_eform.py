@@ -4,7 +4,7 @@ Medication eForm (0.1Rfx) auto-fill logic used after a consult upload.
 
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from dateutil import parser as date_parser
 
@@ -143,7 +143,7 @@ def clean_med_changes(raw) -> list[dict]:
 # The requisition part of build_med_prompt, editable in the Prompt window (prompts/default_prompts.yaml,
 # Requisition_Generation). This is the default, used when it is missing or empty there.
 REQUISITION_RULES_PROMPT = """"requisition" should be a dictionary of all the consultations and diagnostics that are required at the next clinic visit. For example, if the plan states "I'm gonna bring the patient back in 1 year for an echocardiogram", then "requisition" should look like: {"period": "1y", "echo": true}. If the plan gives no indication that any consultations or diagnostics are required, then simply have "period" be null.
-If the plan gives a date or a month for the next visit or for these tests, copy it into "date" as the plan writes it (e.g. "January 27, 2027", "next August", "in August 2027"); otherwise "date" is null. A date of a past test or visit is not a "date".
+If the plan gives a date or a month for the next visit or for these tests, copy it into "date" as the plan writes it (e.g. "January 27, 2027", "next August", "in August 2027"); otherwise "date" is null. A date of a past test or visit is not a "date". If the plan says a test is to be done now, today, as soon as possible or at the next available time, "date" is "today".
 When the plan gives no time at all, the period is usually 1 year. If it is not, populate "period_reason" with a brief explanation for why a period other than 1 year was chosen, if this is detailed in the plan. If it is not, set "period_reason" to null. Note that this should refer to the actual REASON for the period change. Stating "the patient was advised to book in 6 months" is NOT a reason. Give only the reason, without any time, period or date.
 Each test below should be true ONLY if the plan explicitly asks for it to be done (ordered, booked, arranged, or to be done at/before the next visit). Tests that were done today or before this visit, results that are reported or reviewed (e.g. "ECG today shows sinus rhythm", "Echo last year showed EF 55%"), tests already arranged by someone else or done elsewhere, and tests the plan says are not needed are all false. A test that is only recommended, suggested, conditional, or left for someone else to arrange is also false (e.g. "I recommend a repeat echo", "consider a Holter", "if palpitations persist, Holter", "family doctor to arrange a stress test").
 "consult" refers to a cardiology consultation, and should be true if and only if one is desired for our clinic, not a referral elsewhere to a different doctor. If the PLAN indicates a desire for a consultation, but said consultation is not explicitly stated to be with a cardiologist, then "consult" MUST be false.
@@ -167,7 +167,7 @@ def build_med_prompt(plan: str, requisition_rules: str | None = None) -> str:
         "You are reviewing the PLAN section of a cardiology note. Return JSON in exactly this format:\n"
         '{"medication": [{"action": "start|increase|decrease|stop", "name": "drug name", '
         '"text": "prescription line", "ordered": true or false}], "labs": {"required": true or false, '
-        '"period": string (such as "7d", "2w", "1m", etc)}, "requisition": {"period": string (such as "7d", '
+        '"period": string (such as "7d", "2w", "1m", etc), "date": string | null}, "requisition": {"period": string (such as "7d", '
         '"2w", "1m", etc) | null, "date": "YYYY-MM-DD" | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
         '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
         '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null, '
@@ -212,7 +212,10 @@ def build_med_prompt(plan: str, requisition_rules: str | None = None) -> str:
         'doctor", "could be started at follow-up").\n\n'
         'If "labs"["required"] is true, then "labs"["period"] should represent when the lab work is requested '
         'to be completed. For example, if the note says "complete in 2 months", the value should be "2m". '
-        'If "labs"["required"] is false, "labs"["period"] should simply be null.\n\n' +
+        'If the plan gives a date or a month for the lab work, or says it is to be done now / today / as soon as '
+        'possible, copy that into "labs"["date"] as the plan writes it (e.g. "in January", "January 15, 2027", '
+        '"today"); otherwise "labs"["date"] is null. '
+        'If "labs"["required"] is false, "labs"["period"] and "labs"["date"] should simply be null.\n\n' +
         (requisition_rules or REQUISITION_RULES_PROMPT).strip() + "\n\n" +
         f"STANDARD LINES:\n{options}\n\n"
         f"PLAN:\n{plan}\n\n"
@@ -383,13 +386,24 @@ def _month_only_date(text: str, today: date) -> date | None:
     return date(today.year + (month < today.month), month, 1)
 
 
-def plan_month_date(plan: str | None, today: date | None = None) -> date | None:
+_FOLLOW_UP_WORDS = (r"\b(back|follow\w*|f/u|see|book\w*|repeat\w*|recheck|echo\w*|ecg|holter|stress|test\w*|"
+                    r"visit|appointment)\b")
+# A sentence about lab work ("send a requisition for electrolytes ... in January", "repeat bloodwork now").
+_LAB_WORDS = (r"\b(labs?|lab ?work|blood ?work|blood tests?|bloods|electrolytes|lytes|"
+              r"(potassium|sodium)(?!\s*(chloride|citrate|bicarbonate|tablets?|pills?|supplements?|\d))|creatinine|"
+              r"egfr|kidney function|renal function|cbc|lipids?|lipid profile|a1c|hba1c|inr|tsh|ferritin|bnp)\b")
+
+
+def plan_month_date(plan: str | None, today: date | None = None, words: str = _FOLLOW_UP_WORDS) -> date | None:
     """A month the PLAN books the next visit / tests for ("next August", "in August 2027"), when the model gave no
     usable date: the first such month in a sentence about a follow-up or a test, as in _month_only_date."""
     today = today or date.today()
     for sentence in re.split(r"(?<=[.;!?])\s+|\n+", str(plan or "")):
-        if not re.search(r"\b(back|follow\w*|f/u|see|book\w*|repeat\w*|recheck|echo\w*|ecg|holter|stress|test\w*|"
-                         r"visit|appointment)\b", sentence, re.IGNORECASE):
+        if not re.search(words, sentence, re.IGNORECASE):
+            continue
+        # A sentence only about lab work ("Repeat bloodwork in January") does not date the visit / tests.
+        if (words == _FOLLOW_UP_WORDS and re.search(_LAB_WORDS, sentence, re.IGNORECASE)
+                and not any(re.search(p, sentence.lower()) for p in _REQUISITION_TEST_PATTERNS.values())):
             continue
         for match in re.finditer(r"\b(?:next|in|by|this coming)\s+" + _MONTH_PATTERN + r"(?:\s+(20\d{2}))?",
                                  sentence, re.IGNORECASE):
@@ -399,12 +413,50 @@ def plan_month_date(plan: str | None, today: date | None = None) -> date | None:
     return None
 
 
+# Words asking for a test to be done straight away; the "Book for" date is then today.
+_NOW_PATTERN = (r"\b(today|now|right away|immediately|asap|as soon as possible|(next|first|earliest) available|"
+                r"urgent\w*|stat|this week)\b")
+# Words reporting a result rather than an order ("Holter today showed AF").
+_NOW_RESULT_PATTERN = r"\b(show\w*|reveal\w*|demonstrat\w*|was|were|result\w*|found)\b"
+
+
+def _now_date(text: str, today: date) -> date | None:
+    """"today" / "now" / "ASAP" / "next available" as today, "tomorrow" as tomorrow, None otherwise."""
+    text = text.strip().lower()
+    if re.fullmatch(r"(on\s+|by\s+)?tomorrow", text):
+        return today + timedelta(days=1)
+    if re.fullmatch(r"(on\s+|by\s+|at the\s+|the\s+)?(" + _NOW_PATTERN + r")(\s+(date|time|slot|appointment))?\.?",
+                    text):
+        return today
+    return None
+
+
+def plan_now_date(plan: str | None, today: date | None = None, words: str | None = None) -> date | None:
+    """Today, when a PLAN sentence orders a test to be done now / today / ASAP / at the next available time
+    ("Arrange a 48 h Holter now", "Book an echo ASAP"); None otherwise. A sentence only reporting a result
+    ("Holter today showed AF") or not asking for the test does not count."""
+    today = today or date.today()
+    for sentence in _sentences(plan or ""):
+        if not re.search(_NOW_PATTERN, sentence) or re.search(_NOW_RESULT_PATTERN, sentence):
+            continue
+        if re.search(_TEST_DECLINED_PATTERN, sentence) or not re.search(_TEST_REQUEST_PATTERN, sentence):
+            continue
+        if (re.search(words, sentence) if words
+                else any(re.search(p, sentence) for p in _REQUISITION_TEST_PATTERNS.values())):
+            return today
+    return None
+
+
 def normalize_requisition_date(value, today: date | None = None) -> date | None:
-    """The model's "date" as a date from today on ("2027-01-27", "January 27, 2027", "next August"), None otherwise."""
+    """The model's "date" as a date from today on ("2027-01-27", "January 27, 2027", "next August", "today",
+    "next available"), None otherwise."""
     if not value or not str(value).strip():
         return None
     today = today or date.today()
     text = str(value).strip()
+    now = _now_date(text, today)
+    if now:
+        return now
     parsed = _month_only_date(text, today)
     if parsed is None:
         try:
@@ -506,10 +558,11 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     diagnostics = [t for t in REQUISITION_TESTS if t in ticked]
     if llm_ticked and not diagnostics:
         print(f"[requisition eForm] LLM asked for {llm_ticked} but no test passed the PLAN checks; not opening the form")
+    book_date = normalize_requisition_date(raw.get("date")) or plan_month_date(plan) or plan_now_date(plan)
     return {
         "requisition": bool(diagnostics),
         "requisition_period": period,
-        "requisition_date": normalize_requisition_date(raw.get("date")) or plan_month_date(plan),
+        "requisition_date": book_date,
         "requisition_period_reason": strip_time_text(raw.get("period_reason")),
         "requisition_diagnostics": diagnostics,
         "requisition_indications": indications,
@@ -557,10 +610,18 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
 
         if lab_period is not None:
             lab_period = str(lab_period).strip() or None
+        if lab_period and not normalize_period(lab_period):
+            print(f'[labs eForm] period "{lab_period}" could not be read; using the form\'s default')
+        lab_period = normalize_period(lab_period)
+        lab_date = normalize_requisition_date(labs_data.get("date")) if labs_required else None
     else:
         # Handle older version where labs was simply a boolean flag
         labs_required = as_flag(labs_data)
         lab_period = None
+        lab_date = None
+    # A month / "now" the PLAN gives for the lab work, when the model gave no date.
+    if labs_required and not lab_date:
+        lab_date = plan_month_date(plan, words=_LAB_WORDS) or plan_now_date(plan, words=_LAB_WORDS)
 
     # Requisition. A missing / null / non-object "requisition" means no requisition, so the medication
     # and lab results from the same reply are still used instead of failing the whole parse.
@@ -581,6 +642,7 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
         "changes": clean_med_changes(med_raw),
         "labs": labs_required,
         "lab_period": lab_period,
+        "lab_date": lab_date,
         "lab_checkboxes": None,
         "explanations": explanations,
         **requisition,
@@ -676,6 +738,7 @@ def analyze_plan_for_eforms(scope: str, send_fn, mode: str = "llm", requisition_
         "medication": {"open": med["open"], "changes": med["changes"]},
         "labs": med["labs"],
         "lab_period": med.get("lab_period"),
+        "lab_date": med.get("lab_date"),
         "lab_checkboxes": med.get("lab_checkboxes"),
         "requisition": med.get("requisition"),
         "requisition_period": med.get("requisition_period"),
