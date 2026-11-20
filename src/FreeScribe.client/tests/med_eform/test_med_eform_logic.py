@@ -91,7 +91,7 @@ def test_python_style_booleans_are_accepted(fake_llm):
 def test_json_wrapped_in_prose_or_code_fence(fake_llm):
     llm = fake_llm("Here you go:\n```json\n" + reply([], labs=True) + "\n```")
     assert core(med_eform.analyze_plan_for_eforms(PLAN, llm)) == {
-        "medication": {"open": False, "changes": []}, "labs": True, "lab_period": None, "lab_checkboxes": None}
+        "medication": {"open": False, "changes": []}, "labs": True, "lab_period": "2w", "lab_checkboxes": None}
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -463,7 +463,8 @@ def test_stress_test_alone_is_est():
     assert r["requisition_diagnostics"] == ["est"]
 
 
-@pytest.mark.parametrize("plan", ["Arrange a stress echo in 3 months.", "Stress-echocardiogram to assess ischemia."])
+@pytest.mark.parametrize("plan", ["Arrange a contrast stress echo in 3 months.",
+                                  "Stress-echocardiogram with contrast to assess ischemia."])
 def test_stress_echo_kept_when_the_plan_says_so(plan):
     r = req({"period": "3m", "stecho": True, "contrast": True}, plan)
     assert r["requisition_diagnostics"] == ["stecho", "contrast"]
@@ -854,3 +855,46 @@ def test_lab_now_date():
 def test_requisition_sentences_do_not_date_the_labs(plan, lab_month):
     found = med_eform.plan_month_date(plan, today=date(2026, 11, 19), words=med_eform._LAB_WORDS)
     assert (found.month if found else None) == lab_month
+
+
+@pytest.mark.parametrize("raw, plan, expected", [
+    ({"echo": True, "contrastecho": True}, "Repeat echocardiogram next August.", ["echo"]),
+    ({"echo": True, "contrastecho": True}, "Repeat echo with contrast in 1 year.", ["echo", "contrastecho"]),
+    ({"stecho": True, "contrast": True}, "Arrange a stress echo in 3 months.", ["stecho"]),
+])
+def test_contrast_only_when_the_plan_says_contrast(raw, plan, expected):
+    assert med_eform.requisition_from_response(raw, plan)["requisition_diagnostics"] == expected
+
+
+@pytest.mark.parametrize("plan, kept", [
+    ("Follow up with repeat echocardiogram next August to monitor aortic root dilation.", False),
+    ("I advised the patient to continue monitoring his blood pressure at home.", False),
+    ("We will put a monitor on for two days.", True),
+    ("Arrange a 14-day event monitor.", True),
+    ("Arrange a 48 hour Holter.", True),
+])
+def test_monitor_is_a_holter_only_when_it_is_a_heart_monitor(plan, kept):
+    result = med_eform.requisition_from_response({"holter": "48h"}, plan)
+    assert ("holter" in result["requisition_diagnostics"]) is kept
+
+
+@pytest.mark.parametrize("plan, words, expected", [
+    ("I advised him to return in 10 months for reassessment with an echocardiogram and another Holter study.",
+     "follow", "10m"),
+    ("I advised him to obtain follow-up blood work in approximately three months.", "lab", "3m"),
+    ("I advised him to obtain follow-up blood work in approximately three months.", "follow", None),
+    ("The next echocardiogram is scheduled in four to five months.", "follow", "4m"),
+    ("Follow up in 6 months. Repeat echo in 1 year.", "follow", None),
+    ("Arrange a Holter for two days.", "follow", None),
+])
+def test_plan_period(plan, words, expected):
+    pattern = med_eform._LAB_WORDS if words == "lab" else med_eform._FOLLOW_UP_WORDS
+    assert med_eform.plan_period(plan, pattern) == expected
+
+
+def test_plan_period_wins_over_the_llm_default():
+    plan = "I advised him to return in 10 months for reassessment with an echocardiogram."
+    assert med_eform.requisition_from_response({"echo": True, "period": "1y"}, plan)["requisition_period"] == "10m"
+    resp = json.dumps({"medication": [], "labs": {"required": True, "period": None}, "requisition": None})
+    lab_plan = "I advised him to obtain follow-up blood work in approximately three months."
+    assert med_eform.parse_med_response(resp, lab_plan)["lab_period"] == "3m"

@@ -255,6 +255,7 @@ REQUISITION_INDICATION_TESTS = ("ecg", "echo", "stecho", "est", "holter")
 _HOLTER_PERIODS = {"24h": "24h", "24hr": "24h", "1d": "24h", "48h": "48h", "48hr": "48h", "2d": "48h",
                    "72h": "72h", "72hr": "72h", "3d": "72h", "2w": "2w", "2wk": "2w", "14d": "2w"}
 _STRESS_ECHO_PATTERN = r"\bstress[\s-]*echo"
+_CONTRAST_PATTERN = r"\b(contrast|definity|lumason|optison)\b"
 # How each Holter option is written in a PLAN or an appointment reason ("2 days" is 48 h, not 2 weeks).
 _HOLTER_DURATION_TEXT = {
     "24h": r"\b(24\s*-?\s*(h|hr|hrs|hours?)|(1|one)\s*-?\s*days?)\b",
@@ -270,7 +271,8 @@ _REQUISITION_TEST_PATTERNS = {
     "echo": r"\b(echo\w*|tte)\b",
     "stecho": _STRESS_ECHO_PATTERN,
     "est": r"\b(stress test\w*|treadmill|exercise (stress |tolerance )?test\w*|est|gxt)\b",
-    "holter": r"\b(holter|monitor\w*)\b",
+    "holter": (r"\b(holter|(heart|cardiac|rhythm|event|ambulatory|ecg|ekg|loop|zio|patch|wearable)[\s-]+monitor\w*|"
+               r"(a|the)\s+monitor)\b"),
 }
 # A sentence asking for a test to be done ...
 _TEST_REQUEST_PATTERN = (r"\b(arrang\w*|book\w*|order\w*|schedul\w*|request\w*|repeat\w*|obtain\w*|refer\w*|"
@@ -394,6 +396,35 @@ _LAB_WORDS = (r"\b(labs?|lab ?work|blood ?work|blood tests?|bloods|electrolytes|
               r"egfr|kidney function|renal function|cbc|lipids?|lipid profile|a1c|hba1c|inr|tsh|ferritin|bnp)\b")
 
 
+def _is_lab_only(sentence: str) -> bool:
+    """True for a sentence about lab work that asks for no visit or requisition test ("Follow-up blood work in
+    3 months", "Repeat bloodwork in January"). "Follow-up" right before the lab work names the lab work."""
+    text = re.sub(r"follow[- ]?up\s+(blood ?work|labs?|lab ?work|blood tests?|bloods)", r"\1", sentence.lower())
+    return bool(re.search(_LAB_WORDS, text)) and not any(re.search(p, text) for p in _REQUISITION_TEST_PATTERNS.values())
+
+
+_NUMBER = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)"
+# "in 10 months", "in approximately three months", "within 2 weeks", "in four to five months" (the earlier end).
+_PLAN_PERIOD_PATTERN = (r"\b(?:in|within|after)\s+(?:approximately|about|around|roughly|~)?\s*" + _NUMBER +
+                        r"(?:\s*(?:to|-|or)\s*" + _NUMBER + r")?[\s-]*(days?|weeks?|wks?|months?|mos?|years?|yrs?)\b")
+
+
+def plan_period(plan: str | None, words: str) -> str | None:
+    """The one period ("10m", "3m") written in the PLAN's sentences matching `words` (follow-up / tests, or lab
+    work), None when there is none or more than one. Lab-only sentences do not count for the follow-up."""
+    periods = set()
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n+", str(plan or "")):
+        if not re.search(words, sentence, re.IGNORECASE):
+            continue
+        if words == _FOLLOW_UP_WORDS and _is_lab_only(sentence):
+            continue
+        for match in re.finditer(_PLAN_PERIOD_PATTERN, sentence, re.IGNORECASE):
+            period = normalize_period(f"{match.group(1)} {match.group(3)}")
+            if period:
+                periods.add(period)
+    return periods.pop() if len(periods) == 1 else None
+
+
 def plan_month_date(plan: str | None, today: date | None = None, words: str = _FOLLOW_UP_WORDS) -> date | None:
     """A month the PLAN books the next visit / tests for ("next August", "in August 2027"), when the model gave no
     usable date: the first such month in a sentence about a follow-up or a test, as in _month_only_date."""
@@ -402,8 +433,7 @@ def plan_month_date(plan: str | None, today: date | None = None, words: str = _F
         if not re.search(words, sentence, re.IGNORECASE):
             continue
         # A sentence only about lab work ("Repeat bloodwork in January") does not date the visit / tests.
-        if (words == _FOLLOW_UP_WORDS and re.search(_LAB_WORDS, sentence, re.IGNORECASE)
-                and not any(re.search(p, sentence.lower()) for p in _REQUISITION_TEST_PATTERNS.values())):
+        if words == _FOLLOW_UP_WORDS and _is_lab_only(sentence):
             continue
         for match in re.finditer(r"\b(?:next|in|by|this coming)\s+" + _MONTH_PATTERN + r"(?:\s+(20\d{2}))?",
                                  sentence, re.IGNORECASE):
@@ -529,6 +559,9 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
                 print(f'[requisition eForm] "{test}" not ticked: the PLAN only mentions it as a result / history, '
                       f'not as a test to be done')
                 ticked.discard(test)
+    if plan and ticked & {"contrastecho", "contrast"} and not re.search(_CONTRAST_PATTERN, plan, re.IGNORECASE):
+        print('[requisition eForm] PLAN has no "contrast"; contrast not ticked')
+        ticked -= {"contrastecho", "contrast"}
     if "echo" not in ticked:
         ticked.discard("contrastecho")
     if "stecho" not in ticked:
@@ -555,6 +588,11 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     if period and not normalize_period(period):
         print(f'[requisition eForm] period "{period}" could not be read; keeping the form\'s own date')
     period = normalize_period(period)
+    # The PLAN's own period wins over the model's ("return in 10 months" must not become the 1-year default).
+    written = plan_period(plan, _FOLLOW_UP_WORDS) if ticked else None
+    if written and written != period:
+        print(f"[requisition eForm] period {written} from the PLAN, not the LLM's {period!r}")
+        period = written
     diagnostics = [t for t in REQUISITION_TESTS if t in ticked]
     if llm_ticked and not diagnostics:
         print(f"[requisition eForm] LLM asked for {llm_ticked} but no test passed the PLAN checks; not opening the form")
@@ -619,6 +657,11 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
         labs_required = as_flag(labs_data)
         lab_period = None
         lab_date = None
+    # The PLAN's own period for the lab work wins over the model's ("blood work in approximately three months").
+    written = plan_period(plan, _LAB_WORDS) if labs_required else None
+    if written and written != lab_period:
+        print(f"[labs eForm] period {written} from the PLAN, not the LLM's {lab_period!r}")
+        lab_period = written
     # A month / "now" the PLAN gives for the lab work, when the model gave no date.
     if labs_required and not lab_date:
         lab_date = plan_month_date(plan, words=_LAB_WORDS) or plan_now_date(plan, words=_LAB_WORDS)
