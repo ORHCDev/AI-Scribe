@@ -95,6 +95,7 @@ class ToolReturn:
     query_results: list[dict[str, str | int]] | str
     save_results: list[dict[str, str | int]] | str
     followup_prompt: str | None = None
+    sources: list | None = None
     
     def results_to_text(self, choice="query") -> str:
         """
