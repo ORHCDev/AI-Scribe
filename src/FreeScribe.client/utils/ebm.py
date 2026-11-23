@@ -93,6 +93,9 @@ Start each point with NEW or CHECK:
   e.g. "No creatinine in the chart for the planned Ramipril".
 A point that only describes the chart is not a point.
 Do not list normal results, or a test or treatment the plan already asks for.
+Never write a NEW point about a drug or test the plan already mentions (e.g. the plan says OAC is required: no point
+about starting or assessing OAC), unless it is a safety concern about it, such as its dose or a contraindication.
+Never write a CHECK about old or missing data for a test the plan already asks for: that test will update it.
 Write one point per problem: two findings about the same problem (e.g. a positive stress test and ischemia on a stress
 echo) are one point.
 Items of the plan that repeat or conflict with each other are handled when the plan is written: do not list them.
@@ -107,6 +110,9 @@ Reply with one point per line and nothing else. If there is nothing worth checki
 
 FORMAT_PROMPT = """Rewrite this cardiology action plan in the clinic's style. Getting the content right comes first:
 every item of the plan must still be there with the same meaning, nothing wrong and nothing left out.
+- Lines ending with a tag such as [N1] are items added from the chart. They are part of the plan like every other
+  item: the whole plan, old and new items together, is rewritten as one. Keep the tag at the end of the line that
+  has that item (when two items become one line, that line keeps the tag); never write a tag on any other line.
 - Keep every item, except that two items asking for the same thing become one, and of two items that conflict
   (e.g. two different ischemia tests) keep the one that fits better. Leave out nothing else.
 - Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
@@ -124,9 +130,11 @@ every item of the plan must still be there with the same meaning, nothing wrong 
 - Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
   the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
   sentence half-finished or with words in the wrong order.
-- The whole plan must be at most {MAX} characters (Oscar keeps only that many; each line break counts as 2).
-  Use short wording to fit: abbreviations (BP, HR, LDL, AF, HF, f/u, mo, yr, wk), no filler words, no "the" or
-  "a" where the meaning stays clear. Never leave out an item or change its meaning to fit.
+- The final plan must have no repeated item, nothing wrong, and no sentence that does not read clearly.
+- Use concise wording (BP, HR, LDL, AF, HF, f/u, mo, yr are fine) and try to stay within {MAX} characters in
+  total, but readability comes before length: keep each item's verb (e.g. "Assess", "Send for", "Start") and every
+  time written in words (e.g. "at the next opportunity", "next available", "today"). Never leave out an item, cut it
+  to a few words, or change its meaning to fit.
 
 PLAN:
 {PLAN}
@@ -187,9 +195,23 @@ def concise_line(line: str) -> str:
     return line
 
 
+# New items (from the checks) go into the plan tagged [N1], [N2], ... so that after the LLM rewrites the whole plan,
+# each one's chart fields can be shown under the line that has it.
+_TAG = r"\s*[\[(]N(\d+)[\])]"
+
+
+def tagged_items(new_items: list) -> list:
+    """The new items' sentences tagged [N1], [N2], ... (in order), to go into the plan."""
+    return [f"{sentence} [N{i}]" for i, (sentence, _) in enumerate(new_items, 1)]
+
+
+def untag(text: str) -> str:
+    return re.sub(_TAG, "", text or "")
+
+
 def saved_length(plan: str) -> int:
-    """How many characters of APLAN the plan takes once saved."""
-    return len((plan or "").replace("\r\n", "\n").replace("\n", "\r\n"))
+    """How many characters of APLAN the plan takes once saved (without the [N1] tags)."""
+    return len(untag(plan).replace("\r\n", "\n").replace("\n", "\r\n"))
 
 
 def fits(lines: list) -> bool:
@@ -221,6 +243,52 @@ def _tests(text: str) -> set:
     return found | {test for test, pattern in _TESTS.items() if re.search(pattern, text)}
 
 
+# Times written in words ("at the next opportunity", "today"): a rewording or shortening that drops one is not used.
+_TIME_WORDS = (r"\b(next (?:opportunity|available|visit|appointment)|today|now|asap|as soon as possible|urgent\w*|"
+               r"(?:coming|next few) (?:days|weeks|months|year)|annual\w*|yearly|every year)\b")
+
+
+def _time_phrases(text: str) -> set:
+    return {" ".join(m.group(0).lower().split()) for m in re.finditer(_TIME_WORDS, text or "", re.IGNORECASE)}
+
+
+# Drugs a NEW point may repeat from the plan (tests are matched with _tests).
+_DRUGS = {"oac": r"\b(?:oac|doac|noac|anticoag\w*|apixaban|eliquis|rivaroxaban|xarelto|edoxaban|lixiana|dabigatran|"
+                 r"pradaxa|warfarin|coumadin)\b",
+          "lipid": r"\b(?:statins?|lipid[- ]lowering|rosuvastatin|crestor|atorvastatin|lipitor|ezetimibe|pcsk9\w*|"
+                   r"repatha|praluent)\b",
+          "sglt2": r"\b(?:sglt-?2\w*|dapa|dapagliflozin|forxiga|empagliflozin|jardiance)\b",
+          "aspirin": r"\b(?:asa|aspirin)\b"}
+# A NEW point about a drug or test the plan has is kept only as a safety concern about it.
+_SAFETY_WORDS = (r"\b(reduc\w*|lower\w*|adjust\w*|alternative\w*|stop\w*|hold\w*|avoid\w*|switch\w*|dose|dosing|"
+                 r"contraindicat\w*|caution\w*|bleed\w*|interact\w*|allerg\w*)\b")
+# A CHECK about old or missing data for a test the plan asks for is dropped: the test will update it.
+_STALE_WORDS = r"\b(outdated|out of date|old|older|missing|no recent|not recent|due|overdue|from (?:19|20)\d{2})\b"
+
+
+def _topics(text: str) -> set:
+    text = (text or "").lower()
+    return _tests(text) | {drug for drug, pattern in _DRUGS.items() if re.search(pattern, text)}
+
+
+def drop_repeats(checks: list, new_items: list, plan_text: str) -> tuple[list, list]:
+    """The checks and new items without those repeating the plan: a NEW item about a drug or test the plan already
+    has (e.g. "Assess need for OAC" when the plan says OAC is required), unless it is a safety concern about it,
+    and a CHECK about old or missing data for a test the plan asks for ("Echo from 2000 is outdated")."""
+    plan_topics, plan_tests = _topics(plan_text), _tests(plan_text)
+    items = [(sentence, fields) for sentence, fields in new_items
+             if not (_topics(sentence) & plan_topics) or re.search(_SAFETY_WORDS, sentence, re.IGNORECASE)]
+    kept = []
+    for check in checks:
+        sentence = re.sub(r"\s*\(from: [^)]*\)$", "", check[len(CHECK_PREFIX):])
+        if not (_tests(sentence) & plan_tests and re.search(_STALE_WORDS, sentence, re.IGNORECASE)):
+            kept.append(check)
+    if len(items) < len(new_items) or len(kept) < len(checks):
+        print(f"[EBM] left out {len(new_items) - len(items)} new items and {len(checks) - len(kept)} checks "
+              "that repeat the plan")
+    return kept, items
+
+
 def length_note(plan_lines: list) -> list:
     """A note for the doctor when the plan is longer than the 255 characters Oscar keeps of APLAN."""
     length = saved_length("\n".join(plan_lines))
@@ -237,24 +305,28 @@ def format_plan(lines: list, formatted_reply: str | None) -> tuple[list, list]:
         return [], []
     formatted = [concise_line(" ".join(line.split()))
                  for line in clean_action_plan(formatted_reply or "").splitlines() if line.strip()]
-    new, old = "\n".join(formatted), "\n".join(lines)
-    if formatted and _numbers(new) <= _numbers(old) and _tests(new) <= _tests(old):
+    new, old = untag("\n".join(formatted)), untag("\n".join(lines))
+    if (formatted and _numbers(new) <= _numbers(old) and _tests(new) <= _tests(old)
+            and _time_phrases(old) <= _time_phrases(new)):
         return formatted, length_note(formatted)
     if formatted:
-        print("[EBM] the LLM's rewording added a dose, time or test; using the rules' wording")
+        print("[EBM] the LLM's rewording added a dose, time or test, or dropped a time; using the rules' wording")
     return lines, length_note(lines)
 
 
 SHORTEN_PROMPT = """This cardiology action plan is {LENGTH} characters, but Oscar keeps only {MAX} (each line break
 counts as 2). Shorten it to at most {MAX} characters.
-- Keep every item and its meaning. Keep each drug name, dose, test and time exactly (the same numbers), and keep
-  "Consider" / "Recommend" as they are. Do not add anything.
+- Keep every item and its meaning. Keep each drug name, dose, test and time exactly (the same numbers), every
+  time written in words (e.g. "at the next opportunity", "next available", "today"), each item's verb (e.g.
+  "Assess", "Send for", "Start"), and "Consider" / "Recommend" as they are. Do not add anything, and never cut an
+  item to a few words.
 - Shorten only the wording: abbreviations (BP, HR, LDL, AF, HF, f/u, mo, yr, wk), no filler words, no "the" or "a"
   where the meaning stays clear.
 - Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
   the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
   sentence half-finished or with words in the wrong order.
-- One item per line, plain text, no bullets.
+- One item per line, plain text, no bullets. Keep each tag such as [N1] at the end of the line that has its item.
+- The shortened plan must have no repeated item, nothing wrong, and no sentence that does not read clearly.
 
 PLAN:
 {PLAN}
@@ -269,12 +341,14 @@ def build_shorten_prompt(lines: list) -> str:
 
 def shorter_plan(lines: list, reply: str | None) -> list:
     """The LLM's shortened plan (SHORTEN_PROMPT) when it is shorter and keeps exactly the numbers (doses, times) and
-    tests of the plan, so no item was dropped or changed; otherwise the plan as it was."""
+    tests of the plan and every time written in words, so no item was dropped or changed; otherwise the plan as it
+    was."""
     shortened = [concise_line(" ".join(line.split()))
                  for line in clean_action_plan(reply or "").splitlines() if line.strip()]
-    new, old = "\n".join(shortened), "\n".join(lines)
+    new, old = untag("\n".join(shortened)), untag("\n".join(lines))
     if (shortened and saved_length(new) < saved_length(old)
-            and _numbers(new) == _numbers(old) and _tests(new) == _tests(old)):
+            and _numbers(new) == _numbers(old) and _tests(new) == _tests(old)
+            and _time_phrases(old) <= _time_phrases(new)):
         return shortened
     if shortened:
         print("[EBM] the shortened plan was not shorter or changed a dose, time or test; keeping the longer plan")
@@ -346,15 +420,23 @@ ORIGINAL_HEADER = f"{STATUS_PREFIX} ───── Rules' original wording (for
 
 def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = (), original: list = (),
                 new_items: list = ()) -> str:
-    """The result box: the checks and notes for the doctor first, then the plan that Populate saves with the new
-    items from the checks after it (each with the chart fields it comes from on the line below, not saved), then the
-    rules' original wording when the LLM reworded it (every [EBM] line is left out by Populate)."""
+    """The result box: the checks and notes for the doctor first, then the plan that Populate saves (old and new
+    items together), each line with a new item's tag followed by that item's chart fields (not saved), then the
+    original wording when the LLM reworded it (every [EBM] line is left out by Populate). The fields of a new item
+    whose tag the LLM dropped are listed after the plan."""
     top = (([RULES_STOPPED_CHECK] if rules_stopped else []) + list(checks) + list(notes)
            + ([] if plan else [NO_RULE_PLAN_CHECK]))
-    body = list(plan)
-    for sentence, fields in new_items:
-        body += [sentence, f"{STATUS_PREFIX}   from: {_source(fields)}"]
-    bottom = [ORIGINAL_HEADER] + [f"{STATUS_PREFIX}   {line}" for line in original] if original and plan != list(original) else []
+    body, shown = [], set()
+    for line in plan:
+        body.append(untag(line).strip())
+        for number in dict.fromkeys(int(n) for n in re.findall(_TAG, line)):
+            if 1 <= number <= len(new_items) and number not in shown:
+                shown.add(number)
+                body.append(f"{STATUS_PREFIX}   from: {_source(new_items[number - 1][1])}")
+    body += [f"{STATUS_PREFIX}   from (added item): {_source(fields)}"
+             for number, (_, fields) in enumerate(new_items, 1) if number not in shown and plan]
+    plain = [untag(line).strip() for line in plan]
+    bottom = [ORIGINAL_HEADER] + [f"{STATUS_PREFIX}   {line}" for line in original] if original and plain != list(original) else []
     return "\n".join(top + ([""] if top and body else []) + body + ([""] if bottom else []) + bottom)
 
 
