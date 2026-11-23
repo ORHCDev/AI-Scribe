@@ -297,6 +297,30 @@ def length_note(plan_lines: list) -> list:
     return [f"{CHECK_PREFIX} The plan is {length} characters; Oscar keeps only the first {APLAN_MAX_CHARS} of APLAN."]
 
 
+CUT_HEADER = f"{STATUS_PREFIX} ───── Full plan before the cut at {APLAN_MAX_CHARS} characters (not saved) ─────"
+
+
+def cut_to_fit(plan_lines: list) -> tuple[list, list]:
+    """(lines saved, lines cut off): whole lines from the top while the plan fits in the 255 characters Oscar keeps
+    of APLAN (at least the first line, which Oscar then cuts itself)."""
+    kept = []
+    for line in plan_lines:
+        if not fits(kept + [line]):
+            break
+        kept.append(line)
+    kept = kept or list(plan_lines[:1])
+    return kept, list(plan_lines[len(kept):])
+
+
+def cut_note(plan_lines: list, cut: list) -> list:
+    """A note for the doctor when lines were cut off to fit APLAN."""
+    if not cut:
+        return []
+    return [f"{CHECK_PREFIX} The plan was {saved_length(chr(10).join(plan_lines))} characters; Oscar keeps only "
+            f"{APLAN_MAX_CHARS} of APLAN, so the last {len(cut)} lines are cut off. The full plan is shown at the "
+            "bottom (not saved); to keep a cut line, copy it into the plan without its [EBM] prefix and delete another."]
+
+
 def format_plan(lines: list, formatted_reply: str | None) -> tuple[list, list]:
     """(plan lines, notes for the doctor). The LLM's rewording (FORMAT_PROMPT) is used when it has no number (dose,
     time) and no test the rules' plan did not have (it may drop a repeated or conflicting item); otherwise the rules'
@@ -419,24 +443,34 @@ ORIGINAL_HEADER = f"{STATUS_PREFIX} ───── Rules' original wording (for
 
 
 def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = (), original: list = (),
-                new_items: list = ()) -> str:
+                new_items: list = (), cut: list = ()) -> str:
     """The result box: the checks and notes for the doctor first, then the plan that Populate saves (old and new
     items together), each line with a new item's tag followed by that item's chart fields (not saved), then the
     original wording when the LLM reworded it (every [EBM] line is left out by Populate). The fields of a new item
-    whose tag the LLM dropped are listed after the plan."""
+    whose tag the LLM dropped are listed after the plan. When lines were cut off to fit APLAN, the plan shown is the
+    cut one, and the full plan (with the cut lines) follows as [EBM] lines, not saved."""
     top = (([RULES_STOPPED_CHECK] if rules_stopped else []) + list(checks) + list(notes)
            + ([] if plan else [NO_RULE_PLAN_CHECK]))
-    body, shown = [], set()
-    for line in plan:
-        body.append(untag(line).strip())
-        for number in dict.fromkeys(int(n) for n in re.findall(_TAG, line)):
-            if 1 <= number <= len(new_items) and number not in shown:
-                shown.add(number)
-                body.append(f"{STATUS_PREFIX}   from: {_source(new_items[number - 1][1])}")
+    def with_sources(lines, prefix=""):
+        shown.clear()
+        out = []
+        for line in lines:
+            out.append(prefix + untag(line).strip())
+            for number in dict.fromkeys(int(n) for n in re.findall(_TAG, line)):
+                if 1 <= number <= len(new_items) and number not in shown:
+                    shown.add(number)
+                    out.append(f"{STATUS_PREFIX}   from: {_source(new_items[number - 1][1])}")
+        return out
+
+    shown = set()
+    full = [CUT_HEADER] + with_sources(list(plan) + list(cut), f"{STATUS_PREFIX}   ") if cut else []
+    body = with_sources(plan)
+    tagged = {int(n) for line in list(plan) + list(cut) for n in re.findall(_TAG, line)}
     body += [f"{STATUS_PREFIX}   from (added item): {_source(fields)}"
-             for number, (_, fields) in enumerate(new_items, 1) if number not in shown and plan]
-    plain = [untag(line).strip() for line in plan]
+             for number, (_, fields) in enumerate(new_items, 1) if number not in tagged and plan]
+    plain = [untag(line).strip() for line in list(plan) + list(cut)]
     bottom = [ORIGINAL_HEADER] + [f"{STATUS_PREFIX}   {line}" for line in original] if original and plain != list(original) else []
+    bottom = full + ([""] if full and bottom else []) + bottom
     return "\n".join(top + ([""] if top and body else []) + body + ([""] if bottom else []) + bottom)
 
 

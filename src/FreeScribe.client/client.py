@@ -2026,15 +2026,17 @@ def generate_ebm_action_plan():
                     plan = ebm.shorter_plan(plan, send_text_to_chatgpt(ebm.build_shorten_prompt(plan)))
                 except Exception as e:
                     print(f"[{EBM_PROMPT}] shortening failed ({type(e).__name__}); keeping the longer plan")
-            notes = ebm.length_note(plan)
+            # Still too long: whole lines from the top are saved up to 255 characters; the rest is shown cut off
+            plan, cut = ebm.cut_to_fit(plan)
+            notes = ebm.cut_note(plan + cut, cut)
             _ebm_patient["demo_no"] = str(demo_no)
             print(f"[{EBM_PROMPT}] {len(checks)} checks, {len(new_items)} new items, plan "
-                  f"{ebm.saved_length(chr(10).join(plan))} characters; "
+                  f"{ebm.saved_length(chr(10).join(plan))} characters, {len(cut)} lines cut off; "
                   "Populate saves the plan to APLAN without the [EBM] lines")
             # The original wording goes below the plan, for comparison, when the LLM reworded it
             original = lines + [sentence for sentence, _ in new_items]
             root.after(0, display_text, ebm.result_text(plan, checks, rules_stopped, notes, original=original,
-                                                         new_items=new_items))
+                                                         new_items=new_items, cut=cut))
         except Exception as e:
             root.after(0, finish, f"{ebm.STATUS_PREFIX} Action plan failed ({type(e).__name__}): {e}")
 

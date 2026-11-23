@@ -338,3 +338,26 @@ def test_prompts_keep_readability_and_leave_out_repeats():
     assert "readability comes before length" in ebm.FORMAT_PROMPT and "must be at most" not in ebm.FORMAT_PROMPT
     assert "never cut an\n  item to a few words" in ebm.SHORTEN_PROMPT
     assert "Never write a NEW point about a drug or test the plan already mentions" in ebm.CHECKS_PROMPT
+
+
+def test_a_plan_too_long_is_cut_at_whole_lines_and_the_rest_shown_unsaved():
+    plan = [f"Consider item number {i} of the plan, to be done in {i} months. [N{i}]" if i == 5 else
+            f"Consider item number {i} of the plan, to be done in {i} months." for i in range(1, 8)]
+    kept, cut = ebm.cut_to_fit(plan)
+    assert ebm.fits(kept) and not ebm.fits(kept + cut[:1]) and kept + cut == plan
+    items = [("x", [])] * 4 + [("Consider item number 5.", ["LDL"])]
+    text = ebm.result_text(kept, [], False, ebm.cut_note(plan, cut), new_items=items, cut=cut)
+    assert ebm.plan_from_result_box(text) == "\n".join(kept)
+    assert ebm.saved_length(ebm.plan_from_result_box(text)) <= ebm.APLAN_MAX_CHARS
+    assert ebm.CUT_HEADER in text and f"{ebm.STATUS_PREFIX}   from: LDL" in text
+    full = text.split(ebm.CUT_HEADER)[1].splitlines()[1:]
+    assert [line for line in full if not line.startswith(f"{ebm.STATUS_PREFIX}   from")] == \
+        [f"{ebm.STATUS_PREFIX}   {ebm.untag(line)}" for line in plan]
+    assert text.index("\n".join(kept)) < text.index(ebm.CUT_HEADER)
+    assert text.count("from (added item)") == 4 and text.count(f"{ebm.STATUS_PREFIX}   from: LDL") == 1
+    assert f"the last {len(cut)} lines are cut off" in text
+
+
+def test_a_plan_that_fits_is_not_cut():
+    assert ebm.cut_to_fit(["Echo in 24 months."]) == (["Echo in 24 months."], [])
+    assert ebm.cut_note(["Echo in 24 months."], []) == []
