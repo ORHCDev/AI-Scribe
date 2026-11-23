@@ -83,17 +83,23 @@ List at most 3 points, and only points that would change what the doctor does, m
 - a safety concern with the plan or the current medications (e.g. a slow heart rate on a beta-blocker, an allergy
   to a recommended drug, an abnormal lab value);
 - missing or old chart data that an item of the plan depends on.
-Each point must say what is missing or wrong, so the doctor knows what to do, e.g. "Lp(a) 296 and premature CAD in
-the family, but no lipid-lowering treatment in the plan or the medications". A point that only describes the chart
-is not a point.
+Start each point with NEW or CHECK:
+- NEW for a problem in the chart the plan does not address, or a safety concern with the plan or the current
+  medications. Write it as one more item of the action plan, in the plan's own style: start with "Consider",
+  "Assess" or "Check", then what to do and why, in concise wording (BP, HR, LDL, AF, f/u, mo, yr are fine), e.g.
+  "Consider lipid-lowering therapy for Lp(a) 296 and premature CAD in the family" or "Consider reducing bisoprolol
+  for HR 48". Never give a drug dose. The item must be one clear, logical sentence: what to do, then why.
+- CHECK for missing or old chart data that an item of the plan depends on: one sentence that says what is missing,
+  e.g. "No creatinine in the chart for the planned Ramipril".
+A point that only describes the chart is not a point.
 Do not list normal results, or a test or treatment the plan already asks for.
 Write one point per problem: two findings about the same problem (e.g. a positive stress test and ischemia on a stress
 echo) are one point.
 Items of the plan that repeat or conflict with each other are handled when the plan is written: do not list them.
-Start each point with the names of the chart fields it comes from in square brackets, separated by ";" and
-written exactly as they appear before the ":" in the chart, then one sentence that gives their value or date, e.g.
-"[Last Holter; Current Medications] Atrial fibrillation on the last Holter (2025-03-14), but no anticoagulant in
-the medications". Only flag a
+After NEW or CHECK, give the names of the chart fields the point comes from in square brackets, separated by ";"
+and written exactly as they appear before the ":" in the chart, then the point with their value or date, e.g.
+"NEW [Last Holter; Current Medications] Consider anticoagulation for AF on the last Holter (2025-03-14)" or
+"NEW [Heart Rate; Current Medications] Consider reducing bisoprolol for HR 48". Only flag a
 value as abnormal if it is outside the normal range. Fewer points are better than doubtful ones: leave out anything
 you are not sure of. Never write vague points such as "monitor ..." or "continue current medications". Do not write
 the patient's name.
@@ -115,8 +121,12 @@ every item of the plan must still be there with the same meaning, nothing wrong 
 - One item per line, plain text, no bullets. Start each item that asks for something with a verb such as "Assess",
   "Check", "Consider", "Recommend" or "Start", never with "We will". An item that states a finding or a risk
   (e.g. "High risk of heart failure with preserved ejection fraction") stays a statement; do not add "Assess".
-- Use concise wording (BP, LDL, f/u, mo, yr are fine) and try to stay within {MAX} characters in total, but never
-  leave out an item or change its meaning to fit.
+- Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
+  the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
+  sentence half-finished or with words in the wrong order.
+- The whole plan must be at most {MAX} characters (Oscar keeps only that many; each line break counts as 2).
+  Use short wording to fit: abbreviations (BP, HR, LDL, AF, HF, f/u, mo, yr, wk), no filler words, no "the" or
+  "a" where the meaning stays clear. Never leave out an item or change its meaning to fit.
 
 PLAN:
 {PLAN}
@@ -235,6 +245,42 @@ def format_plan(lines: list, formatted_reply: str | None) -> tuple[list, list]:
     return lines, length_note(lines)
 
 
+SHORTEN_PROMPT = """This cardiology action plan is {LENGTH} characters, but Oscar keeps only {MAX} (each line break
+counts as 2). Shorten it to at most {MAX} characters.
+- Keep every item and its meaning. Keep each drug name, dose, test and time exactly (the same numbers), and keep
+  "Consider" / "Recommend" as they are. Do not add anything.
+- Shorten only the wording: abbreviations (BP, HR, LDL, AF, HF, f/u, mo, yr, wk), no filler words, no "the" or "a"
+  where the meaning stays clear.
+- Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
+  the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
+  sentence half-finished or with words in the wrong order.
+- One item per line, plain text, no bullets.
+
+PLAN:
+{PLAN}
+
+Reply with the shortened plan only."""
+
+
+def build_shorten_prompt(lines: list) -> str:
+    plan = "\n".join(lines)
+    return fill_prompt(SHORTEN_PROMPT, LENGTH=str(saved_length(plan)), MAX=str(APLAN_MAX_CHARS), PLAN=plan)
+
+
+def shorter_plan(lines: list, reply: str | None) -> list:
+    """The LLM's shortened plan (SHORTEN_PROMPT) when it is shorter and keeps exactly the numbers (doses, times) and
+    tests of the plan, so no item was dropped or changed; otherwise the plan as it was."""
+    shortened = [concise_line(" ".join(line.split()))
+                 for line in clean_action_plan(reply or "").splitlines() if line.strip()]
+    new, old = "\n".join(shortened), "\n".join(lines)
+    if (shortened and saved_length(new) < saved_length(old)
+            and _numbers(new) == _numbers(old) and _tests(new) == _tests(old)):
+        return shortened
+    if shortened:
+        print("[EBM] the shortened plan was not shorter or changed a dose, time or test; keeping the longer plan")
+    return lines
+
+
 def rule_plan_lines(rule_plan: str) -> list:
     """The rules' action plan one item per line, without "We will" openings, <br> tags, blank lines or repeats."""
     lines, seen = [], set()
@@ -263,32 +309,53 @@ def check_fields(line: str, chart: list | None) -> tuple:
     return line[match.end():].strip(), list(dict.fromkeys(names))
 
 
-def checks_from_reply(text: str, chart: list | None = None) -> list:
-    """The LLM's points (at most MAX_CHECKS) as CHECK_PREFIX lines, each ending with the chart fields it comes
-    from, or a note when it names none that are in the chart; none when it replied NONE."""
-    checks = []
+def _source(fields: list) -> str:
+    return "; ".join(fields) if fields else "no chart field named"
+
+
+def points_from_reply(text: str, chart: list | None = None) -> tuple[list, list]:
+    """(checks, new items) from the LLM's points, at most MAX_CHECKS in all; none when it replied NONE.
+    A "NEW" point (a problem the plan does not address, or a safety concern), written as a plan item, becomes a
+    (sentence, chart fields) new item, shown in the plan and saved. Any other point ("CHECK": missing or old data,
+    or no type) is a CHECK_PREFIX line for the doctor, ending with the chart fields it comes from, never saved."""
+    checks, items = [], []
     for line in clean_action_plan(text).splitlines():
         line = re.sub(r"^\s*(\[EBM\]\s*)?check:\s*", "", line, flags=re.IGNORECASE).strip()
+        kind = re.match(r"^(NEW|CHECK)\b\s*:?\s*", line, flags=re.IGNORECASE)
+        is_new = bool(kind) and kind.group(1).upper() == "NEW"
+        line = line[kind.end():].strip() if kind else line
         if not line or line.strip(".").upper() == "NONE":
             continue
         sentence, fields = check_fields(line, chart)
-        if not sentence:
+        if not sentence or len(checks) + len(items) >= MAX_CHECKS:
             continue
-        source = f"(from: {'; '.join(fields)})" if fields else "(from: no chart field named)"
-        checks.append(f"{CHECK_PREFIX} {sentence} {source}")
-    return checks[:MAX_CHECKS]
+        if is_new:
+            items.append((concise_line(sentence), fields))
+        else:
+            checks.append(f"{CHECK_PREFIX} {sentence} (from: {_source(fields)})")
+    return checks, items
+
+
+def checks_from_reply(text: str, chart: list | None = None) -> list:
+    """The checks of points_from_reply (the new items left out)."""
+    return points_from_reply(text, chart)[0]
 
 
 ORIGINAL_HEADER = f"{STATUS_PREFIX} ───── Rules' original wording (for comparison, not saved) ─────"
 
 
-def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = (), original: list = ()) -> str:
-    """The result box: the checks and notes for the doctor first, then the plan that Populate saves, then the rules'
-    original wording when the LLM reworded it (every [EBM] line is left out by Populate)."""
+def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = (), original: list = (),
+                new_items: list = ()) -> str:
+    """The result box: the checks and notes for the doctor first, then the plan that Populate saves with the new
+    items from the checks after it (each with the chart fields it comes from on the line below, not saved), then the
+    rules' original wording when the LLM reworded it (every [EBM] line is left out by Populate)."""
     top = (([RULES_STOPPED_CHECK] if rules_stopped else []) + list(checks) + list(notes)
            + ([] if plan else [NO_RULE_PLAN_CHECK]))
+    body = list(plan)
+    for sentence, fields in new_items:
+        body += [sentence, f"{STATUS_PREFIX}   from: {_source(fields)}"]
     bottom = [ORIGINAL_HEADER] + [f"{STATUS_PREFIX}   {line}" for line in original] if original and plan != list(original) else []
-    return "\n".join(top + ([""] if top and plan else []) + plan + ([""] if bottom else []) + bottom)
+    return "\n".join(top + ([""] if top and body else []) + body + ([""] if bottom else []) + bottom)
 
 
 def plan_from_result_box(text: str) -> str:

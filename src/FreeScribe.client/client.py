@@ -1999,9 +1999,10 @@ def generate_ebm_action_plan():
             rule_plan, chart = result.get("plan") or "", result.get("chart") or []
             # Counts only: the plan and chart are PHI
             print(f"[{EBM_PROMPT}] rule plan: {len(rule_plan.splitlines())} lines, chart: {len(chart)} fields")
-            # The rules' plan is kept as it is; the LLM only lists points for the doctor to check, which are
-            # shown above the plan and never saved.
-            checks = ebm.checks_from_reply(send_text_to_chatgpt(
+            # The LLM compares the rules' plan with the chart: a problem the plan does not address becomes a new
+            # plan item after the plan (saved, its chart fields below it, not saved); other points are checks for the
+            # doctor, shown above the plan and never saved.
+            checks, new_items = ebm.points_from_reply(send_text_to_chatgpt(
                 ebm.build_checks_prompt(rule_plan, chart, _ebm_prompt())), chart)
             rules_stopped = any(str(e).startswith("TotalScore") for e in result.get("errors") or [])
             lines = ebm.rule_plan_lines(rule_plan)
@@ -2014,11 +2015,22 @@ def generate_ebm_action_plan():
                 except Exception as e:
                     print(f"[{EBM_PROMPT}] rewording failed ({type(e).__name__}); using the rules' wording")
             plan, notes = ebm.format_plan(lines, formatted)
+            added = [sentence for sentence, _ in new_items]
+            if plan and not ebm.fits(plan + added):
+                # Oscar keeps only 255 characters of APLAN: the LLM shortens the wording once, and ebm.shorter_plan
+                # keeps its reply only if every dose, time and test is still there
+                try:
+                    plan = ebm.shorter_plan(plan, send_text_to_chatgpt(ebm.build_shorten_prompt(plan)))
+                except Exception as e:
+                    print(f"[{EBM_PROMPT}] shortening failed ({type(e).__name__}); keeping the longer plan")
+            notes = ebm.length_note(plan + added)
             _ebm_patient["demo_no"] = str(demo_no)
-            print(f"[{EBM_PROMPT}] {len(checks)} checks, plan {ebm.saved_length(chr(10).join(plan))} characters; "
+            print(f"[{EBM_PROMPT}] {len(checks)} checks, {len(added)} new items, plan "
+                  f"{ebm.saved_length(chr(10).join(plan + added))} characters; "
                   "Populate saves the plan to APLAN without the [EBM] lines")
             # The rules' own wording goes below the plan, for comparison, when the LLM reworded it
-            root.after(0, display_text, ebm.result_text(plan, checks, rules_stopped, notes, original=lines))
+            root.after(0, display_text, ebm.result_text(plan, checks, rules_stopped, notes, original=lines,
+                                                         new_items=new_items))
         except Exception as e:
             root.after(0, finish, f"{ebm.STATUS_PREFIX} Action plan failed ({type(e).__name__}): {e}")
 

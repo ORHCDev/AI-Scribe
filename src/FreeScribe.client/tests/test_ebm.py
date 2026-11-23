@@ -204,7 +204,7 @@ def test_the_format_prompt_keeps_test_names_and_statements():
 
 def test_checks_name_their_chart_source_and_leave_repeats_to_the_plan():
     assert "a problem in the chart the plan does not address" in ebm.CHECKS_PROMPT
-    assert "names of the chart fields it comes from in square brackets" in ebm.CHECKS_PROMPT
+    assert "names of the chart fields the point comes from in square brackets" in ebm.CHECKS_PROMPT
     assert "repeat or conflict with each other are handled when the plan is written" in ebm.CHECKS_PROMPT
     assert "two items asking for the same thing become one" in ebm.FORMAT_PROMPT
 
@@ -220,6 +220,68 @@ def test_format_prompt_does_not_add_a_missing_purpose():
 
 
 def test_checks_prompt_asks_for_actionable_single_points():
-    assert "Each point must say what is missing or wrong" in ebm.CHECKS_PROMPT
+    assert "one sentence that says what is missing" in ebm.CHECKS_PROMPT
     assert "Do not list normal results, or a test or treatment the plan already asks for" in ebm.CHECKS_PROMPT
     assert "Write one point per problem" in ebm.CHECKS_PROMPT
+
+
+def test_the_format_prompt_makes_255_characters_a_limit():
+    prompt = ebm.build_format_prompt(["Echo in 24 months."])
+    assert f"must be at most {ebm.APLAN_MAX_CHARS} characters" in prompt and "try to stay" not in prompt
+
+
+def test_a_shortened_plan_is_used_when_it_keeps_every_number_and_test():
+    short = [f"Consider item {i}, in {i} mo." for i in range(1, 6)]
+    assert ebm.shorter_plan(LONG, "\n".join(short)) == short
+    assert ebm.fits(short) and ebm.length_note(short) == []
+    prompt = ebm.build_shorten_prompt(LONG)
+    assert str(ebm.saved_length("\n".join(LONG))) in prompt and LONG[0] in prompt
+
+
+@pytest.mark.parametrize("reply", [
+    "Consider item 1 in 1 mo.\nConsider item 2 in 2 mo.",  # items dropped
+    "\n".join(f"Consider item {i} in {i} mo with an echo." for i in range(1, 6)),  # a new test
+    "\n".join(LONG) + "\nMore.",  # not shorter
+    ""])
+def test_a_shortened_plan_that_drops_or_adds_something_is_not_used(reply):
+    assert ebm.shorter_plan(LONG, reply) == LONG
+
+
+def test_new_points_become_plan_items_and_checks_stay_checks():
+    reply = ("NEW [Chief complaint; Patient Age] Consider anticoagulation for AF at 71.\n"
+             "CHECK [Patient Age] Creatinine not in the chart.\nHR 48 on bisoprolol.")
+    checks, items = ebm.points_from_reply(reply, CHART)
+    assert items == [("Consider anticoagulation for AF at 71.", ["Chief complaint", "Patient Age"])]
+    assert checks == [f"{ebm.CHECK_PREFIX} Creatinine not in the chart. (from: Patient Age)",
+                      f"{ebm.CHECK_PREFIX} HR 48 on bisoprolol. (from: no chart field named)"]
+    assert ebm.checks_from_reply(reply, CHART) == checks
+
+
+def test_points_are_capped_at_three_in_all():
+    reply = "\n".join(f"NEW Consider item {i}." for i in range(3)) + "\nCHECK HR 48."
+    checks, items = ebm.points_from_reply(reply)
+    assert len(items) == 3 and checks == []
+
+
+def test_new_items_are_saved_after_the_plan_with_their_source_below():
+    text = ebm.result_text(["Echo in 24 months."], [f"{ebm.CHECK_PREFIX} HR 48."], False,
+                           new_items=[("Consider anticoagulation for AF.", ["Last Holter"])])
+    assert text.splitlines() == [f"{ebm.CHECK_PREFIX} HR 48.", "", "Echo in 24 months.",
+                                 "Consider anticoagulation for AF.", f"{ebm.STATUS_PREFIX}   from: Last Holter"]
+    assert ebm.plan_from_result_box(text) == "Echo in 24 months.\nConsider anticoagulation for AF."
+
+
+def test_the_checks_prompt_asks_for_new_and_check_points():
+    assert "Start each point with NEW or CHECK" in ebm.CHECKS_PROMPT and "Never give a drug dose" in ebm.CHECKS_PROMPT
+
+
+def test_safety_concerns_are_new_plan_items_and_missing_data_stays_a_check():
+    prompt = ebm.CHECKS_PROMPT
+    assert "or a safety concern with the plan or the current\n  medications" in prompt
+    assert '"Consider reducing bisoprolol\n  for HR 48"' in prompt
+    assert "CHECK for missing or old chart data" in prompt
+
+
+def test_prompts_ask_for_clear_logical_sentences():
+    for prompt in (ebm.FORMAT_PROMPT, ebm.SHORTEN_PROMPT, ebm.CHECKS_PROMPT):
+        assert "one clear, logical sentence" in prompt
