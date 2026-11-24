@@ -22,6 +22,9 @@ MAX_SEARCH_ROUNDS = 4
 # Ceiling on the evidence text carried into the final answer prompt.
 MAX_EVIDENCE_CHARS = 24000
 
+# Ceiling on the patient letter text carried into the prompts.
+MAX_PATIENT_CONTEXT_CHARS = 8000
+
 
 DEFAULT_EVIDENCE_TOOL_PROTOCOL = """\
 JSON format:
@@ -56,6 +59,10 @@ TOOLS ALREADY CALLED (do not repeat an identical call)
 USER QUESTION
 "{user_input}"
 
+PATIENT CONTEXT (most recent letter from the selected patient's chart, or
+"(no patient context)" when no patient is selected)
+{patient_context}
+
 HOW TO SEARCH
 1. Start with search_rct_studies using specific clinical keywords for the
    question (intervention, comparator, outcome, population).
@@ -67,6 +74,9 @@ HOW TO SEARCH
    broader, or alternate clinical terms before giving up.
 4. Stop (return []) once the evidence answers the question, or after
    exhausting reasonable searches.
+5. When patient context is provided, use the patient's relevant conditions,
+   medications, prior events, and risk factors to choose search terms and to
+   judge which trial populations fit the patient.
 
 Respond ONLY with a JSON array of tool calls (or []):
 {tool_protocol}
@@ -85,6 +95,10 @@ RULES
   what was searched.
 - Cite the supporting study for each claim (study title or filename, and
   section when helpful).
+- When patient context is provided, tailor the recommendation to that patient
+  (comorbidities, medications, prior events, contraindications) and say how
+  well the trial populations fit. Do not invent patient details that are not
+  in the context.
 
 ANSWER STRUCTURE
 - Direct answer or recommendation first.
@@ -97,6 +111,10 @@ ANSWER STRUCTURE
 
 USER QUESTION
 "{user_input}"
+
+PATIENT CONTEXT (most recent letter from the selected patient's chart, or
+"(no patient context)" when no patient is selected)
+{patient_context}
 
 RETRIEVED EVIDENCE
 {context}
@@ -174,6 +192,46 @@ class EvidenceWorkflow(Workflow):
             lines.append(" | ".join(bits))
         return "\n".join(lines)
 
+    def _patient_context(self, context: WorkflowContext) -> str:
+        """The selected patient's most recent 0letter text"""
+        demo_no = str(context.curr_demo or "").strip()
+        if not demo_no.isdigit() or context.db_conn is None or context.oscar is None:
+            return ""
+
+        try:
+            rows = context.db_conn.query_database(f"""
+                SELECT fdid, form_name, form_date
+                FROM eform_data
+                WHERE demographic_no = {int(demo_no)}
+                  AND form_name LIKE '%letter%'
+                ORDER BY form_date DESC, fdid DESC
+                LIMIT 1;
+            """)
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "Could not look up the patient's letters: %s", e)
+            return ""
+        if not rows:
+            return ""
+
+        letter = rows[0]
+        try:
+            text = context.oscar.get_0letter_text(letter.get("fdid"))
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "Could not read the patient's latest letter: %s", e)
+            return ""
+        text = (text or "").strip()
+        if not text:
+            return ""
+
+        if len(text) > MAX_PATIENT_CONTEXT_CHARS:
+            text = text[:MAX_PATIENT_CONTEXT_CHARS] + "\n[letter truncated]"
+        header = "Most recent letter"
+        if letter.get("form_date"):
+            header += f" ({letter['form_date']})"
+        return f"{header}:\n{text}"
+
     def _parse_tool_calls(self, response: str) -> list[dict] | None:
         """Parses the LLM's JSON array of tool calls; None when unparseable."""
         cleaned = (
@@ -233,10 +291,11 @@ class EvidenceWorkflow(Workflow):
         Workflow
         --------
         1. Resolve ambiguous input using recent conversation history.
-        2. Show the agent the study inventory and evidence tools.
-        3. Loop: the LLM picks tool calls (search / read / section), the
+        2. Pull the selected patient's latest 0letter, when a patient is selected.
+        3. Show the agent the study inventory, patient context and evidence tools.
+        4. Loop: the LLM picks tool calls (search / read / section), the
            calls run, and their results are fed back for the next round.
-        4. Once the LLM stops requesting tools, answer the question from the
+        5. Once the LLM stops requesting tools, answer the question from the
            accumulated evidence with the evidence followup prompt.
         """
         if not user_input.strip():
@@ -256,6 +315,9 @@ class EvidenceWorkflow(Workflow):
                 )
             )
 
+        # Selected patient's latest letter, so recommendations fit this patient.
+        patient_context = self._patient_context(context)
+
         # ---------------- Agentic search loop ---------------- #
         evidence_tools = self._evidence_tools(context)
         tool_str = ""
@@ -274,6 +336,7 @@ class EvidenceWorkflow(Workflow):
                 tools=tool_str,
                 history="\n".join(tools_tried) or "None",
                 user_input=resolved_input,
+                patient_context=patient_context or "(no patient context)",
                 tool_protocol=(context.prompts.get("evidence_tool_protocol")
                                or DEFAULT_EVIDENCE_TOOL_PROTOCOL),
             )
@@ -319,13 +382,19 @@ class EvidenceWorkflow(Workflow):
         followup_prompt = (context.prompts.get("evidence_followup")
                            or DEFAULT_EVIDENCE_FOLLOWUP).format(
             user_input=convo_history,
+            patient_context=patient_context or "(no patient context)",
             context=evidence_text,
         )
         logging.getLogger(__name__).info("Evidence followup prompt length: %d", len(followup_prompt))
         resp = context.ai_conn.send_message(followup_prompt)
 
+        metadata_context = evidence_text[:8000]
+        if patient_context:
+            metadata_context = (f"PATIENT CONTEXT:\n{patient_context[:2000]}\n\n"
+                                f"EVIDENCE:\n{evidence_text[:6000]}")
+
         return WorkflowResult(
             response=resp,
             sources=sources,
-            metadata={"tools_tried": tools_tried, "context": evidence_text[:8000]},
+            metadata={"tools_tried": tools_tried, "context": metadata_context},
         )

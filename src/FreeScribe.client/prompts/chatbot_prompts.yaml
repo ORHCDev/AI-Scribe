@@ -444,6 +444,10 @@ evidence_search_prompt: |
   USER QUESTION
   "{user_input}"
 
+  PATIENT CONTEXT (most recent letter from the selected patient's chart, or
+  "(no patient context)" when no patient is selected)
+  {patient_context}
+
   HOW TO SEARCH
   1. Start with search_rct_studies using specific clinical keywords for the
      question (intervention, comparator, outcome, population).
@@ -455,6 +459,9 @@ evidence_search_prompt: |
      broader, or alternate clinical terms before giving up.
   4. Stop (return []) once the evidence answers the question, or after
      exhausting reasonable searches.
+  5. When patient context is provided, use the patient's relevant conditions,
+     medications, prior events, and risk factors to choose search terms and to
+     judge which trial populations fit the patient.
 
   Respond ONLY with a JSON array of tool calls (or []):
   {tool_protocol}
@@ -472,6 +479,10 @@ evidence_followup: |
     what was searched.
   - Cite the supporting study for each claim (study title or filename, and
     section when helpful).
+  - When patient context is provided, tailor the recommendation to that patient
+    (comorbidities, medications, prior events, contraindications) and say how
+    well the trial populations fit. Do not invent patient details that are not
+    in the context.
 
   ANSWER STRUCTURE
   - Direct answer or recommendation first.
@@ -484,6 +495,10 @@ evidence_followup: |
 
   USER QUESTION
   "{user_input}"
+
+  PATIENT CONTEXT (most recent letter from the selected patient's chart, or
+  "(no patient context)" when no patient is selected)
+  {patient_context}
 
   RETRIEVED EVIDENCE
   {context}
