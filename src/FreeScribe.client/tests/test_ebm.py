@@ -204,7 +204,7 @@ def test_the_format_prompt_keeps_test_names_and_statements():
 
 def test_checks_name_their_chart_source_and_leave_repeats_to_the_plan():
     assert "a problem in the chart the plan does not address" in ebm.CHECKS_PROMPT
-    assert "names of the chart fields it comes from in square brackets" in ebm.CHECKS_PROMPT
+    assert "names of the chart fields the point comes from in square brackets" in ebm.CHECKS_PROMPT
     assert "repeat or conflict with each other are handled when the plan is written" in ebm.CHECKS_PROMPT
     assert "two items asking for the same thing become one" in ebm.FORMAT_PROMPT
 
@@ -220,6 +220,144 @@ def test_format_prompt_does_not_add_a_missing_purpose():
 
 
 def test_checks_prompt_asks_for_actionable_single_points():
-    assert "Each point must say what is missing or wrong" in ebm.CHECKS_PROMPT
+    assert "one sentence that says what is missing" in ebm.CHECKS_PROMPT
     assert "Do not list normal results, or a test or treatment the plan already asks for" in ebm.CHECKS_PROMPT
     assert "Write one point per problem" in ebm.CHECKS_PROMPT
+
+
+def test_the_format_prompt_makes_255_characters_a_limit():
+    prompt = ebm.build_format_prompt(["Echo in 24 months."])
+    assert f"try to stay within {ebm.APLAN_MAX_CHARS} characters" in prompt
+
+
+def test_a_shortened_plan_is_used_when_it_keeps_every_number_and_test():
+    short = [f"Consider item {i}, in {i} mo." for i in range(1, 6)]
+    assert ebm.shorter_plan(LONG, "\n".join(short)) == short
+    assert ebm.fits(short) and ebm.length_note(short) == []
+    prompt = ebm.build_shorten_prompt(LONG)
+    assert str(ebm.saved_length("\n".join(LONG))) in prompt and LONG[0] in prompt
+
+
+@pytest.mark.parametrize("reply", [
+    "Consider item 1 in 1 mo.\nConsider item 2 in 2 mo.",  # items dropped
+    "\n".join(f"Consider item {i} in {i} mo with an echo." for i in range(1, 6)),  # a new test
+    "\n".join(LONG) + "\nMore.",  # not shorter
+    ""])
+def test_a_shortened_plan_that_drops_or_adds_something_is_not_used(reply):
+    assert ebm.shorter_plan(LONG, reply) == LONG
+
+
+def test_new_points_become_plan_items_and_checks_stay_checks():
+    reply = ("NEW [Chief complaint; Patient Age] Consider anticoagulation for AF at 71.\n"
+             "CHECK [Patient Age] Creatinine not in the chart.\nHR 48 on bisoprolol.")
+    checks, items = ebm.points_from_reply(reply, CHART)
+    assert items == [("Consider anticoagulation for AF at 71.", ["Chief complaint", "Patient Age"])]
+    assert checks == [f"{ebm.CHECK_PREFIX} Creatinine not in the chart. (from: Patient Age)",
+                      f"{ebm.CHECK_PREFIX} HR 48 on bisoprolol. (from: no chart field named)"]
+    assert ebm.checks_from_reply(reply, CHART) == checks
+
+
+def test_points_are_capped_at_three_in_all():
+    reply = "\n".join(f"NEW Consider item {i}." for i in range(3)) + "\nCHECK HR 48."
+    checks, items = ebm.points_from_reply(reply)
+    assert len(items) == 3 and checks == []
+
+
+def test_new_items_are_part_of_the_plan_with_their_source_below_their_line():
+    items = [("Consider anticoagulation for AF.", ["Last Holter"]), ("Consider statin for LDL 4.1.", ["LDL"])]
+    assert ebm.tagged_items(items) == ["Consider anticoagulation for AF. [N1]", "Consider statin for LDL 4.1. [N2]"]
+    # The LLM merged N2 into an old item and put N1 first
+    plan = ["Consider anticoagulation for AF. [N1]", "Echo in 24 months; consider statin for LDL 4.1. [N2]"]
+    text = ebm.result_text(plan, [f"{ebm.CHECK_PREFIX} HR 48."], False, new_items=items)
+    assert text.splitlines() == [f"{ebm.CHECK_PREFIX} HR 48.", "", "Consider anticoagulation for AF.",
+                                 f"{ebm.STATUS_PREFIX}   from: Last Holter",
+                                 "Echo in 24 months; consider statin for LDL 4.1.", f"{ebm.STATUS_PREFIX}   from: LDL"]
+    assert ebm.plan_from_result_box(text) == ("Consider anticoagulation for AF.\n"
+                                              "Echo in 24 months; consider statin for LDL 4.1.")
+
+
+def test_a_new_item_whose_tag_was_dropped_lists_its_source_after_the_plan():
+    items = [("Consider statin for LDL 4.1.", ["LDL"])]
+    text = ebm.result_text(["Echo in 24 months.", "Consider statin for LDL 4.1."], [], False, new_items=items)
+    assert text.splitlines()[-1] == f"{ebm.STATUS_PREFIX}   from (added item): LDL"
+    assert "[N" not in ebm.plan_from_result_box(text)
+
+
+def test_tags_are_not_counted_as_numbers_or_characters():
+    whole = ["Echo in 24 months.", "Consider statin for LDL 4.1. [N1]"]
+    plan, _ = ebm.format_plan(whole, "Assess with an echo in 24 months.\nConsider a statin for LDL 4.1. [N1]")
+    assert plan == ["Assess with an echo in 24 months.", "Consider a statin for LDL 4.1. [N1]"]
+    assert ebm.saved_length("Echo. [N1]") == len("Echo.")
+
+
+def test_the_format_prompt_rewrites_old_and_new_items_as_one_plan():
+    assert "old and new items together, is rewritten as one" in ebm.FORMAT_PROMPT
+    assert "no repeated item, nothing wrong, and no sentence that does not read clearly" in ebm.FORMAT_PROMPT
+    assert "Keep each tag such as [N1]" in ebm.SHORTEN_PROMPT
+
+
+def test_the_checks_prompt_asks_for_new_and_check_points():
+    assert "Start each point with NEW or CHECK" in ebm.CHECKS_PROMPT and "Never give a drug dose" in ebm.CHECKS_PROMPT
+
+
+def test_safety_concerns_are_new_plan_items_and_missing_data_stays_a_check():
+    prompt = ebm.CHECKS_PROMPT
+    assert "or a safety concern with the plan or the current\n  medications" in prompt
+    assert '"Consider reducing bisoprolol\n  for HR 48"' in prompt
+    assert "CHECK for missing or old chart data" in prompt
+
+
+def test_prompts_ask_for_clear_logical_sentences():
+    for prompt in (ebm.FORMAT_PROMPT, ebm.SHORTEN_PROMPT, ebm.CHECKS_PROMPT):
+        assert "one clear, logical sentence" in prompt
+
+
+_AV_PLAN = ["Assess low-grade AV block with an echo and stress test at the next opportunity.", "Patient requires OAC"]
+
+
+def test_a_rewording_or_shortening_that_drops_a_time_in_words_is_not_used():
+    plan, _ = ebm.format_plan(_AV_PLAN, "Echo, stress test for low-grade AV block\nOAC req")
+    assert plan == _AV_PLAN
+    assert ebm.shorter_plan(_AV_PLAN, "Echo, stress test for low-grade AV block\nOAC req") == _AV_PLAN
+    kept = "Assess low-grade AV block with echo, stress test at next opportunity.\nPatient requires OAC"
+    assert ebm.shorter_plan(_AV_PLAN, kept) == kept.splitlines()
+
+
+def test_points_repeating_the_plan_are_dropped_but_safety_concerns_stay():
+    checks = [f"{ebm.CHECK_PREFIX} Echo from 2000 is outdated for the planned assessment. (from: Last Echo)",
+              f"{ebm.CHECK_PREFIX} No creatinine in the chart for the planned Ramipril. (from: Last Echo)"]
+    items = [("Assess need for OAC for persistent atrial fibrillation.", ["ECG"]),
+             ("Consider alternative to OAC or dose adjustment for severe renal failure (eGFR 6).", ["eGFR"]),
+             ("Consider lipid-lowering therapy for Lp(a) 296.", ["Lp(a)"])]
+    kept_checks, kept_items = ebm.drop_repeats(checks, items, "\n".join(_AV_PLAN))
+    assert kept_checks == checks[1:]
+    assert [s for s, _ in kept_items] == [items[1][0], items[2][0]]
+
+
+def test_prompts_keep_readability_and_leave_out_repeats():
+    assert "readability comes before length" in ebm.FORMAT_PROMPT and "must be at most" not in ebm.FORMAT_PROMPT
+    assert "never cut an\n  item to a few words" in ebm.SHORTEN_PROMPT
+    assert "Never write a NEW point about a drug or test the plan already mentions" in ebm.CHECKS_PROMPT
+
+
+def test_a_plan_too_long_is_cut_at_whole_lines_and_the_rest_shown_unsaved():
+    plan = [f"Consider item number {i} of the plan, to be done in {i} months. [N{i}]" if i == 5 else
+            f"Consider item number {i} of the plan, to be done in {i} months." for i in range(1, 8)]
+    kept, cut = ebm.cut_to_fit(plan)
+    assert ebm.fits(kept) and not ebm.fits(kept + cut[:1]) and kept + cut == plan
+    items = [("x", [])] * 4 + [("Consider item number 5.", ["LDL"])]
+    text = ebm.result_text(kept, [], False, ebm.cut_note(plan, cut), new_items=items, cut=cut)
+    assert ebm.plan_from_result_box(text) == "\n".join(kept)
+    assert ebm.saved_length(ebm.plan_from_result_box(text)) <= ebm.APLAN_MAX_CHARS
+    assert ebm.CUT_HEADER in text and f"{ebm.STATUS_PREFIX}   from: LDL" in text
+    full = text.split(ebm.CUT_HEADER)[1].splitlines()[1:]
+    assert [line for line in full if not line.startswith(f"{ebm.STATUS_PREFIX}   from")] == \
+        [f"{ebm.STATUS_PREFIX}   {ebm.untag(line)}" for line in plan]
+    assert text.index("\n".join(kept)) < text.index(ebm.CUT_HEADER)
+    assert text.count("from (added item)") == 4 and text.count(f"{ebm.STATUS_PREFIX}   from: LDL") == 1
+    assert f"the last {len(cut)} lines are cut off" in text
+
+
+def test_a_plan_that_fits_is_not_cut():
+    assert ebm.cut_to_fit(["Echo in 24 months."]) == (["Echo in 24 months."], [])
+    assert ebm.cut_note(["Echo in 24 months."], []) == []

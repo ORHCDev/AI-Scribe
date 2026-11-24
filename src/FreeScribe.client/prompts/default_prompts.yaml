@@ -795,8 +795,8 @@ Requisition_Generation:
 EBM:
   # Hashes of earlier defaults: a saved section still equal to one of them is updated to the new default.
   Previous:
-    Checks: ["4d82b1902cf63cd5169f6887a33cc4cc", "bc4f0a0119cd02df0f90b440b5608742", "e29a33954a0924e13429feea72b0d972"]
-    Format: ["6daa8f515e315547ed57342882e684b0", "d202f213aade2f2e25de78055370365f"]
+    Checks: ["4d82b1902cf63cd5169f6887a33cc4cc", "bc4f0a0119cd02df0f90b440b5608742", "e29a33954a0924e13429feea72b0d972", "9b95305f7c4422e0230773d5bd50985d", "f121b989dc827c6dd5e976523bf2b808", "fdf2a05d53f63edcde60d69a8ee49735", "917bfd8b8e2d1613af82e105d4d2b192"]
+    Format: ["6daa8f515e315547ed57342882e684b0", "d202f213aade2f2e25de78055370365f", "185edcf8fa2df497a8530a5f38c055e3", "4e52af8312c159ee399f821257fa9759", "dd70ce08fade34050666e6ac7d689b10", "9bfbeef38b75689ed6b05ef7d688e7cd"]
   Sections:
     Checks: |
       You are a cardiologist checking the action plan the clinic's EBM rules produced for a patient against
@@ -814,17 +814,26 @@ EBM:
       - a safety concern with the plan or the current medications (e.g. a slow heart rate on a beta-blocker, an allergy
         to a recommended drug, an abnormal lab value);
       - missing or old chart data that an item of the plan depends on.
-      Each point must say what is missing or wrong, so the doctor knows what to do, e.g. "Lp(a) 296 and premature CAD in
-      the family, but no lipid-lowering treatment in the plan or the medications". A point that only describes the chart
-      is not a point.
+      Start each point with NEW or CHECK:
+      - NEW for a problem in the chart the plan does not address, or a safety concern with the plan or the current
+        medications. Write it as one more item of the action plan, in the plan's own style: start with "Consider",
+        "Assess" or "Check", then what to do and why, in concise wording (BP, HR, LDL, AF, f/u, mo, yr are fine), e.g.
+        "Consider lipid-lowering therapy for Lp(a) 296 and premature CAD in the family" or "Consider reducing bisoprolol
+        for HR 48". Never give a drug dose. The item must be one clear, logical sentence: what to do, then why.
+      - CHECK for missing or old chart data that an item of the plan depends on: one sentence that says what is missing,
+        e.g. "No creatinine in the chart for the planned Ramipril".
+      A point that only describes the chart is not a point.
       Do not list normal results, or a test or treatment the plan already asks for.
+      Never write a NEW point about a drug or test the plan already mentions (e.g. the plan says OAC is required: no point
+      about starting or assessing OAC), unless it is a safety concern about it, such as its dose or a contraindication.
+      Never write a CHECK about old or missing data for a test the plan already asks for: that test will update it.
       Write one point per problem: two findings about the same problem (e.g. a positive stress test and ischemia on a stress
       echo) are one point.
       Items of the plan that repeat or conflict with each other are handled when the plan is written: do not list them.
-      Start each point with the names of the chart fields it comes from in square brackets, separated by ";" and
-      written exactly as they appear before the ":" in the chart, then one sentence that gives their value or date, e.g.
-      "[Last Holter; Current Medications] Atrial fibrillation on the last Holter (2025-03-14), but no anticoagulant in
-      the medications". Only flag a
+      After NEW or CHECK, give the names of the chart fields the point comes from in square brackets, separated by ";"
+      and written exactly as they appear before the ":" in the chart, then the point with their value or date, e.g.
+      "NEW [Last Holter; Current Medications] Consider anticoagulation for AF on the last Holter (2025-03-14)" or
+      "NEW [Heart Rate; Current Medications] Consider reducing bisoprolol for HR 48". Only flag a
       value as abnormal if it is outside the normal range. Fewer points are better than doubtful ones: leave out anything
       you are not sure of. Never write vague points such as "monitor ..." or "continue current medications". Do not write
       the patient's name.
@@ -832,6 +841,9 @@ EBM:
     Format: |
       Rewrite this cardiology action plan in the clinic's style. Getting the content right comes first:
       every item of the plan must still be there with the same meaning, nothing wrong and nothing left out.
+      - Lines ending with a tag such as [N1] are items added from the chart. They are part of the plan like every other
+        item: the whole plan, old and new items together, is rewritten as one. Keep the tag at the end of the line that
+        has that item (when two items become one line, that line keeps the tag); never write a tag on any other line.
       - Keep every item, except that two items asking for the same thing become one, and of two items that conflict
         (e.g. two different ischemia tests) keep the one that fits better. Leave out nothing else.
       - Keep each drug name, dose, test and time exactly. Do not add any test, drug, dose or time.
@@ -846,8 +858,14 @@ EBM:
       - One item per line, plain text, no bullets. Start each item that asks for something with a verb such as "Assess",
         "Check", "Consider", "Recommend" or "Start", never with "We will". An item that states a finding or a risk
         (e.g. "High risk of heart failure with preserved ejection fraction") stays a statement; do not add "Assess".
-      - Use concise wording (BP, LDL, f/u, mo, yr are fine) and try to stay within {MAX} characters in total, but never
-        leave out an item or change its meaning to fit.
+      - Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
+        the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
+        sentence half-finished or with words in the wrong order.
+      - The final plan must have no repeated item, nothing wrong, and no sentence that does not read clearly.
+      - Use concise wording (BP, HR, LDL, AF, HF, f/u, mo, yr are fine) and try to stay within {MAX} characters in
+        total, but readability comes before length: keep each item's verb (e.g. "Assess", "Send for", "Start") and every
+        time written in words (e.g. "at the next opportunity", "next available", "today"). Never leave out an item, cut it
+        to a few words, or change its meaning to fit.
 
       PLAN:
       {PLAN}

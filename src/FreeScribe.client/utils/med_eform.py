@@ -168,7 +168,7 @@ def build_med_prompt(plan: str, requisition_rules: str | None = None) -> str:
         '{"medication": [{"action": "start|increase|decrease|stop", "name": "drug name", '
         '"text": "prescription line", "ordered": true or false}], "labs": {"required": true or false, '
         '"period": string (such as "7d", "2w", "1m", etc), "date": string | null}, "requisition": {"period": string (such as "7d", '
-        '"2w", "1m", etc) | null, "date": "YYYY-MM-DD" | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
+        '"2w", "1m", etc) | null, "date": string | null, "period_reason": str, "consult": true or false, "ecg": true or false, '
         '"echo": true or false, "contrastecho": true or false, "stecho": true or false, "contrast": true or false, '
         '"est": true or false, "holter": "24h" | "48h" | "72h" | "2w" | null, '
         '"indications": {"ecg": str, "echo": str, "stecho": str, "est": str, "holter": str} }, '
@@ -443,6 +443,51 @@ def plan_month_date(plan: str | None, today: date | None = None, words: str = _F
     return None
 
 
+# "May 20th", "May 20, 2027", "the 20th of May": a month with a day (and maybe a year).
+_DAY = r"(\d{1,2})(?:st|nd|rd|th)?"
+_YEAR = r"(?:,?\s+(20\d{2}))?"
+_DAY_DATE_PATTERNS = (_MONTH_PATTERN + r"\s+" + _DAY + r"\b" + _YEAR,
+                      r"\b" + _DAY + r"\s+(?:of\s+)?" + _MONTH_PATTERN + _YEAR)
+# A sentence reporting a test already done ("Echo on May 20th showed ...") gives no booking date.
+_DONE_PATTERN = r"\b(show\w*|reveal\w*|demonstrat\w*|result\w*|found|(was|were) (done|performed|completed))\b"
+
+
+def _day_dates(sentence: str, today: date):
+    """Each "May 20th" / "20th of May" / "May 20, 2027" in the sentence as a date from today on: in the year
+    given, else the next May 20."""
+    for index, pattern in enumerate(_DAY_DATE_PATTERNS):
+        for match in re.finditer(pattern, sentence, re.IGNORECASE):
+            month_text, day_text = (match.group(1), match.group(2)) if index == 0 else (match.group(2), match.group(1))
+            if month_text.lower() == "may" and month_text[0] == "m":
+                continue  # "may" the verb
+            month = next(i for i, m in enumerate(_MONTHS, 1) if m.startswith(month_text.lower()[:3]))
+            year = match.group(3)
+            try:
+                found = date(int(year) if year else today.year, month, int(day_text))
+                if not year and found < today:
+                    found = date(today.year + 1, month, int(day_text))
+            except ValueError:
+                continue
+            if found >= today:
+                yield found
+
+
+def plan_day_date(plan: str | None, today: date | None = None, words: str = _FOLLOW_UP_WORDS) -> date | None:
+    """The first day the PLAN books the next visit / tests for ("repeat contrast echo for May 20th"): a month with
+    a day in a sentence about a follow-up or a test (or `words`), not one reporting a test already done. With no
+    year, the next such day from today. It wins over the model's date, which has to guess the year."""
+    today = today or date.today()
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n+", str(plan or "")):
+        if not re.search(words, sentence, re.IGNORECASE) or re.search(_DONE_PATTERN, sentence, re.IGNORECASE):
+            continue
+        if words == _FOLLOW_UP_WORDS and _is_lab_only(sentence):
+            continue
+        found = next(_day_dates(sentence, today), None)
+        if found:
+            return found
+    return None
+
+
 # Words asking for a test to be done straight away; the "Book for" date is then today.
 _NOW_PATTERN = (r"\b(today|now|right away|immediately|asap|as soon as possible|(next|first|earliest) available|"
                 r"urgent\w*|stat|this week)\b")
@@ -596,7 +641,10 @@ def requisition_from_response(req_raw, plan: str | None = None) -> dict:
     diagnostics = [t for t in REQUISITION_TESTS if t in ticked]
     if llm_ticked and not diagnostics:
         print(f"[requisition eForm] LLM asked for {llm_ticked} but no test passed the PLAN checks; not opening the form")
-    book_date = normalize_requisition_date(raw.get("date")) or plan_month_date(plan) or plan_now_date(plan)
+    # A day written in the PLAN ("for May 20th") wins: the model has to guess its year and may give a past one,
+    # which would leave only its own period (worked out without knowing today's date).
+    book_date = (plan_day_date(plan) or normalize_requisition_date(raw.get("date")) or plan_month_date(plan)
+                 or plan_now_date(plan))
     return {
         "requisition": bool(diagnostics),
         "requisition_period": period,
@@ -651,7 +699,8 @@ def parse_med_response(resp: str, plan: str | None = None) -> dict:
         if lab_period and not normalize_period(lab_period):
             print(f'[labs eForm] period "{lab_period}" could not be read; using the form\'s default')
         lab_period = normalize_period(lab_period)
-        lab_date = normalize_requisition_date(labs_data.get("date")) if labs_required else None
+        lab_date = ((plan_day_date(plan, words=_LAB_WORDS) or normalize_requisition_date(labs_data.get("date")))
+                    if labs_required else None)
     else:
         # Handle older version where labs was simply a boolean flag
         labs_required = as_flag(labs_data)

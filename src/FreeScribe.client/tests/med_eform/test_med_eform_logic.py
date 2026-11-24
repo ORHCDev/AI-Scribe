@@ -898,3 +898,43 @@ def test_plan_period_wins_over_the_llm_default():
     resp = json.dumps({"medication": [], "labs": {"required": True, "period": None}, "requisition": None})
     lab_plan = "I advised him to obtain follow-up blood work in approximately three months."
     assert med_eform.parse_med_response(resp, lab_plan)["lab_period"] == "3m"
+
+
+# A day written in the PLAN ("for May 20th") wins over the model's date and period: the model has to guess the year
+# and may give a past one, leaving only its own period (worked out without knowing today's date).
+_DAY_PLAN = ("I advised the patient to increase his daily water intake. I requested that the primary care physician "
+             "monitor his kidney function via creatinine levels during the next blood work. I scheduled a repeat "
+             "contrast echocardiogram for May 20th to monitor his heart function and valve status.")
+
+
+@pytest.mark.parametrize("model_date", ["2026-05-20", "2025-05-20", None, "May 20th"])
+def test_a_day_in_the_plan_wins_over_a_wrong_model_date_and_period(model_date):
+    today = date.today()
+    expected = date(today.year, 5, 20) if date(today.year, 5, 20) >= today else date(today.year + 1, 5, 20)
+    result = med_eform.requisition_from_response(
+        {"period": "10m", "date": model_date, "echo": True, "contrastecho": True}, _DAY_PLAN)
+    assert result["requisition_date"] == expected
+
+
+@pytest.mark.parametrize("plan,expected", [
+    ("Repeat echo on May 20th.", date(2027, 5, 20)),
+    ("See you back on the 3rd of February for an ECG.", date(2027, 2, 3)),
+    ("Follow-up visit December 1 with an echo.", date(2026, 12, 1)),
+    ("Repeat echo on May 20, 2028.", date(2028, 5, 20)),
+    ("Echo on May 20th showed EF 55%.", None),  # a result, not a booking
+    ("Repeat bloodwork on January 5th.", None),  # lab work does not date the requisition
+    ("You may 2 times a day check your BP; follow up in 6 months.", None),  # "may" the verb
+    ("Repeat echo in 6 months.", None),
+])
+def test_plan_day_date(plan, expected):
+    assert med_eform.plan_day_date(plan, today=date(2026, 11, 23)) == expected
+
+
+def test_a_lab_day_in_the_plan_dates_the_labs():
+    assert med_eform.plan_day_date("Repeat bloodwork on January 5th.", today=date(2026, 11, 23),
+                                   words=med_eform._LAB_WORDS) == date(2027, 1, 5)
+
+
+def test_the_requisition_date_is_asked_as_the_plan_writes_it():
+    prompt = med_eform.build_med_prompt("Echo in 1 year.")
+    assert '"date": "YYYY-MM-DD"' not in prompt
