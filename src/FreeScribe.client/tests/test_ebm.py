@@ -2,6 +2,7 @@
 Logic of the "EBM" prompt (no LLM, no Oscar): prompt building, cleaning the LLM's plan, the result box.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,18 @@ def test_result_text_shows_the_billing_codes_first_and_never_saves_them():
 def test_frame_script_returns_the_billing_codes_in_run_mode():
     assert 'billing: bill ? bill.value : ""' in ebm.EBM_FRAME_JS
     assert 'getElementById("subject")' in ebm.EBM_FRAME_JS
+    assert "result.billingLog = billingLog" in ebm.EBM_FRAME_JS
+
+
+@pytest.mark.parametrize("log,expected", [
+    ({"status": "filled", "ms": 900, "lines": 6}, []),
+    (None, []),
+    ({}, []),
+    ({"status": "timed out"}, [f"{ebm.CHECK_PREFIX} The billing history was not loaded (timed out), so the codes "
+                               "to bill may lack the diagnostic code."]),
+])
+def test_billing_note_only_when_the_history_was_not_loaded(log, expected):
+    assert ebm.billing_note(log) == expected
 
 
 def test_result_text_says_when_the_rules_gave_no_plan():
@@ -410,3 +423,9 @@ def test_prompts_keep_the_tense():
                                   "Consider bisoprolol for the aortic root and HR 80"])
 def test_a_new_item_naming_another_antihypertensive_is_kept(item):
     assert ebm.drop_repeats([], [(item, ["VA"])], "Start Norvasc 2.5 mg daily")[1] != []
+
+
+def test_frame_script_has_no_line_break_inside_a_string():
+    # A "\n" written in the Python string becomes a real line break, which is a syntax error inside a JS string
+    assert not re.search(r'"[^"\n]*\n[^"\n]*"\)', ebm.EBM_FRAME_JS.replace('""', ''))
+    assert '"\n"' not in ebm.EBM_FRAME_JS

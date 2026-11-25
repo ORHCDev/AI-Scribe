@@ -35,6 +35,7 @@ var finish = function (result) {
     if (finished) { return; }
     finished = true;
     result.errors = errors;
+    result.billingLog = billingLog;
     setTimeout(function () { frame.remove(); }, 0);
     done(result);
 };
@@ -48,28 +49,52 @@ frame.onload = function () {
     loadBilling(w, d, function () { score(w, d, ap); });
 };
 // Fills the billing history box first, as "View Billing" does by hand: the form takes the diagnostic codes of the
-// Billing section from it, and gives only the service code when it is empty. Waits until the box is filled, or up
-// to 2 s after the history page has loaded (a patient with no billing history), or 10 s in all.
+// Billing section from it, and gives only the service code when it is empty. The form's own Link14 (View Billing)
+// is not used: it takes the patient number from RegExp.$1, which its onBodyLoad sets from window.opener's URL, and
+// a hidden frame has no opener (setting RegExp.$1 from outside the frame does not work in Firefox). So the same
+// billing history page is fetched here with the patient number of the frame's URL, and the form's own
+// convertBillingHistoryFormat fills the box, as Link14 does. 30 s at most. What happened is kept in billingLog
+// (status, time, sizes: no patient data).
+var billingLog = {};
 var loadBilling = function (w, d, next) {
-    var box = d.getElementById("billsheet"), started = Date.now(), loaded = 0, went = false;
-    var go = function () { if (!went) { went = true; next(); } };
-    if (!box || typeof w.Link14 !== "function") { return go(); }
-    var fetchOrig = w.fetch, pending = null;
-    w.fetch = function () { pending = fetchOrig.apply(this, arguments); return pending; };
-    // Link14 builds its URL from RegExp.$1, which the form's onBodyLoad sets from window.opener's URL. A frame has
-    // no opener, so the patient number is matched here from the frame's own URL, with the frame's RegExp.
-    try {
-        if (new w.RegExp("[?&]demographic_no=([^&$]*)", "i").exec(w.location.search)) { w.Link14(); }
-    } catch (e) { errors.push("Billing: " + e); }
-    w.fetch = fetchOrig;
-    if (!pending) { return go(); }
-    pending.then(function () { loaded = Date.now(); }, function () { loaded = Date.now(); });
-    var wait = function () {
-        var now = Date.now();
-        if (box.value.trim() || now - started > 10000 || (loaded && now - loaded > 2000)) { return go(); }
-        setTimeout(wait, 200);
+    var box = d.getElementById("billsheet"), started = Date.now(), went = false, timer = null;
+    var go = function (status) {
+        if (went) { return; }
+        went = true;
+        clearTimeout(timer);
+        billingLog.status = status;
+        billingLog.ms = Date.now() - started;
+        billingLog.lines = box ? box.value.split(String.fromCharCode(10)).filter(function (l) { return l.trim(); }).length : 0;
+        next();
     };
-    wait();
+    if (!box) { return go("no billsheet box"); }
+    if (typeof w.convertBillingHistoryFormat !== "function") { return go("no convertBillingHistoryFormat in the form"); }
+    var patient = /[?&]demographic_no=([0-9]+)/.exec(w.location.search);
+    if (!patient) { return go("no demographic_no in the form URL"); }
+    var context = w.location.pathname.split("/")[1];
+    var href = w.location.protocol + "//" + w.location.host + "/" + context + "/billing/CA/ON/billinghistory.jsp" +
+        "?demographic_no=" + patient[1] + "&orderby=appointment_date&displaymode=appt_history" +
+        "&dboperation=appt_history&limit1=0&limit2=20";
+    timer = setTimeout(function () { go("timed out"); }, 30000);
+    try {
+        w.fetch(href, {credentials: "same-origin"}).then(function (response) {
+            billingLog.http = response.status;
+            return response.text();
+        }).then(function (html) {
+            var doc = new w.DOMParser().parseFromString(html, "text/html");
+            var text = doc.querySelector("body") ? doc.querySelector("body").innerText : "";
+            billingLog.pageChars = text.length;
+            billingLog.header = text.indexOf("Invoice No.") >= 0;
+            box.value = w.convertBillingHistoryFormat(text);
+            go(box.value.trim() ? "filled" : "answered, box empty");
+        }).catch(function (e) {
+            errors.push("Billing request: " + e);
+            go("request failed");
+        });
+    } catch (e) {
+        errors.push("Billing: " + e);
+        go("request failed");
+    }
 };
 var score = function (w, d, ap) {
     try { w.TotalScore(); } catch (e) { errors.push("TotalScore: " + e); }
@@ -184,6 +209,15 @@ RULES_STOPPED_CHECK = (f"{CHECK_PREFIX} The EBM rules stopped early because of a
 NO_RULE_PLAN_CHECK = f"{CHECK_PREFIX} The EBM rules gave no action plan."
 # The form's "To bill next" box (service code and diagnostic code), shown above the checks, never saved to APLAN
 BILLING_PREFIX = f"{STATUS_PREFIX} To bill next:"
+
+
+def billing_note(log) -> list:
+    """A check when the billing history (View Billing) was not loaded before the rules ran: the form then gives
+    no diagnostic code. Nothing when it was loaded, or when there is no log (an older AI-Scribe frame script)."""
+    if not isinstance(log, dict) or not log or log.get("status") == "filled":
+        return []
+    return [f"{CHECK_PREFIX} The billing history was not loaded ({log.get('status')}), so the codes to bill may "
+            "lack the diagnostic code."]
 
 
 def chart_text(chart: list) -> str:

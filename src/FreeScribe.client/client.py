@@ -1963,6 +1963,8 @@ def _run_ebm_frame(demo_no, fid, mode, plan=""):
     result = driver.execute_async_script(ebm.EBM_FRAME_JS, url, mode, plan, sorted(ebm.CHART_SKIP)) or {}
     for error in result.get("errors") or []:
         print(f"[{EBM_PROMPT}] EBM form script error: {error}")
+    # How the billing history (View Billing) went: status, time, lines in the box; no patient data
+    print(f"[{EBM_PROMPT}] billing history: {result.get('billingLog')}")
     return result
 
 
@@ -2028,7 +2030,7 @@ def generate_ebm_action_plan():
                     print(f"[{EBM_PROMPT}] shortening failed ({type(e).__name__}); keeping the longer plan")
             # Still too long: whole lines from the top are saved up to 255 characters; the rest is shown cut off
             plan, cut = ebm.cut_to_fit(plan)
-            notes = ebm.cut_note(plan + cut, cut)
+            notes = ebm.cut_note(plan + cut, cut) + ebm.billing_note(result.get("billingLog"))
             _ebm_patient["demo_no"] = str(demo_no)
             print(f"[{EBM_PROMPT}] {len(checks)} checks, {len(new_items)} new items, plan "
                   f"{ebm.saved_length(chr(10).join(plan))} characters, {len(cut)} lines cut off; "

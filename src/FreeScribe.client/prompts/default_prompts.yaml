@@ -796,7 +796,7 @@ EBM:
   # Hashes of earlier defaults: a saved section still equal to one of them is updated to the new default.
   Previous:
     Checks: ["4d82b1902cf63cd5169f6887a33cc4cc", "bc4f0a0119cd02df0f90b440b5608742", "e29a33954a0924e13429feea72b0d972", "9b95305f7c4422e0230773d5bd50985d", "f121b989dc827c6dd5e976523bf2b808", "fdf2a05d53f63edcde60d69a8ee49735", "917bfd8b8e2d1613af82e105d4d2b192"]
-    Format: ["6daa8f515e315547ed57342882e684b0", "d202f213aade2f2e25de78055370365f", "185edcf8fa2df497a8530a5f38c055e3", "4e52af8312c159ee399f821257fa9759", "dd70ce08fade34050666e6ac7d689b10", "9bfbeef38b75689ed6b05ef7d688e7cd"]
+    Format: ["6daa8f515e315547ed57342882e684b0", "d202f213aade2f2e25de78055370365f", "185edcf8fa2df497a8530a5f38c055e3", "4e52af8312c159ee399f821257fa9759", "dd70ce08fade34050666e6ac7d689b10", "9bfbeef38b75689ed6b05ef7d688e7cd", "4f3e9fe42ffc38cb38b352adb21cdae9"]
   Sections:
     Checks: |
       You are a cardiologist checking the action plan the clinic's EBM rules produced for a patient against
@@ -858,6 +858,9 @@ EBM:
       - One item per line, plain text, no bullets. Start each item that asks for something with a verb such as "Assess",
         "Check", "Consider", "Recommend" or "Start", never with "We will". An item that states a finding or a risk
         (e.g. "High risk of heart failure with preserved ejection fraction") stays a statement; do not add "Assess".
+      - Keep the tense: something the plan says was already done (e.g. "I reinforced potassium restriction and ensured
+        patient is not hypovolemic") stays done ("Reinforced K+ restriction; not hypovolemic"); never turn it into an
+        instruction.
       - Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
         the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
         sentence half-finished or with words in the wrong order.
