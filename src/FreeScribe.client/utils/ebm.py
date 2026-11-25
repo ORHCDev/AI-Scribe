@@ -82,7 +82,8 @@ var score = function (w, d, ap) {
             var label = d.querySelector('label[for="' + el.id + '"]');
             chart.push([(label && label.textContent.trim()) || el.id, String(value).trim()]);
         });
-        return finish({plan: ap.value, chart: chart});
+        var bill = d.getElementById("subject");
+        return finish({plan: ap.value, chart: chart, billing: bill ? bill.value : ""});
     }
     ap.removeAttribute("disabled");
     ap.value = plan;
@@ -181,6 +182,8 @@ MAX_CHECKS = 3
 RULES_STOPPED_CHECK = (f"{CHECK_PREFIX} The EBM rules stopped early because of an error in the EBM form; "
                        "some items may be missing.")
 NO_RULE_PLAN_CHECK = f"{CHECK_PREFIX} The EBM rules gave no action plan."
+# The form's "To bill next" box (service code and diagnostic code), shown above the checks, never saved to APLAN
+BILLING_PREFIX = f"{STATUS_PREFIX} To bill next:"
 
 
 def chart_text(chart: list) -> str:
@@ -509,13 +512,16 @@ ORIGINAL_HEADER = f"{STATUS_PREFIX} ───── Rules' original wording (for
 
 
 def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = (), original: list = (),
-                new_items: list = (), cut: list = ()) -> str:
-    """The result box: the checks and notes for the doctor first, then the plan that Populate saves (old and new
-    items together), each line with a new item's tag followed by that item's chart fields (not saved), then the
+                new_items: list = (), cut: list = (), billing: str = "") -> str:
+    """The result box: the form's "To bill next" codes, the checks and notes for the doctor first, then the plan
+    that Populate saves (old and new items together), each line with a new item's tag followed by that item's
+    chart fields (not saved), then the
     original wording when the LLM reworded it (every [EBM] line is left out by Populate). The fields of a new item
     whose tag the LLM dropped are listed after the plan. When lines were cut off to fit APLAN, the plan shown is the
     cut one, and the full plan (with the cut lines) follows as [EBM] lines, not saved."""
-    top = (([RULES_STOPPED_CHECK] if rules_stopped else []) + list(checks) + list(notes)
+    billing = (billing or "").strip()
+    top = (([f"{BILLING_PREFIX} {billing}"] if billing else []) + ([RULES_STOPPED_CHECK] if rules_stopped else [])
+           + list(checks) + list(notes)
            + ([] if plan else [NO_RULE_PLAN_CHECK]))
     def with_sources(lines, prefix=""):
         shown.clear()

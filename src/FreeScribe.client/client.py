@@ -2035,8 +2035,10 @@ def generate_ebm_action_plan():
                   "Populate saves the plan to APLAN without the [EBM] lines")
             # The original wording goes below the plan, for comparison, when the LLM reworded it
             original = lines + [sentence for sentence, _ in new_items]
+            # The form's "To bill next" codes (from the patient's billing history), shown at the top, never saved
             root.after(0, display_text, ebm.result_text(plan, checks, rules_stopped, notes, original=original,
-                                                         new_items=new_items, cut=cut))
+                                                         new_items=new_items, cut=cut,
+                                                         billing=result.get("billing") or ""))
         except Exception as e:
             root.after(0, finish, f"{ebm.STATUS_PREFIX} Action plan failed ({type(e).__name__}): {e}")
 
