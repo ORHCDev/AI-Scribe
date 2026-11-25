@@ -2,6 +2,7 @@
 Logic of the "EBM" prompt (no LLM, no Oscar): prompt building, cleaning the LLM's plan, the result box.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -105,6 +106,31 @@ def test_result_text_puts_checks_and_notes_above_the_plan():
     assert text.splitlines() == [ebm.RULES_STOPPED_CHECK, f"{ebm.CHECK_PREFIX} HR 51.", f"{ebm.CHECK_PREFIX} Left out: x",
                                  "", "Echo in 24 months."]
     assert ebm.plan_from_result_box(text) == "Echo in 24 months."
+
+
+def test_result_text_shows_the_billing_codes_first_and_never_saves_them():
+    text = ebm.result_text(["Echo in 24 months."], [f"{ebm.CHECK_PREFIX} HR 51."], False, billing=" A603   428 ")
+    assert text.splitlines() == [f"{ebm.BILLING_PREFIX} A603   428", f"{ebm.CHECK_PREFIX} HR 51.", "",
+                                 "Echo in 24 months."]
+    assert ebm.plan_from_result_box(text) == "Echo in 24 months."
+    assert "To bill next" not in ebm.result_text(["Echo in 24 months."], [], False, billing="")
+
+
+def test_frame_script_returns_the_billing_codes_in_run_mode():
+    assert 'billing: bill ? bill.value : ""' in ebm.EBM_FRAME_JS
+    assert 'getElementById("subject")' in ebm.EBM_FRAME_JS
+    assert "result.billingLog = billingLog" in ebm.EBM_FRAME_JS
+
+
+@pytest.mark.parametrize("log,expected", [
+    ({"status": "filled", "ms": 900, "lines": 6}, []),
+    (None, []),
+    ({}, []),
+    ({"status": "timed out"}, [f"{ebm.CHECK_PREFIX} The billing history was not loaded (timed out), so the codes "
+                               "to bill may lack the diagnostic code."]),
+])
+def test_billing_note_only_when_the_history_was_not_loaded(log, expected):
+    assert ebm.billing_note(log) == expected
 
 
 def test_result_text_says_when_the_rules_gave_no_plan():
@@ -361,3 +387,45 @@ def test_a_plan_too_long_is_cut_at_whole_lines_and_the_rest_shown_unsaved():
 def test_a_plan_that_fits_is_not_cut():
     assert ebm.cut_to_fit(["Echo in 24 months."]) == (["Echo in 24 months."], [])
     assert ebm.cut_note(["Echo in 24 months."], []) == []
+
+
+@pytest.mark.parametrize("plan,item", [
+    ("Start Norvasc 2.5 mg daily", "Consider adding a second antihypertensive agent for BP 169/79"),
+    ("Increase Coversyl to 8 mg daily", "Consider adding an antihypertensive for BP 150/90"),
+    ("Start Norvasc 2.5 mg daily", "Consider amlodipine for BP 169/79"),  # the same drug by its generic name
+    ("counselling for depression/stress.", "Consider treating depression as noted in PMH"),
+    ("Start Champix for smoking cessation", "Consider smoking cessation counselling"),
+    ("Mediterranean-PREDIMED", "Consider a Mediterranean diet for LDL 3.25"),
+])
+def test_new_items_repeating_a_planned_topic_are_dropped(plan, item):
+    assert ebm.drop_repeats([], [(item, ["X"])], plan)[1] == []
+
+
+def test_a_new_item_on_a_new_topic_or_a_safety_concern_is_kept():
+    assert ebm.drop_repeats([], [("Consider lipid-lowering therapy for LDL 3.25", ["LDL"])],
+                            "Start Norvasc 2.5 mg daily")[1] != []
+    assert ebm.drop_repeats([], [("Consider reducing bisoprolol for HR 48", ["HR"])],
+                            "Increase Bisoprolol to 5 mg daily")[1] != []
+    # "lipid-lowering" is not a safety word: a repeat of a planned statin is dropped
+    assert ebm.drop_repeats([], [("Consider lipid-lowering therapy for LDL 3.25", ["LDL"])],
+                            "Consider intermediate dose statin")[1] == []
+    # "stress test" is not the depression topic
+    assert ebm.drop_repeats([], [("Consider counselling for anxiety", ["PMH"])],
+                            "Assess with a stress test in 24 months")[1] != []
+
+
+def test_prompts_keep_the_tense():
+    for prompt in (ebm.FORMAT_PROMPT, ebm.SHORTEN_PROMPT):
+        assert "Keep the tense" in prompt and "never turn it into an\n  instruction" in prompt
+
+
+@pytest.mark.parametrize("item", ["Consider an ARB such as losartan for the dilated aortic root",
+                                  "Consider bisoprolol for the aortic root and HR 80"])
+def test_a_new_item_naming_another_antihypertensive_is_kept(item):
+    assert ebm.drop_repeats([], [(item, ["VA"])], "Start Norvasc 2.5 mg daily")[1] != []
+
+
+def test_frame_script_has_no_line_break_inside_a_string():
+    # A "\n" written in the Python string becomes a real line break, which is a syntax error inside a JS string
+    assert not re.search(r'"[^"\n]*\n[^"\n]*"\)', ebm.EBM_FRAME_JS.replace('""', ''))
+    assert '"\n"' not in ebm.EBM_FRAME_JS

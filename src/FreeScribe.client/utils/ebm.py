@@ -35,6 +35,7 @@ var finish = function (result) {
     if (finished) { return; }
     finished = true;
     result.errors = errors;
+    result.billingLog = billingLog;
     setTimeout(function () { frame.remove(); }, 0);
     done(result);
 };
@@ -45,6 +46,57 @@ frame.onload = function () {
     var ap = d.getElementById("actionplan");
     if (!ap) { return finish({missing: "actionplan"}); }
     ap.value = "";
+    loadBilling(w, d, function () { score(w, d, ap); });
+};
+// Fills the billing history box first, as "View Billing" does by hand: the form takes the diagnostic codes of the
+// Billing section from it, and gives only the service code when it is empty. The form's own Link14 (View Billing)
+// is not used: it takes the patient number from RegExp.$1, which its onBodyLoad sets from window.opener's URL, and
+// a hidden frame has no opener (setting RegExp.$1 from outside the frame does not work in Firefox). So the same
+// billing history page is fetched here with the patient number of the frame's URL, and the form's own
+// convertBillingHistoryFormat fills the box, as Link14 does. 30 s at most. What happened is kept in billingLog
+// (status, time, sizes: no patient data).
+var billingLog = {};
+var loadBilling = function (w, d, next) {
+    var box = d.getElementById("billsheet"), started = Date.now(), went = false, timer = null;
+    var go = function (status) {
+        if (went) { return; }
+        went = true;
+        clearTimeout(timer);
+        billingLog.status = status;
+        billingLog.ms = Date.now() - started;
+        billingLog.lines = box ? box.value.split(String.fromCharCode(10)).filter(function (l) { return l.trim(); }).length : 0;
+        next();
+    };
+    if (!box) { return go("no billsheet box"); }
+    if (typeof w.convertBillingHistoryFormat !== "function") { return go("no convertBillingHistoryFormat in the form"); }
+    var patient = /[?&]demographic_no=([0-9]+)/.exec(w.location.search);
+    if (!patient) { return go("no demographic_no in the form URL"); }
+    var context = w.location.pathname.split("/")[1];
+    var href = w.location.protocol + "//" + w.location.host + "/" + context + "/billing/CA/ON/billinghistory.jsp" +
+        "?demographic_no=" + patient[1] + "&orderby=appointment_date&displaymode=appt_history" +
+        "&dboperation=appt_history&limit1=0&limit2=20";
+    timer = setTimeout(function () { go("timed out"); }, 30000);
+    try {
+        w.fetch(href, {credentials: "same-origin"}).then(function (response) {
+            billingLog.http = response.status;
+            return response.text();
+        }).then(function (html) {
+            var doc = new w.DOMParser().parseFromString(html, "text/html");
+            var text = doc.querySelector("body") ? doc.querySelector("body").innerText : "";
+            billingLog.pageChars = text.length;
+            billingLog.header = text.indexOf("Invoice No.") >= 0;
+            box.value = w.convertBillingHistoryFormat(text);
+            go(box.value.trim() ? "filled" : "answered, box empty");
+        }).catch(function (e) {
+            errors.push("Billing request: " + e);
+            go("request failed");
+        });
+    } catch (e) {
+        errors.push("Billing: " + e);
+        go("request failed");
+    }
+};
+var score = function (w, d, ap) {
     try { w.TotalScore(); } catch (e) { errors.push("TotalScore: " + e); }
     if (mode === "run") {
         var chart = [];
@@ -55,7 +107,8 @@ frame.onload = function () {
             var label = d.querySelector('label[for="' + el.id + '"]');
             chart.push([(label && label.textContent.trim()) || el.id, String(value).trim()]);
         });
-        return finish({plan: ap.value, chart: chart});
+        var bill = d.getElementById("subject");
+        return finish({plan: ap.value, chart: chart, billing: bill ? bill.value : ""});
     }
     ap.removeAttribute("disabled");
     ap.value = plan;
@@ -127,6 +180,9 @@ every item of the plan must still be there with the same meaning, nothing wrong 
 - One item per line, plain text, no bullets. Start each item that asks for something with a verb such as "Assess",
   "Check", "Consider", "Recommend" or "Start", never with "We will". An item that states a finding or a risk
   (e.g. "High risk of heart failure with preserved ejection fraction") stays a statement; do not add "Assess".
+- Keep the tense: something the plan says was already done (e.g. "I reinforced potassium restriction and ensured
+  patient is not hypovolemic") stays done ("Reinforced K+ restriction; not hypovolemic"); never turn it into an
+  instruction.
 - Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
   the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
   sentence half-finished or with words in the wrong order.
@@ -151,6 +207,17 @@ MAX_CHECKS = 3
 RULES_STOPPED_CHECK = (f"{CHECK_PREFIX} The EBM rules stopped early because of an error in the EBM form; "
                        "some items may be missing.")
 NO_RULE_PLAN_CHECK = f"{CHECK_PREFIX} The EBM rules gave no action plan."
+# The form's "To bill next" box (service code and diagnostic code), shown above the checks, never saved to APLAN
+BILLING_PREFIX = f"{STATUS_PREFIX} To bill next:"
+
+
+def billing_note(log) -> list:
+    """A check when the billing history (View Billing) was not loaded before the rules ran: the form then gives
+    no diagnostic code. Nothing when it was loaded, or when there is no log (an older AI-Scribe frame script)."""
+    if not isinstance(log, dict) or not log or log.get("status") == "filled":
+        return []
+    return [f"{CHECK_PREFIX} The billing history was not loaded ({log.get('status')}), so the codes to bill may "
+            "lack the diagnostic code."]
 
 
 def chart_text(chart: list) -> str:
@@ -252,15 +319,22 @@ def _time_phrases(text: str) -> set:
     return {" ".join(m.group(0).lower().split()) for m in re.finditer(_TIME_WORDS, text or "", re.IGNORECASE)}
 
 
-# Drugs a NEW point may repeat from the plan (tests are matched with _tests).
+# Topics (drug classes and non-drug care) a NEW point may repeat from the plan (tests are matched with _tests).
 _DRUGS = {"oac": r"\b(?:oac|doac|noac|anticoag\w*|apixaban|eliquis|rivaroxaban|xarelto|edoxaban|lixiana|dabigatran|"
                  r"pradaxa|warfarin|coumadin)\b",
           "lipid": r"\b(?:statins?|lipid[- ]lowering|rosuvastatin|crestor|atorvastatin|lipitor|ezetimibe|pcsk9\w*|"
                    r"repatha|praluent)\b",
           "sglt2": r"\b(?:sglt-?2\w*|dapa|dapagliflozin|forxiga|empagliflozin|jardiance)\b",
-          "aspirin": r"\b(?:asa|aspirin)\b"}
+          "aspirin": r"\b(?:asa|aspirin)\b",
+          "antihypertensive": r"\b(?:anti-?hypertensives?|\w+dipine|norvasc|adalat|plendil|diltiazem|verapamil|\w+pril|"
+                              r"coversyl|altace|mavik|zestril|vasotec|\w+sartan|diovan|atacand|micardis|avapro|cozaar|"
+                              r"\w+olol|monocor|coreg|chlorthalidone|indapamide|hctz|hydrochlorothiazide|thiazides?|"
+                              r"lasix|furosemide|aldactone|spironolactone|eplerenone|entresto|doxazosin|amiloride)\b",
+          "depression": r"\b(?:depress\w*|counsel\w*|anxiety|psych\w*|mental health)\b",
+          "smoking": r"\b(?:smok\w*|champix|varenicline|nicotine)\b",
+          "lifestyle": r"\b(?:diet\w*|mediterranean|predimed|sugar\w*|exercis\w*|physical activity|weight loss)\b"}
 # A NEW point about a drug or test the plan has is kept only as a safety concern about it.
-_SAFETY_WORDS = (r"\b(reduc\w*|lower\w*|adjust\w*|alternative\w*|stop\w*|hold\w*|avoid\w*|switch\w*|dose|dosing|"
+_SAFETY_WORDS = (r"\b(reduc\w*|(?<!-)lower\w*|adjust\w*|alternative\w*|stop\w*|hold\w*|avoid\w*|switch\w*|dose|dosing|"
                  r"contraindicat\w*|caution\w*|bleed\w*|interact\w*|allerg\w*)\b")
 # A CHECK about old or missing data for a test the plan asks for is dropped: the test will update it.
 _STALE_WORDS = r"\b(outdated|out of date|old|older|missing|no recent|not recent|due|overdue|from (?:19|20)\d{2})\b"
@@ -271,13 +345,39 @@ def _topics(text: str) -> set:
     return _tests(text) | {drug for drug, pattern in _DRUGS.items() if re.search(pattern, text)}
 
 
+# Antihypertensives the plan or a NEW point names, brand and generic names as one drug. A NEW point that names one
+# the plan does not (e.g. "Consider an ARB such as losartan for the aortic root" when the plan starts Norvasc) is a
+# different suggestion and is kept for the doctor; a general one ("add a second antihypertensive") repeats the plan.
+_BP_DRUGS = {"amlodipine": "norvasc", "nifedipine": "adalat", "felodipine": "plendil", "perindopril": "coversyl",
+             "ramipril": "altace", "trandolapril": "mavik", "lisinopril": "zestril", "enalapril": "vasotec",
+             "valsartan": "diovan", "candesartan": "atacand", "telmisartan": "micardis", "irbesartan": "avapro",
+             "losartan": "cozaar", "bisoprolol": "monocor", "carvedilol": "coreg", "furosemide": "lasix",
+             "spironolactone": "aldactone", "hydrochlorothiazide": "hctz"}
+_BP_GENERAL = r"^(?:anti-?hypertensives?|thiazides?)$"
+
+
+def _named_bp_drugs(text: str) -> set:
+    names = {m.group(0).lower() for m in re.finditer(_DRUGS["antihypertensive"], text or "", re.IGNORECASE)}
+    return {_BP_DRUGS.get(name, name) for name in names if not re.match(_BP_GENERAL, name)}
+
+
+def _repeats_plan(sentence: str, plan_text: str, plan_topics: set) -> bool:
+    """True when a NEW point is about a topic the plan already has. For antihypertensives only a general point, or
+    one naming only drugs the plan names, repeats it."""
+    shared = _topics(sentence) & plan_topics
+    named = _named_bp_drugs(sentence)
+    if "antihypertensive" in shared and named and not named <= _named_bp_drugs(plan_text):
+        shared.discard("antihypertensive")
+    return bool(shared)
+
+
 def drop_repeats(checks: list, new_items: list, plan_text: str) -> tuple[list, list]:
     """The checks and new items without those repeating the plan: a NEW item about a drug or test the plan already
     has (e.g. "Assess need for OAC" when the plan says OAC is required), unless it is a safety concern about it,
     and a CHECK about old or missing data for a test the plan asks for ("Echo from 2000 is outdated")."""
     plan_topics, plan_tests = _topics(plan_text), _tests(plan_text)
     items = [(sentence, fields) for sentence, fields in new_items
-             if not (_topics(sentence) & plan_topics) or re.search(_SAFETY_WORDS, sentence, re.IGNORECASE)]
+             if not _repeats_plan(sentence, plan_text, plan_topics) or re.search(_SAFETY_WORDS, sentence, re.IGNORECASE)]
     kept = []
     for check in checks:
         sentence = re.sub(r"\s*\(from: [^)]*\)$", "", check[len(CHECK_PREFIX):])
@@ -349,6 +449,9 @@ counts as 2). Shorten it to at most {MAX} characters.
 - Each item must read as one clear, logical sentence that another doctor understands on its own: what to do, then
   the finding or reason it is for, in that order. Do not join unrelated things in one item, and do not leave a
   sentence half-finished or with words in the wrong order.
+- Keep the tense: something the plan says was already done (e.g. "I reinforced potassium restriction and ensured
+  patient is not hypovolemic") stays done ("Reinforced K+ restriction; not hypovolemic"); never turn it into an
+  instruction.
 - One item per line, plain text, no bullets. Keep each tag such as [N1] at the end of the line that has its item.
 - The shortened plan must have no repeated item, nothing wrong, and no sentence that does not read clearly.
 
@@ -443,13 +546,16 @@ ORIGINAL_HEADER = f"{STATUS_PREFIX} ───── Rules' original wording (for
 
 
 def result_text(plan: list, checks: list, rules_stopped: bool, notes: list = (), original: list = (),
-                new_items: list = (), cut: list = ()) -> str:
-    """The result box: the checks and notes for the doctor first, then the plan that Populate saves (old and new
-    items together), each line with a new item's tag followed by that item's chart fields (not saved), then the
+                new_items: list = (), cut: list = (), billing: str = "") -> str:
+    """The result box: the form's "To bill next" codes, the checks and notes for the doctor first, then the plan
+    that Populate saves (old and new items together), each line with a new item's tag followed by that item's
+    chart fields (not saved), then the
     original wording when the LLM reworded it (every [EBM] line is left out by Populate). The fields of a new item
     whose tag the LLM dropped are listed after the plan. When lines were cut off to fit APLAN, the plan shown is the
     cut one, and the full plan (with the cut lines) follows as [EBM] lines, not saved."""
-    top = (([RULES_STOPPED_CHECK] if rules_stopped else []) + list(checks) + list(notes)
+    billing = (billing or "").strip()
+    top = (([f"{BILLING_PREFIX} {billing}"] if billing else []) + ([RULES_STOPPED_CHECK] if rules_stopped else [])
+           + list(checks) + list(notes)
            + ([] if plan else [NO_RULE_PLAN_CHECK]))
     def with_sources(lines, prefix=""):
         shown.clear()
