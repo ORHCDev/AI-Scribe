@@ -14,6 +14,7 @@ import logging
 
 from chatbot.Workflows.Workflow import Workflow, WorkflowContext, WorkflowResult, workflow
 from chatbot.rct_library import DEFAULT_LIBRARY_DIR, get_rct_library
+from utils import evidence_aplan
 
 
 # How many rounds of tool calling the agent gets before it must answer.
@@ -284,6 +285,25 @@ class EvidenceWorkflow(Workflow):
             logging.getLogger(__name__).warning("Evidence tool %s failed: %s", name, e)
             return f"Error calling {name}: {e}", []
 
+    def _summary(self, response: str, context: WorkflowContext) -> str:
+        """A 255-character chart summary of the evidence answer.
+
+        The summary is generated automatically for every evidence run, so the
+        UI can offer it in a collapsed dropdown. When the summary call fails,
+        the answer itself is shortened instead.
+        """
+        if not (response or "").strip():
+            return ""
+        try:
+            raw = context.ai_conn.send_message(evidence_aplan.build_summary_prompt(
+                response, context.prompts.get("evidence_summary_prompt")))
+            summary = evidence_aplan.fit_summary(raw)
+            if summary:
+                return summary
+        except Exception as e:
+            logging.getLogger(__name__).warning("Evidence summary failed: %s", e)
+        return evidence_aplan.fit_summary(response)
+
     def run(self, user_input: str, context: WorkflowContext) -> WorkflowResult:
         """
         Agentic search over the RCT PDF library.
@@ -393,8 +413,14 @@ class EvidenceWorkflow(Workflow):
             metadata_context = (f"PATIENT CONTEXT:\n{patient_context[:2000]}\n\n"
                                 f"EVIDENCE:\n{evidence_text[:6000]}")
 
+        summary = self._summary(resp, context)
+        metadata = {"tools_tried": tools_tried, "context": metadata_context}
+        if summary:
+            metadata["evidence_summary"] = summary
+            metadata["evidence_demo_no"] = str(context.curr_demo or "").strip() or None
+
         return WorkflowResult(
             response=resp,
             sources=sources,
-            metadata={"tools_tried": tools_tried, "context": metadata_context},
+            metadata=metadata,
         )

@@ -81,6 +81,7 @@ from UI.DebugWindow import DualOutput
 
 from chatbot.OscarChatbot import OscarCB
 from UI.Widgets.SourcesWindow import SourcesWindow
+from UI.Widgets.EvidenceSummaryDropdown import EvidenceSummaryDropdown
 
 
 dual = DualOutput()
@@ -3217,6 +3218,17 @@ def chatbot_send_message():
                 )
                 chat_log_display.scrolled_text.window_create(tk.END, window=src_label)
                 SourcesWindow(root, src_label, sources, chatbot.oscar.open_doc)
+
+            metadata = result.metadata or {}
+            summary = metadata.get("evidence_summary")
+            if workflow_type == "evidence_search" and summary:
+                dropdown = EvidenceSummaryDropdown(
+                    chat_log_display.scrolled_text,
+                    summary,
+                )
+                chat_log_display.scrolled_text.insert(tk.END, "\n")
+                chat_log_display.scrolled_text.window_create(tk.END, window=dropdown)
+                chat_log_display.scrolled_text.insert(tk.END, "\n")
 
             chat_log_display.scrolled_text.insert(tk.END, "\n\n")
             chat_log_display.scrolled_text.config(state='disabled')

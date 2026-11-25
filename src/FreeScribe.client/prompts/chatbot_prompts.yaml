@@ -505,6 +505,24 @@ evidence_followup: |
 
 
 
+evidence_summary_prompt: |
+  Write a concise recommendation-only note for the patient's chart from the answer below.
+
+  ANSWER:
+  {answer}
+
+  The summary is saved as an APLAN2 action-plan note.
+  - State only the recommendation: what to do for the patient.
+  - Leave out the supporting evidence, study names, effect sizes, numbers from
+    trials, caveats and citations; the chat answer keeps those.
+  - Use the patient's relevant context from the answer when it changes the
+    recommendation. Do not add any fact that is not in the answer.
+  - Plain text only: no markdown, bullets, headings or patient name.
+  - Stay within {MAX} characters.
+  Reply with the summary only.
+
+
+
 date_rag_prompt: |
   You are an expert clinical assistant supporting a cardiologist.
 
