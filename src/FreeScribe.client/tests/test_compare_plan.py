@@ -66,3 +66,21 @@ def test_no_plan_a_while_the_rules_run():
 def test_length_label_counts_like_aplan():
     assert compare_plan.length_label("a\nb") == f"4/{ebm.APLAN_MAX_CHARS} characters"  # newline saved as \r\n
     assert "too long" in compare_plan.length_label("x" * (ebm.APLAN_MAX_CHARS + 1))
+
+
+def test_plan_b_section_is_added_once_at_the_bottom_and_never_saved_with_plan_a():
+    box = "Start Crestor 10 mg daily\n[EBM] Check: no LDL\n"
+    state = compare_plan.new_state("123")
+    box = compare_plan.with_plan_b(box, compare_plan.plan_b_lines(state))
+    assert box.endswith("Asking the evidence chatbot... (see the chat window)")
+    state.update(status=compare_plan.READY, plan_b="Add ezetimibe 10 mg daily.")
+    box = compare_plan.with_plan_b(box, compare_plan.plan_b_lines(state))
+    assert box.count(compare_plan.PLAN_B_HEADER) == 1
+    assert "Asking the evidence chatbot" not in box and "Add ezetimibe 10 mg daily." in box
+    assert ebm.plan_from_result_box(box) == "Start Crestor 10 mg daily"
+
+
+def test_plan_b_section_says_why_there_is_none():
+    state = compare_plan.new_state("123")
+    state.update(status=compare_plan.FAILED, reason="the chatbot failed")
+    assert compare_plan.plan_b_lines(state) == [f"{ebm.STATUS_PREFIX}   No plan B: the chatbot failed"]

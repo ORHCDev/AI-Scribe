@@ -59,6 +59,30 @@ def plan_a_text(result_box_text: str) -> tuple[str, str]:
     return plan, ""
 
 
+PLAN_B_HEADER = f"{ebm.STATUS_PREFIX} ───── Plan B: evidence summary (pick A or B at Populate) ─────"
+
+
+def plan_b_lines(state: dict) -> list:
+    """Plan B's section of the result box: its status, or the plan. Every line starts with [EBM], so
+    saving plan A from the result box never saves it."""
+    status = (state or {}).get("status")
+    if status == READY:
+        plan = state.get("plan_b") or ""
+        return [f"{ebm.STATUS_PREFIX}   {plan}", f"{ebm.STATUS_PREFIX}   ({length_label(plan)})"]
+    if status == FAILED:
+        return [f"{ebm.STATUS_PREFIX}   No plan B: {state.get('reason') or 'it failed'}"]
+    return [f"{ebm.STATUS_PREFIX}   Asking the evidence chatbot... (see the chat window)"]
+
+
+def with_plan_b(box_text: str, lines: list) -> str:
+    """The result box with plan B's section (replaced if already there) at the bottom."""
+    text = (box_text or "").rstrip("\n")
+    at = text.find(PLAN_B_HEADER)
+    if at != -1:
+        text = text[:at].rstrip("\n")
+    return "\n\n".join(part for part in (text, "\n".join([PLAN_B_HEADER] + list(lines))) if part)
+
+
 def length_label(plan: str) -> str:
     """How much of APLAN the plan takes, e.g. "212/255 characters"."""
     n = ebm.saved_length(plan or "")

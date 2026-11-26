@@ -2123,9 +2123,21 @@ def generate_compare_plans():
     _compare_state.update(state)
     tag = compare_plan.PREFIX
 
+    def show_plan_b():
+        # Plan B's status/plan at the bottom of the result box ([EBM] lines: never saved with plan A),
+        # only while this compare run is the one on screen
+        if selected_prompt.get() != compare_plan.COMPARE_PROMPT or _compare_state.get("demo_no") != state["demo_no"]:
+            return
+        box = response_display.scrolled_text
+        text = compare_plan.with_plan_b(box.get("1.0", tk.END), compare_plan.plan_b_lines(_compare_state))
+        box.configure(state='normal')
+        box.delete("1.0", tk.END)
+        box.insert(tk.END, f"{text}\n")
+
     def failed(reason):
-        if _compare_state is not None and _compare_state.get("demo_no") == state["demo_no"]:
+        if _compare_state.get("demo_no") == state["demo_no"]:
             _compare_state.update(status=compare_plan.FAILED, reason=reason)
+            show_plan_b()
         print(f"{tag} plan B not made: {reason}")
 
     def got_answer(workflow_type, result, error):
@@ -2137,6 +2149,7 @@ def generate_compare_plans():
         if not plan_b:
             return failed(reason)
         _compare_state.update(status=compare_plan.READY, plan_b=plan_b)
+        show_plan_b()
         # Length only: the plan is PHI
         print(f"{tag} plan B ready ({compare_plan.length_label(plan_b)}); click Populate to choose A or B")
 
@@ -2149,6 +2162,7 @@ def generate_compare_plans():
         if waited >= COMPARE_WAIT_MS:
             return failed("the EBM plan took too long, so the evidence question was not asked")
         print(f"{tag} demographic {demo_no}: asking the evidence chatbot for plan B")
+        show_plan_b()
         if not chatbot_send_message(text=compare_plan.QUESTION, workflow=compare_plan.EVIDENCE_WORKFLOW,
                                     on_result=got_answer, user_label=f"USER [{compare_plan.COMPARE_PROMPT}, auto]"):
             failed("the chatbot is still answering another question; click Generate Note again when it is done")
