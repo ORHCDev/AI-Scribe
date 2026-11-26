@@ -71,6 +71,7 @@ from utils.patient_details import PatientDetailsDB, find_details_from_db
 from utils.referral_form_processor import get_referral_labels, get_referral_json
 from utils import referral_requisition
 from utils import ebm
+from utils import compare_plan
 from utils.lab_analysis import analyze_plan_for_labs, pick_most_extensive
 from utils import med_eform
 from utils.note_prompts import with_speaker_rules, TRANSCRIPT_SPEAKER_RULES
@@ -82,6 +83,7 @@ from UI.DebugWindow import DualOutput
 from chatbot.OscarChatbot import OscarCB
 from UI.Widgets.SourcesWindow import SourcesWindow
 from UI.Widgets.EvidenceSummaryDropdown import EvidenceSummaryDropdown
+from UI.Widgets.ComparePlanWindow import ComparePlanWindow
 
 
 dual = DualOutput()
@@ -845,6 +847,9 @@ def send_and_receive():
 
     if selected_prompt.get() == EBM_PROMPT:
         generate_ebm_action_plan()
+        return
+    if selected_prompt.get() == compare_plan.COMPARE_PROMPT:
+        generate_compare_plans()
         return
     if selected_prompt.get() == REFERRAL_REQUISITION_PROMPT:
         display_text(f"\"{REFERRAL_REQUISITION_PROMPT}\" does not generate a note: open the patient's encounter "
@@ -2097,6 +2102,85 @@ def save_ebm_action_plan():
     threading.Thread(target=worker, daemon=True).start()
 
 
+# ── Compare Action Plan: EBM rules' plan (A) vs the evidence chatbot's summary (B) ──────────
+# Generate Note runs the EBM prompt's code unchanged (plan A in the result box), then asks the chatbot
+# compare_plan.QUESTION with evidence search, so the question and full answer show in the chat window;
+# its 255-character summary is plan B. B is asked only after A is shown: both use the one Oscar browser.
+# Populate opens ComparePlanWindow; the chosen plan is put in the result box and saved by the EBM prompt's
+# save_ebm_action_plan (same patient check, same APLAN save).
+_compare_state = {}
+COMPARE_POLL_MS = 500
+COMPARE_WAIT_MS = 5 * 60 * 1000
+
+
+def generate_compare_plans():
+    checked = _ebm_checks()
+    if checked is None:
+        return
+    demo_no, _fid = checked
+    state = compare_plan.new_state(demo_no)
+    _compare_state.clear()
+    _compare_state.update(state)
+    tag = compare_plan.PREFIX
+
+    def failed(reason):
+        if _compare_state is not None and _compare_state.get("demo_no") == state["demo_no"]:
+            _compare_state.update(status=compare_plan.FAILED, reason=reason)
+        print(f"{tag} plan B not made: {reason}")
+
+    def got_answer(workflow_type, result, error):
+        if _compare_state.get("demo_no") != state["demo_no"] or _compare_state.get("status") != compare_plan.RUNNING:
+            return  # a newer compare run started
+        if error is not None:
+            return failed(f"the chatbot failed ({type(error).__name__})")
+        plan_b, reason = compare_plan.plan_b_from_result(workflow_type, result, demo_no)
+        if not plan_b:
+            return failed(reason)
+        _compare_state.update(status=compare_plan.READY, plan_b=plan_b)
+        # Length only: the plan is PHI
+        print(f"{tag} plan B ready ({compare_plan.length_label(plan_b)}); click Populate to choose A or B")
+
+    def ask_evidence(waited=0):
+        if _compare_state.get("demo_no") != state["demo_no"]:
+            return  # a newer compare run started
+        if response_display.scrolled_text.get("1.0", tk.END) == plan_a_running and waited < COMPARE_WAIT_MS:
+            root.after(COMPARE_POLL_MS, ask_evidence, waited + COMPARE_POLL_MS)
+            return
+        if waited >= COMPARE_WAIT_MS:
+            return failed("the EBM plan took too long, so the evidence question was not asked")
+        print(f"{tag} demographic {demo_no}: asking the evidence chatbot for plan B")
+        if not chatbot_send_message(text=compare_plan.QUESTION, workflow=compare_plan.EVIDENCE_WORKFLOW,
+                                    on_result=got_answer, user_label=f"USER [{compare_plan.COMPARE_PROMPT}, auto]"):
+            failed("the chatbot is still answering another question; click Generate Note again when it is done")
+
+    # Plan A: the EBM prompt, unchanged. Its "running" text stays in the result box until A is shown.
+    generate_ebm_action_plan()
+    plan_a_running = response_display.scrolled_text.get("1.0", tk.END)
+    root.after(COMPARE_POLL_MS, ask_evidence, COMPARE_POLL_MS)
+
+
+def save_compare_choice():
+    checked = _ebm_checks()
+    if checked is None:
+        return
+    demo_no, _fid = checked
+    plan_a, note_a = compare_plan.plan_a_text(response_display.scrolled_text.get("1.0", tk.END))
+    plan_b, note_b = compare_plan.plan_b_text(_compare_state, demo_no)
+    if not plan_a and not plan_b:
+        messagebox.showwarning(compare_plan.COMPARE_PROMPT, f"No action plan to save.\n\nA: {note_a}\nB: {note_b}")
+        return
+
+    def choose(choice, plan):
+        edited = plan != (plan_a if choice == "A" else plan_b)
+        print(f"{compare_plan.PREFIX} doctor chose plan {choice}{' (edited)' if edited else ''}")
+        # The EBM prompt's save: it saves the result box (without [EBM] lines) to APLAN, only for the patient
+        # the plans were made for and only once
+        display_text(plan)
+        save_ebm_action_plan()
+
+    ComparePlanWindow(root, plan_a, plan_b, choose, note_a=note_a, note_b=note_b)
+
+
 # ── Referral letters -> requisition eForm (fid 716) ──────────────────────────────
 # "Referral Requisition" prompt: open a new patient's encounter page and click Populate. Their referral
 # document is found in Oscar and its OCR text is put in the input box. The tests ticked are the ones named in the
@@ -2781,6 +2865,7 @@ def upload_consult_complete(overwrite):
 def upload_consult_by_type(upload_type, overwrite):
     # With a "Referral Requisition" prompt, Populate fills the requisition from the referral instead.
     if selected_prompt.get() == EBM_PROMPT: save_ebm_action_plan()
+    elif selected_prompt.get() == compare_plan.COMPARE_PROMPT: save_compare_choice()
     elif selected_prompt.get() == REFERRAL_REQUISITION_PROMPT: referral_requisition_from_chart()
     elif selected_prompt.get() == REFERRAL_REQUISITION_INPUT_PROMPT: referral_requisition_from_chart(from_input=True)
     elif upload_type == "consult": upload_consult()
@@ -3030,7 +3115,8 @@ values = ["Auto", "None", "Scribe"] + ai_prompts.list_prompts() + ["Consult Comp
                                                                    REQUISITION_GENERATION_PROMPT,
                                                                    REFERRAL_REQUISITION_PROMPT,
                                                                    REFERRAL_REQUISITION_INPUT_PROMPT,
-                                                                   EBM_PROMPT]
+                                                                   EBM_PROMPT,
+                                                                   compare_plan.COMPARE_PROMPT]
 prompt_dropdown = ttk.Combobox(
     scribe_frame, textvariable=selected_prompt, values=values, state="readonly",
 )
@@ -3144,18 +3230,21 @@ def _reset_chat_log():
     chat_log_display.scrolled_text.insert("1.0", "Chat Log\n\n")
     chat_log_display.scrolled_text.config(fg='grey', state='disabled')
 
-def chatbot_send_message():
+def chatbot_send_message(text=None, workflow=None, on_result=None, user_label="USER"):
+    """Sends the chat input box (or `text`, asked for the user, with `workflow` forced) to the chatbot.
+    `on_result(workflow_type, result, error)` is called once the answer is shown. Returns False when
+    nothing was sent (a question is still being answered, or there is no text)."""
     # ongoing task catch
     if chat_current_task[0] is not None and chat_current_task[0].is_running():
-        return
-    input = chat_user_input.scrolled_text.get("1.0", tk.END).strip()
+        return False
+    input = text if text is not None else chat_user_input.scrolled_text.get("1.0", tk.END).strip()
     if not input or input == "Type a message…":
-        return
+        return False
     chat_user_input.scrolled_text.delete("1.0", tk.END)
 
     # display user's input message
     chat_log_display.scrolled_text.config(state='normal')
-    chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
+    chat_log_display.scrolled_text.insert(tk.END, f"{user_label}:\n{input}\n\n")
     chat_log_display.scrolled_text.config(state='disabled')
     chat_log_display.scrolled_text.see(tk.END)
 
@@ -3168,6 +3257,15 @@ def chatbot_send_message():
     workflow_select = chat_workflow_button.cget("text")
     # this assumes that the only transformation is removal of spaces and title format
     selected_workflow = None if workflow_select == "Auto" else workflow_select.lower().replace(' ', '_')
+    if workflow is not None:
+        selected_workflow = workflow
+
+    def report(workflow_type=None, result=None, error=None):
+        if on_result is not None:
+            try:
+                on_result(workflow_type, result, error)
+            except Exception as e:
+                print(f"Chatbot result callback failed: {e}")
 
     def handle_return(result, error):
         # restore the chat input box
@@ -3186,6 +3284,7 @@ def chatbot_send_message():
                 "The chatbot was unable to produce a response.\n\n"
                 "Please try again. If the problem continues, contact support."
             )
+            report(error=error)
             return
 
         try:
@@ -3195,6 +3294,7 @@ def chatbot_send_message():
             sources = result.sources
 
             if workflow_type is None:
+                report()
                 return
 
             if saved_id is not None:
@@ -3204,7 +3304,7 @@ def chatbot_send_message():
                 _show_saved_chat(saved_id)
                 chat_history_listbox.selection_clear(0, tk.END)
                 chat_log_display.scrolled_text.config(state='normal')
-                chat_log_display.scrolled_text.insert(tk.END, f"USER:\n{input}\n\n")
+                chat_log_display.scrolled_text.insert(tk.END, f"{user_label}:\n{input}\n\n")
                 chat_log_display.scrolled_text.config(state='disabled')
 
             workflow_label = f"[{workflow_type.replace('_', ' ').title()}]"
@@ -3244,6 +3344,7 @@ def chatbot_send_message():
             chat_log_display.scrolled_text.see(tk.END)
 
             print("Message sent")
+            report(workflow_type, result)
 
         except Exception as e:
             print(f"Error displaying chatbot response: {e}")
@@ -3256,6 +3357,7 @@ def chatbot_send_message():
                 "The chatbot responded, but we couldn't display the response correctly.\n\n"
                 "Please try again. If the problem continues, contact support."
             )
+            report(error=e)
 
     task = BackgroundTask(
         root, 
@@ -3266,6 +3368,7 @@ def chatbot_send_message():
     chat_current_task[0] = task
     chat_user_input.set_cancel_button_active(True)
     task.start()
+    return True
 
 def chatbot_cancel_generation():
     task = chat_current_task[0]
